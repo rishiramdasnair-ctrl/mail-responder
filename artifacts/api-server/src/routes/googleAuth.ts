@@ -3,14 +3,14 @@ import { google } from "googleapis";
 import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usersTable, connectorsTable } from "@workspace/db/schema";
+import { eq, and, inArray } from "drizzle-orm";
 import { getOrCreateUser } from "../lib/getOrCreateUser";
+import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 
 const router = Router();
 
 function getRedirectUri() {
-  // Prefer explicit override, then fall back to REPLIT_DOMAINS
   if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   return `https://${domain}/api/auth/google/callback`;
@@ -20,11 +20,9 @@ function getOAuthClient() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = getRedirectUri();
-
   if (!clientId || !clientSecret) {
     throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set");
   }
-
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
@@ -38,6 +36,8 @@ const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
 ];
 
+const GSUITE_EXTENSION_CONNECTORS = ["google-drive", "google-contacts"];
+
 router.get("/auth/google/start", requireAuth, async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
@@ -47,20 +47,28 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
     const userId = auth.userId!;
     const oAuth2Client = getOAuthClient();
 
+    let state: string;
+    try {
+      state = createOAuthState(userId);
+    } catch {
+      res.redirect(`${frontendUrl}/settings?gmail_error=not_configured`);
+      return;
+    }
+
     const url = oAuth2Client.generateAuthUrl({
       access_type: "offline",
       scope: GMAIL_SCOPES,
       prompt: "consent",
-      state: userId,
+      state,
     });
 
     console.log("[google-start] redirect_uri:", getRedirectUri());
     console.log("[google-start] userId:", userId);
-    console.log("[google-start] oauth_url:", url);
 
     res.redirect(url);
-  } catch (err: any) {
-    if (err.message?.includes("GOOGLE_CLIENT_ID")) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("GOOGLE_CLIENT_ID")) {
       res.redirect(`${frontendUrl}/settings?gmail_error=not_configured`);
     } else {
       res.redirect(`${frontendUrl}/settings?gmail_error=start_failed`);
@@ -73,9 +81,7 @@ router.get("/auth/google/callback", async (req, res) => {
   const frontendUrl = `https://${domain}`;
 
   try {
-    const { code, state: userId, error } = req.query;
-
-    console.log("[google-callback] received", { hasCode: !!code, userId, error });
+    const { code, state, error } = req.query;
 
     if (error) {
       console.error("[google-callback] Google returned error:", error);
@@ -83,11 +89,26 @@ router.get("/auth/google/callback", async (req, res) => {
       return;
     }
 
-    if (!code || !userId) {
-      console.error("[google-callback] Missing params", { code: !!code, userId });
+    if (!code || !state || typeof state !== "string") {
+      console.error("[google-callback] Missing params");
       res.redirect(`${frontendUrl}/settings?gmail_error=missing_params`);
       return;
     }
+
+    let userId: string | null;
+    try {
+      userId = verifyOAuthState(state);
+    } catch {
+      userId = null;
+    }
+
+    if (!userId) {
+      console.error("[google-callback] Invalid or expired state");
+      res.redirect(`${frontendUrl}/settings?gmail_error=missing_params`);
+      return;
+    }
+
+    console.log("[google-callback] received", { hasCode: !!code, userId });
 
     let tokens;
     try {
@@ -98,8 +119,9 @@ router.get("/auth/google/callback", async (req, res) => {
         hasRefreshToken: !!tokens.refresh_token,
         expiresAt: tokens.expiry_date,
       });
-    } catch (tokenErr: any) {
-      console.error("[google-callback] token exchange FAILED:", tokenErr?.message, tokenErr?.response?.data);
+    } catch (tokenErr: unknown) {
+      const msg = tokenErr instanceof Error ? tokenErr.message : String(tokenErr);
+      console.error("[google-callback] token exchange FAILED:", msg);
       res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
       return;
     }
@@ -110,7 +132,6 @@ router.get("/auth/google/callback", async (req, res) => {
       return;
     }
 
-    // Get the user's Gmail address
     const oAuth2Client = getOAuthClient();
     oAuth2Client.setCredentials(tokens);
     const oauth2 = google.oauth2({ version: "v2", auth: oAuth2Client });
@@ -121,7 +142,6 @@ router.get("/auth/google/callback", async (req, res) => {
 
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
 
-    // Upsert so it works even if the user row doesn't exist yet
     const updated = await db.update(usersTable)
       .set({
         googleAccessToken: tokens.access_token,
@@ -130,16 +150,15 @@ router.get("/auth/google/callback", async (req, res) => {
         googleEmail,
         updatedAt: new Date(),
       })
-      .where(eq(usersTable.id, userId as string))
+      .where(eq(usersTable.id, userId))
       .returning({ id: usersTable.id });
 
-    console.log("[google-callback] DB update rows:", updated.length, "userId searched:", userId);
+    console.log("[google-callback] DB update rows:", updated.length);
 
     if (updated.length === 0) {
-      // User row doesn't exist yet — create it
       console.log("[google-callback] user not found in DB, inserting...");
       await db.insert(usersTable).values({
-        id: userId as string,
+        id: userId,
         email: googleEmail,
         googleEmail,
         googleAccessToken: tokens.access_token,
@@ -170,8 +189,16 @@ router.post("/auth/google/disconnect", requireAuth, async (req, res) => {
       })
       .where(eq(usersTable.id, userId));
 
+    await db.delete(connectorsTable).where(
+      and(
+        eq(connectorsTable.userId, userId),
+        inArray(connectorsTable.connectorId, GSUITE_EXTENSION_CONNECTORS),
+      ),
+    );
+
     res.json({ success: true });
   } catch (err) {
+    console.error("[google-disconnect] error:", err);
     res.status(500).json({ error: "Failed to disconnect Gmail" });
   }
 });

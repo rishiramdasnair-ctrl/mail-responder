@@ -195,7 +195,7 @@ export default function Dashboard() {
                         {thread.fromName || thread.from.split("<")[0].replace(/"/g, "")}
                       </span>
                       <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                        {format(new Date(Number(thread.date)), "MMM d")}
+                        {(() => { try { const d = new Date(thread.date); return isNaN(d.getTime()) ? "" : format(d, "MMM d"); } catch { return ""; } })()}
                       </span>
                     </div>
                     <span className={`text-sm truncate w-full ${thread.isUnread ? "font-semibold text-foreground" : "text-foreground/70"}`}>
@@ -240,7 +240,7 @@ export default function Dashboard() {
                       {threadData.messages[threadData.messages.length - 1].from}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {format(new Date(Number(threadData.messages[threadData.messages.length - 1].date)), "PPP 'at' p")}
+                      {(() => { try { const d = new Date(threadData.messages[threadData.messages.length - 1].date); return isNaN(d.getTime()) ? "" : format(d, "PPP 'at' p"); } catch { return ""; } })()}
                     </span>
                   </div>
                 </div>

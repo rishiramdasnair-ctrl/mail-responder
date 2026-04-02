@@ -3,6 +3,12 @@ import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
 import { getGmailClientForUser, getCalendarClientForUser, parseEmailAddress, getHeader, decodeBody } from "../lib/gmailClient";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+  ChatCompletionAssistantMessageParam,
+  ChatCompletionToolMessageParam,
+} from "openai/resources";
 
 const router = Router();
 
@@ -25,7 +31,7 @@ interface PendingEmail {
   threadId?: string;
 }
 
-const TOOLS: Array<Record<string, unknown>> = [
+const TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
@@ -233,9 +239,9 @@ Your job is to complete tasks autonomously using the provided tools. Think step 
 
 Be concise but informative. Explain what you found and what actions you took.`;
 
-    const messages: Array<Record<string, unknown>> = [
+    const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
-      ...history.map((h) => ({ role: h.role, content: h.content })),
+      ...history.map((h): ChatCompletionMessageParam => ({ role: h.role, content: h.content })),
       { role: "user", content: task },
     ];
 
@@ -245,18 +251,22 @@ Be concise but informative. Explain what you found and what actions you took.`;
 
     while (iteration < MAX_ITERATIONS) {
       iteration++;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const completion = await openai.chat.completions.create({
         model: "gpt-5.2",
         max_completion_tokens: 2048,
-        messages: messages as any,
-        tools: TOOLS as any,
+        messages,
+        tools: TOOLS,
         tool_choice: "auto",
-      } as any);
+      });
 
       const choice = completion.choices[0];
       const message = choice.message;
-      messages.push(message as Record<string, unknown>);
+      const assistantMsg: ChatCompletionAssistantMessageParam = {
+        role: "assistant",
+        content: message.content ?? null,
+        ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+      };
+      messages.push(assistantMsg);
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
         finalAnswer = message.content || "";
@@ -307,11 +317,12 @@ Be concise but informative. Explain what you found and what actions you took.`;
         }
 
         steps.push({ toolName, input: args, output: toolOutput, status });
-        messages.push({
+        const toolMsg: ChatCompletionToolMessageParam = {
           role: "tool",
           tool_call_id: toolCall.id,
           content: toolOutput,
-        });
+        };
+        messages.push(toolMsg);
 
         if (pendingEmail) break;
       }
@@ -322,8 +333,8 @@ Be concise but informative. Explain what you found and what actions you took.`;
           const pendingCompletion = await openai.chat.completions.create({
             model: "gpt-5.2",
             max_completion_tokens: 512,
-            messages: messages as any,
-          } as any);
+            messages,
+          });
           finalAnswer = pendingCompletion.choices[0]?.message?.content || "I've drafted an email for you. Please review and confirm.";
         } else {
           finalAnswer = "I've drafted an email for you. Please review and confirm sending it.";
@@ -349,6 +360,50 @@ Be concise but informative. Explain what you found and what actions you took.`;
       return;
     }
     res.status(500).json({ error: "Agent task failed. Please try again." });
+  }
+});
+
+router.post("/agent/send", requireAuth, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
+    const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
+    const body = typeof req.body?.body === "string" ? req.body.body : "";
+    const threadId = typeof req.body?.threadId === "string" ? req.body.threadId : undefined;
+
+    if (!to || !subject) {
+      res.status(400).json({ error: "to and subject are required" });
+      return;
+    }
+
+    const gmail = await getGmailClientForUser(userId);
+    const profile = await gmail.users.getProfile({ userId: "me" });
+    const fromEmail = profile.data.emailAddress || "";
+
+    const subjectLine = threadId && !subject.startsWith("Re:")
+      ? `Re: ${subject}`
+      : subject;
+
+    const emailLines = [
+      `From: ${fromEmail}`,
+      `To: ${to}`,
+      `Subject: ${subjectLine}`,
+      `Content-Type: text/plain; charset=utf-8`,
+      "",
+      body,
+    ];
+
+    const raw = Buffer.from(emailLines.join("\r\n")).toString("base64url");
+    const result = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw, ...(threadId ? { threadId } : {}) },
+    });
+
+    res.json({ messageId: result.data.id, success: true });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Agent send error");
+    res.status(500).json({ error: "Failed to send email" });
   }
 });
 

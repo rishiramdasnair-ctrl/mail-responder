@@ -270,7 +270,7 @@ export default function AgentPage() {
     if (!msg?.pendingEmail) return;
     setSendingId(msgId);
     try {
-      const res = await fetch("/api/gmail/send", {
+      const res = await fetch("/api/agent/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -278,7 +278,7 @@ export default function AgentPage() {
           to: msg.pendingEmail.to,
           subject: msg.pendingEmail.subject,
           body: msg.pendingEmail.body,
-          threadId: msg.pendingEmail.threadId,
+          ...(msg.pendingEmail.threadId ? { threadId: msg.pendingEmail.threadId } : {}),
         }),
       });
       if (!res.ok) {

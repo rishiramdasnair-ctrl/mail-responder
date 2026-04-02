@@ -18,7 +18,6 @@ export default function History() {
 
   const { data, isLoading } = useGetHistory(
     { limit: 50, offset: 0, q: debouncedSearch || undefined },
-    { query: { keepPreviousData: true } }
   );
 
   return (

@@ -22,7 +22,8 @@ import {
   Sparkles, 
   Send,
   User,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -37,14 +38,24 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Show success toast if redirected here after Gmail OAuth
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gmail_connected") === "true") {
+      toast({ title: "Gmail connected!", description: "Your inbox is now loading." });
+      const url = new URL(window.location.href);
+      url.searchParams.delete("gmail_connected");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
   const { data: inboxData, isLoading: isLoadingInbox, refetch: refetchInbox } = useGetInbox(
     { maxResults: 20, q: debouncedSearch || undefined },
-    { query: { keepPreviousData: true } }
   );
 
   const { data: threadData, isLoading: isLoadingThread } = useGetThread(
     selectedThreadId || "",
-    { query: { enabled: !!selectedThreadId } }
+    { query: { enabled: !!selectedThreadId, queryKey: [selectedThreadId] } }
   );
 
   const generateReplies = useGenerateReplies();

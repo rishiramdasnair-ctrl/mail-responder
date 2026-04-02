@@ -6,11 +6,13 @@ import aiRouter from "./ai";
 import historyRouter from "./history";
 import billingRouter from "./billing";
 import settingsRouter from "./settings";
+import googleAuthRouter from "./googleAuth";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(googleAuthRouter);
 router.use(gmailRouter);
 router.use(aiRouter);
 router.use(historyRouter);

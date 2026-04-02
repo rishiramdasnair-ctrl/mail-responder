@@ -10,9 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
-import { useGetSettings, useUpdateSettings, useGetGmailStatus, getGetSettingsQueryKey } from "@workspace/api-client-react";
+import { useGetSettings, useUpdateSettings, useGetGmailStatus, getGetGmailStatusQueryKey, getGetSettingsQueryKey } from "@workspace/api-client-react";
 import { Loader2, Mail, CheckCircle2, AlertCircle } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
 
 const settingsSchema = z.object({
   defaultTone: z.enum(["pro", "casual", "fast"]),
@@ -28,8 +29,32 @@ export default function Settings() {
   const { setTheme } = useTheme();
   
   const { data: settings, isLoading: isLoadingSettings } = useGetSettings();
-  const { data: gmailStatus, isLoading: isLoadingGmail } = useGetGmailStatus();
+  const { data: gmailStatus, isLoading: isLoadingGmail, refetch: refetchGmailStatus } = useGetGmailStatus();
   const updateSettings = useUpdateSettings();
+
+  // Show error toast if redirected back from OAuth with error
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gmailError = params.get("gmail_error");
+    if (gmailError) {
+      const descriptions: Record<string, string> = {
+        access_denied: "You denied Gmail access. Please try again and grant all permissions.",
+        not_configured: "Google OAuth credentials are not yet configured on the server.",
+        missing_params: "OAuth response was incomplete. Please try again.",
+        callback_failed: "Something went wrong exchanging your Google token. Please try again.",
+        start_failed: "Could not start the Gmail connection. Please try again.",
+      };
+      toast({
+        title: "Gmail connection failed",
+        description: descriptions[gmailError] || "Something went wrong connecting your Gmail.",
+        variant: "destructive",
+      });
+      // Clean up the URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete("gmail_error");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
@@ -76,11 +101,22 @@ export default function Settings() {
   };
 
   const handleConnectGmail = () => {
-    toast({
-      title: "Gmail is managed server-side",
-      description: "Your Gmail account is connected via the platform integration. If you're seeing issues, try refreshing the page.",
-    });
+    window.location.href = "/api/auth/google/start";
   };
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/auth/google/disconnect", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to disconnect");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getGetGmailStatusQueryKey() });
+      toast({ title: "Gmail disconnected", description: "Your Gmail account has been disconnected." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to disconnect Gmail.", variant: "destructive" });
+    },
+  });
 
   return (
     <AppLayout>
@@ -107,8 +143,18 @@ export default function Settings() {
                   </div>
                 </div>
                 {gmailStatus?.connected ? (
-                  <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-500">
-                    <CheckCircle2 className="w-4 h-4" /> Connected
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-500">
+                      <CheckCircle2 className="w-4 h-4" /> Connected
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => disconnectMutation.mutate()}
+                      disabled={disconnectMutation.isPending}
+                    >
+                      {disconnectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Disconnect"}
+                    </Button>
                   </div>
                 ) : (
                   <Button onClick={handleConnectGmail}>

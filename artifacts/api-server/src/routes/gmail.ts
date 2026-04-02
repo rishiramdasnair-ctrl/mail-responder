@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
 import {
-  getUncachableGmailClient,
+  getGmailClientForUser,
+  isGmailConnected,
   parseEmailAddress,
   getHeader,
   decodeBody,
@@ -12,21 +14,31 @@ const router = Router();
 
 router.get("/gmail/status", requireAuth, async (req, res) => {
   try {
-    const gmail = await getUncachableGmailClient();
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ connected: false }); return; }
+
+    const status = await isGmailConnected(userId);
+    if (!status.connected) { res.json({ connected: false }); return; }
+
+    // Verify the token actually works
+    const gmail = await getGmailClientForUser(userId);
     const profile = await gmail.users.getProfile({ userId: "me" });
     res.json({
       connected: true,
-      email: profile.data.emailAddress,
+      email: profile.data.emailAddress || status.email,
       lastSynced: new Date().toISOString(),
     });
-  } catch (err) {
+  } catch {
     res.json({ connected: false });
   }
 });
 
 router.get("/gmail/inbox", requireAuth, async (req, res) => {
   try {
-    const gmail = await getUncachableGmailClient();
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const gmail = await getGmailClientForUser(userId);
     const label = (req.query.label as string) || "INBOX";
     const maxResults = parseInt((req.query.maxResults as string) || "50");
     const pageToken = req.query.pageToken as string | undefined;
@@ -87,7 +99,12 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
       nextPageToken: listRes.data.nextPageToken,
       resultSizeEstimate: listRes.data.resultSizeEstimate,
     });
-  } catch (err) {
+  } catch (err: any) {
+    const msg = err?.message || "";
+    if (msg.includes("not connected") || msg.includes("Gmail not connected")) {
+      res.status(400).json({ error: "Gmail not connected", notConnected: true });
+      return;
+    }
     req.log.error({ err }, "Error fetching inbox");
     res.status(500).json({ error: "Failed to fetch inbox" });
   }
@@ -95,7 +112,10 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
 
 router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
   try {
-    const gmail = await getUncachableGmailClient();
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const gmail = await getGmailClientForUser(userId);
     const threadId = req.params.threadId;
 
     const thread = await gmail.users.threads.get({
@@ -142,7 +162,10 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
 
 router.get("/gmail/labels", requireAuth, async (req, res) => {
   try {
-    const gmail = await getUncachableGmailClient();
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const gmail = await getGmailClientForUser(userId);
     const labelsRes = await gmail.users.labels.list({ userId: "me" });
     const labels = labelsRes.data.labels || [];
 
@@ -155,8 +178,11 @@ router.get("/gmail/labels", requireAuth, async (req, res) => {
 
 router.post("/gmail/send", requireAuth, async (req, res) => {
   try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
     const body = SendReplyBody.parse(req.body);
-    const gmail = await getUncachableGmailClient();
+    const gmail = await getGmailClientForUser(userId);
 
     const profile = await gmail.users.getProfile({ userId: "me" });
     const fromEmail = profile.data.emailAddress || "";
@@ -173,8 +199,7 @@ router.post("/gmail/send", requireAuth, async (req, res) => {
 
     emailLines.push("", body.body);
 
-    const raw = Buffer.from(emailLines.join("\r\n"))
-      .toString("base64url");
+    const raw = Buffer.from(emailLines.join("\r\n")).toString("base64url");
 
     const result = await gmail.users.messages.send({
       userId: "me",

@@ -1,71 +1,65 @@
-// Gmail integration via Replit Connectors (google-mail)
+// Gmail integration via per-user Google OAuth tokens stored in the database
 import { google } from "googleapis";
+import { db } from "@workspace/db";
+import { usersTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
-let connectionSettings: any;
+function getOAuthClient() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
+  const redirectUri = `https://${domain}/api/auth/google/callback`;
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+}
 
-async function getAccessToken() {
-  // Only use cache if token is still valid (with 60s buffer)
-  if (
-    connectionSettings &&
-    connectionSettings.settings?.expires_at &&
-    new Date(connectionSettings.settings.expires_at).getTime() > Date.now() + 60_000
-  ) {
-    return connectionSettings.settings.access_token;
-  }
-  // Reset cache so we always re-fetch if expired or missing
-  connectionSettings = null;
+async function getFreshAccessToken(userId: string): Promise<string> {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
 
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? "repl " + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-    ? "depl " + process.env.WEB_REPL_RENEWAL
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error("X-Replit-Token not found for repl/depl");
+  if (!user?.googleRefreshToken) {
+    throw new Error("Gmail not connected. Please connect your Gmail account.");
   }
 
-  const raw = await fetch(
-    "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=google-mail",
-    {
-      headers: {
-        Accept: "application/json",
-        "X-Replit-Token": xReplitToken,
-      },
-    }
-  ).then((res) => res.json());
+  const oAuth2Client = getOAuthClient();
+  oAuth2Client.setCredentials({
+    refresh_token: user.googleRefreshToken,
+    access_token: user.googleAccessToken,
+    expiry_date: user.googleTokenExpiresAt?.getTime(),
+  });
 
-  connectionSettings = raw?.items?.[0];
-
-  // Log structure for debugging (only in dev, redact actual token values)
-  if (process.env.NODE_ENV === "development") {
-    const settingsKeys = connectionSettings?.settings ? Object.keys(connectionSettings.settings) : [];
-    console.log("[Gmail] connector response — items count:", raw?.items?.length ?? 0, "settings keys:", settingsKeys);
+  // Refresh token if expired or expiring within 60 seconds
+  const expiresAt = user.googleTokenExpiresAt?.getTime() ?? 0;
+  if (!user.googleAccessToken || expiresAt < Date.now() + 60_000) {
+    const { credentials } = await oAuth2Client.refreshAccessToken();
+    // Update stored token
+    await db.update(usersTable).set({
+      googleAccessToken: credentials.access_token,
+      googleTokenExpiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined,
+      updatedAt: new Date(),
+    }).where(eq(usersTable.id, userId));
+    oAuth2Client.setCredentials(credentials);
   }
 
-  const accessToken =
-    connectionSettings?.settings?.access_token ||
-    connectionSettings?.settings?.oauth?.access_token ||
-    connectionSettings?.settings?.oauth?.credentials?.access_token ||
-    connectionSettings?.settings?.token?.access_token;
-
-  if (!connectionSettings || !accessToken) {
-    console.error("[Gmail] No access token found. Settings keys:", Object.keys(connectionSettings?.settings ?? {}));
-    throw new Error("Gmail not connected");
-  }
-  return accessToken;
+  const token = oAuth2Client.credentials.access_token;
+  if (!token) throw new Error("Failed to get Gmail access token");
+  return token;
 }
 
 // WARNING: Never cache this client. Access tokens expire.
-// Always call this function again to get a fresh client.
-export async function getUncachableGmailClient() {
-  const accessToken = await getAccessToken();
-
+export async function getGmailClientForUser(userId: string) {
+  const accessToken = await getFreshAccessToken(userId);
   const oauth2Client = new google.auth.OAuth2();
   oauth2Client.setCredentials({ access_token: accessToken });
-
   return google.gmail({ version: "v1", auth: oauth2Client });
+}
+
+export async function isGmailConnected(userId: string): Promise<{ connected: boolean; email?: string }> {
+  try {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (!user?.googleRefreshToken) return { connected: false };
+    return { connected: true, email: user.googleEmail || undefined };
+  } catch {
+    return { connected: false };
+  }
 }
 
 export function parseEmailAddress(header: string): { name: string; email: string } {

@@ -14,6 +14,11 @@ export const usersTable = pgTable("users", {
   trialEndsAt: timestamp("trial_ends_at"),
   repliesUsed: integer("replies_used").notNull().default(0),
   repliesResetAt: timestamp("replies_reset_at"),
+  // Google OAuth tokens for Gmail access
+  googleAccessToken: text("google_access_token"),
+  googleRefreshToken: text("google_refresh_token"),
+  googleTokenExpiresAt: timestamp("google_token_expires_at"),
+  googleEmail: text("google_email"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

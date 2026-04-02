@@ -1,11 +1,15 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 
 export default function Home() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
       <header className="container mx-auto px-4 h-16 flex items-center justify-between border-b">
-        <div className="font-bold text-xl tracking-tight">ReplyAI</div>
+        <div className="flex items-center gap-2">
+          <Logo size={22} className="text-foreground" />
+          <span className="font-bold text-xl tracking-tight">ReplyAI</span>
+        </div>
         <div className="flex items-center gap-4">
           <Link href="/sign-in" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Log in

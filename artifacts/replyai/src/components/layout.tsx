@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useClerk } from "@clerk/react";
-import { Inbox, Clock, Settings, CreditCard, LogOut, Mail, Menu, Bot } from "lucide-react";
+import { Inbox, Clock, Settings, CreditCard, LogOut, Menu, Bot } from "lucide-react";
+import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { useGetMe, useGetSubscription, useGetGmailStatus } from "@workspace/api-client-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -79,7 +80,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Desktop Sidebar */}
         <aside className="hidden md:flex w-64 flex-col border-r bg-sidebar p-4 h-[calc(100dvh-auto)] overflow-y-auto">
           <div className="flex items-center gap-2 mb-8 px-2">
-            <Mail className="w-6 h-6 text-primary" />
+            <Logo size={24} className="text-primary" />
             <span className="font-bold text-lg tracking-tight">ReplyAI</span>
           </div>
           
@@ -111,7 +112,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="md:hidden flex items-center justify-between p-4 border-b bg-background">
             <div className="flex items-center gap-2">
-              <Mail className="w-5 h-5 text-primary" />
+              <Logo size={20} className="text-primary" />
               <span className="font-bold">ReplyAI</span>
             </div>
             <Sheet>

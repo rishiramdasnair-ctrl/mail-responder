@@ -186,6 +186,7 @@ export default function ConnectorsPage() {
       hubspot_callback_failed: "Something went wrong connecting HubSpot. Please try again.",
       google_extend_denied: "You denied Google access. Please try again.",
       google_extend_callback_failed: "Something went wrong extending Google access. Please try again.",
+      google_extend_not_linked: "Please connect Gmail first before enabling Google Drive and Contacts.",
       google_not_configured: "Google OAuth credentials are not configured on the server.",
     };
 

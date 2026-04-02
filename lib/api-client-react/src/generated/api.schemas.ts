@@ -41,6 +41,13 @@ export interface GmailStatus {
   lastSynced?: string;
 }
 
+export interface EmailAttachment {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface EmailMessage {
   id: string;
   threadId: string;
@@ -55,6 +62,7 @@ export interface EmailMessage {
   isUnread: boolean;
   isStarred?: boolean;
   labelIds?: string[];
+  attachments?: EmailAttachment[];
 }
 
 export interface Thread {
@@ -106,8 +114,8 @@ export interface GenerateRepliesBody {
   emailBody: string;
   emailFrom: string;
   emailSubject: string;
-  emailHistory?: GenerateRepliesBodyEmailHistoryItem[];
   calendarContext?: string;
+  emailHistory?: GenerateRepliesBodyEmailHistoryItem[];
 }
 
 export type ReplySuggestionTone =
@@ -249,6 +257,31 @@ export interface UpdateSettingsBody {
   notifications?: boolean;
 }
 
+export type AgentHistoryItemRole =
+  (typeof AgentHistoryItemRole)[keyof typeof AgentHistoryItemRole];
+
+export const AgentHistoryItemRole = {
+  user: "user",
+  assistant: "assistant",
+} as const;
+
+export interface AgentHistoryItem {
+  role: AgentHistoryItemRole;
+  content: string;
+}
+
+export interface AgentRunBody {
+  task: string;
+  history?: AgentHistoryItem[];
+}
+
+export interface AgentSendBody {
+  to: string;
+  subject: string;
+  body: string;
+  threadId?: string;
+}
+
 export type GetInboxParams = {
   label?: string;
   maxResults?: number;
@@ -264,47 +297,3 @@ export type GetHistoryParams = {
   offset?: number;
   q?: string;
 };
-
-export type AgentStepStatus = "success" | "error";
-
-export interface AgentStep {
-  toolName: string;
-  input: Record<string, unknown>;
-  output: string;
-  status: AgentStepStatus;
-}
-
-export interface AgentPendingEmail {
-  to: string;
-  subject: string;
-  body: string;
-  threadId?: string;
-}
-
-export interface AgentHistoryMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface AgentRunBody {
-  task: string;
-  history?: AgentHistoryMessage[];
-}
-
-export interface AgentRunResponse {
-  answer: string;
-  steps: AgentStep[];
-  pendingEmail?: AgentPendingEmail;
-}
-
-export interface AgentSendBody {
-  to: string;
-  subject: string;
-  body: string;
-  threadId?: string;
-}
-
-export interface AgentSendResponse {
-  messageId?: string;
-  success: boolean;
-}

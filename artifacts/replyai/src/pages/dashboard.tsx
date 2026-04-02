@@ -6,7 +6,8 @@ import {
   useGetThread, 
   useGenerateReplies, 
   useSendReply,
-  getGetInboxQueryKey 
+  getGetInboxQueryKey,
+  type EmailAttachment,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -241,28 +242,6 @@ function useCreateCalendarEvent() {
   });
 }
 
-interface EmailAttachment {
-  attachmentId: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-}
-
-interface EmailMessageWithAttachments {
-  id: string;
-  threadId: string;
-  from: string;
-  fromName?: string;
-  fromEmail?: string;
-  to?: string;
-  subject: string;
-  snippet: string;
-  body?: string;
-  date: string;
-  isUnread: boolean;
-  labelIds?: string[];
-  attachments: EmailAttachment[];
-}
 
 interface HubSpotContact {
   id: string;
@@ -430,7 +409,7 @@ function AttachmentsBar({
   driveConnected,
 }: {
   messageId: string;
-  attachments: Array<{ attachmentId: string; filename: string; mimeType: string; size: number }>;
+  attachments: EmailAttachment[];
   driveConnected: boolean;
 }) {
   const driveSave = useDriveSave();
@@ -1196,9 +1175,9 @@ export default function Dashboard() {
                     body={threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet || ""}
                   />
                   {(() => {
-                    const lastMsg = threadData.messages[threadData.messages.length - 1] as EmailMessageWithAttachments;
-                    const firstMsg = threadData.messages[0] as EmailMessageWithAttachments;
-                    const attachments = lastMsg.attachments ?? [];
+                    const lastMsg = threadData.messages[threadData.messages.length - 1];
+                    const firstMsg = threadData.messages[0];
+                    const attachments: EmailAttachment[] = lastMsg.attachments ?? [];
                     const threadOriginatorEmail = firstMsg.fromEmail;
                     return (
                       <>

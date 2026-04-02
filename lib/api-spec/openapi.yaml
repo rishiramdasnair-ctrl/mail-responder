@@ -396,6 +396,23 @@ components:
       required:
         - connected
 
+    EmailAttachment:
+      type: object
+      properties:
+        attachmentId:
+          type: string
+        filename:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+      required:
+        - attachmentId
+        - filename
+        - mimeType
+        - size
+
     EmailMessage:
       type: object
       properties:
@@ -421,10 +438,16 @@ components:
           type: string
         isUnread:
           type: boolean
+        isStarred:
+          type: boolean
         labelIds:
           type: array
           items:
             type: string
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAttachment"
       required:
         - id
         - threadId
@@ -534,6 +557,8 @@ components:
         emailFrom:
           type: string
         emailSubject:
+          type: string
+        calendarContext:
           type: string
         emailHistory:
           type: array
@@ -768,3 +793,43 @@ components:
           type: boolean
         notifications:
           type: boolean
+
+    AgentHistoryItem:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+      required:
+        - role
+        - content
+
+    AgentRunBody:
+      type: object
+      properties:
+        task:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHistoryItem"
+      required:
+        - task
+
+    AgentSendBody:
+      type: object
+      properties:
+        to:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        threadId:
+          type: string
+      required:
+        - to
+        - subject
+        - body

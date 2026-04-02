@@ -3,8 +3,8 @@ import { requireAuth } from "../lib/requireAuth";
 import { getAuth } from "@clerk/express";
 import { google } from "googleapis";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usersTable, connectorsTable } from "@workspace/db/schema";
+import { and, eq } from "drizzle-orm";
 import { Readable } from "stream";
 
 const router = Router();
@@ -50,12 +50,25 @@ router.post("/drive/save", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "messageId, attachmentId, and filename are required" });
   }
 
+  const [driveConnector] = await db
+    .select({ id: connectorsTable.id })
+    .from(connectorsTable)
+    .where(and(
+      eq(connectorsTable.userId, userId),
+      eq(connectorsTable.connectorId, "google-drive"),
+      eq(connectorsTable.status, "connected"),
+    ))
+    .limit(1);
+
+  if (!driveConnector) {
+    return res.status(403).json({ error: "Google Drive is not connected. Please connect it in Connectors settings." });
+  }
+
   try {
     const authClient = await getGoogleClientForUser(userId);
     const gmail = google.gmail({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
 
-    // Download attachment from Gmail
     const attachment = await gmail.users.messages.attachments.get({
       userId: "me",
       messageId,
@@ -67,11 +80,9 @@ router.post("/drive/save", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Attachment data not found" });
     }
 
-    // Gmail API returns base64url-encoded data
     const buffer = Buffer.from(data, "base64url");
     const stream = Readable.from(buffer);
 
-    // Upload to Google Drive
     const driveFile = await drive.files.create({
       requestBody: {
         name: filename,
@@ -92,9 +103,10 @@ router.post("/drive/save", requireAuth, async (req, res) => {
         url: driveFile.data.webViewLink,
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to save to Drive";
     console.error("[drive/save] error:", err);
-    res.status(500).json({ error: err.message || "Failed to save to Drive" });
+    res.status(500).json({ error: message });
   }
 });
 

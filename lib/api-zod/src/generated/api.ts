@@ -65,7 +65,18 @@ export const GetInboxResponse = zod.object({
       body: zod.string().optional(),
       date: zod.string(),
       isUnread: zod.boolean(),
+      isStarred: zod.boolean().optional(),
       labelIds: zod.array(zod.string()).optional(),
+      attachments: zod
+        .array(
+          zod.object({
+            attachmentId: zod.string(),
+            filename: zod.string(),
+            mimeType: zod.string(),
+            size: zod.number(),
+          }),
+        )
+        .optional(),
     }),
   ),
   nextPageToken: zod.string().optional(),
@@ -95,7 +106,18 @@ export const GetThreadResponse = zod.object({
       body: zod.string().optional(),
       date: zod.string(),
       isUnread: zod.boolean(),
+      isStarred: zod.boolean().optional(),
       labelIds: zod.array(zod.string()).optional(),
+      attachments: zod
+        .array(
+          zod.object({
+            attachmentId: zod.string(),
+            filename: zod.string(),
+            mimeType: zod.string(),
+            size: zod.number(),
+          }),
+        )
+        .optional(),
     }),
   ),
   snippet: zod.string().optional(),
@@ -141,6 +163,7 @@ export const GenerateRepliesBody = zod.object({
   emailBody: zod.string(),
   emailFrom: zod.string(),
   emailSubject: zod.string(),
+  calendarContext: zod.string().optional(),
   emailHistory: zod
     .array(
       zod.object({
@@ -149,7 +172,6 @@ export const GenerateRepliesBody = zod.object({
       }),
     )
     .optional(),
-  calendarContext: zod.string().optional(),
 });
 
 export const GenerateRepliesResponse = zod.object({
@@ -286,23 +308,4 @@ export const UpdateSettingsResponse = zod.object({
   emailSignature: zod.string().optional(),
   darkMode: zod.boolean().optional(),
   notifications: zod.boolean().optional(),
-});
-
-export const AgentRunBody = zod.object({
-  task: zod.string().min(1),
-  history: zod
-    .array(
-      zod.object({
-        role: zod.enum(["user", "assistant"]),
-        content: zod.string(),
-      }),
-    )
-    .optional(),
-});
-
-export const AgentSendBody = zod.object({
-  to: zod.string().min(1),
-  subject: zod.string().min(1),
-  body: zod.string(),
-  threadId: zod.string().optional(),
 });

@@ -43,12 +43,22 @@ function getOAuthClient() {
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-router.get("/auth/google/extend", requireAuth, (req, res) => {
+router.get("/auth/google/extend", requireAuth, async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
 
   const auth = getAuth(req);
   const userId = auth.userId!;
+
+  const [existingUser] = await db
+    .select({ id: usersTable.id, googleRefreshToken: usersTable.googleRefreshToken })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (!existingUser?.googleRefreshToken) {
+    return res.redirect(`${frontendUrl}/connectors?error=google_extend_not_linked`);
+  }
 
   let state: string;
   try {
@@ -107,12 +117,17 @@ router.get("/auth/google/extend/callback", async (req, res) => {
 
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
 
-    await db.update(usersTable).set({
+    const updated = await db.update(usersTable).set({
       googleAccessToken: tokens.access_token,
       ...(tokens.refresh_token ? { googleRefreshToken: tokens.refresh_token } : {}),
       googleTokenExpiresAt: expiresAt,
       updatedAt: new Date(),
-    }).where(eq(usersTable.id, userId));
+    }).where(eq(usersTable.id, userId)).returning({ id: usersTable.id });
+
+    if (updated.length === 0) {
+      console.error("[google-extend-callback] user row not found for userId:", userId);
+      return res.redirect(`${frontendUrl}/connectors?error=google_extend_callback_failed`);
+    }
 
     for (const { connectorId, displayName } of GSUITE_CONNECTORS) {
       const existing = await db

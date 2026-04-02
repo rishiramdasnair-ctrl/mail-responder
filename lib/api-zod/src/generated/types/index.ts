@@ -6,10 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./agentHistoryItem";
+export * from "./agentHistoryItemRole";
+export * from "./agentRunBody";
+export * from "./agentSendBody";
 export * from "./billingPortalResponse";
 export * from "./checkoutResponse";
 export * from "./createCheckoutBody";
 export * from "./createCheckoutBodyInterval";
+export * from "./emailAttachment";
 export * from "./emailMessage";
 export * from "./errorResponse";
 export * from "./generateRepliesBody";

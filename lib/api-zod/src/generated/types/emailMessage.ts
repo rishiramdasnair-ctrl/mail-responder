@@ -5,6 +5,7 @@
  * ReplyAI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EmailAttachment } from "./emailAttachment";
 
 export interface EmailMessage {
   id: string;
@@ -18,5 +19,7 @@ export interface EmailMessage {
   body?: string;
   date: string;
   isUnread: boolean;
+  isStarred?: boolean;
   labelIds?: string[];
+  attachments?: EmailAttachment[];
 }

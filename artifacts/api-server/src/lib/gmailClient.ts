@@ -4,13 +4,16 @@ import { google } from "googleapis";
 let connectionSettings: any;
 
 async function getAccessToken() {
+  // Only use cache if token is still valid (with 60s buffer)
   if (
     connectionSettings &&
-    connectionSettings.settings.expires_at &&
-    new Date(connectionSettings.settings.expires_at).getTime() > Date.now()
+    connectionSettings.settings?.expires_at &&
+    new Date(connectionSettings.settings.expires_at).getTime() > Date.now() + 60_000
   ) {
     return connectionSettings.settings.access_token;
   }
+  // Reset cache so we always re-fetch if expired or missing
+  connectionSettings = null;
 
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY

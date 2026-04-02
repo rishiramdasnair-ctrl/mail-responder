@@ -15,7 +15,7 @@ export async function getOrCreateUser(userId: string, email?: string): Promise<t
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
 
-  const [user] = await db
+  const inserted = await db
     .insert(usersTable)
     .values({
       id: userId,
@@ -24,6 +24,7 @@ export async function getOrCreateUser(userId: string, email?: string): Promise<t
       trialEndsAt,
       repliesUsed: 0,
     })
+    .onConflictDoNothing()
     .returning();
 
   await db.insert(userSettingsTable).values({
@@ -33,6 +34,10 @@ export async function getOrCreateUser(userId: string, email?: string): Promise<t
     notifications: true,
   }).onConflictDoNothing();
 
+  if (inserted.length > 0) return inserted[0];
+
+  // Race condition: another request inserted first — fetch it
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   return user;
 }
 

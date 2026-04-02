@@ -1,14 +1,25 @@
 import { Link, useLocation } from "wouter";
 import { useClerk } from "@clerk/react";
-import { Inbox, Clock, Settings, CreditCard, LogOut, Menu, Bot } from "lucide-react";
+import { Clock, Settings, CreditCard, LogOut, Menu, Bot, Mail, Star, Send, FileText, AlertTriangle, Trash2 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { useGetMe, useGetSubscription, useGetGmailStatus } from "@workspace/api-client-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useMailFolder, FolderId } from "@/contexts/mail-folder";
+
+const FOLDERS = [
+  { id: "INBOX" as FolderId,   label: "Inbox",   icon: Mail },
+  { id: "STARRED" as FolderId, label: "Starred", icon: Star },
+  { id: "SENT" as FolderId,    label: "Sent",    icon: Send },
+  { id: "DRAFTS" as FolderId,  label: "Drafts",  icon: FileText },
+  { id: "SPAM" as FolderId,    label: "Spam",    icon: AlertTriangle },
+  { id: "TRASH" as FolderId,   label: "Trash",   icon: Trash2 },
+];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { signOut } = useClerk();
+  const { activeLabel, setActiveLabel } = useMailFolder();
   
   const { data: user } = useGetMe();
   const { data: subscription } = useGetSubscription();
@@ -21,15 +32,40 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   
   const showTrialBanner = isTrial && daysLeft <= 3;
 
+  const handleFolderClick = (folderId: FolderId) => {
+    setActiveLabel(folderId);
+    if (location !== "/dashboard") setLocation("/dashboard");
+  };
+
+  const isOnDashboard = location === "/dashboard";
+
   const NavItems = () => (
     <>
-      <div className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/50 tracking-wider uppercase">
-        Inbox
+      <div className="px-3 py-1.5 text-xs font-semibold text-sidebar-foreground/50 tracking-wider uppercase">
+        Mail
       </div>
-      <Link href="/dashboard" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/dashboard" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
-        <Inbox className="w-4 h-4" />
-        Dashboard
-      </Link>
+      {FOLDERS.map(folder => {
+        const Icon = folder.icon;
+        const isActive = isOnDashboard && activeLabel === folder.id;
+        return (
+          <button
+            key={folder.id}
+            onClick={() => handleFolderClick(folder.id)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors text-left ${
+              isActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+            }`}
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            {folder.label}
+          </button>
+        );
+      })}
+
+      <div className="mt-5 px-3 py-1.5 text-xs font-semibold text-sidebar-foreground/50 tracking-wider uppercase">
+        Tools
+      </div>
       <Link href="/agent" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/agent" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
         <Bot className="w-4 h-4" />
         Agent
@@ -39,7 +75,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         History
       </Link>
       
-      <div className="mt-6 px-3 py-2 text-xs font-semibold text-sidebar-foreground/50 tracking-wider uppercase">
+      <div className="mt-5 px-3 py-1.5 text-xs font-semibold text-sidebar-foreground/50 tracking-wider uppercase">
         Account
       </div>
       <Link href="/settings" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/settings" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
@@ -78,26 +114,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
-        <aside className="hidden md:flex w-64 flex-col border-r bg-sidebar p-4 h-[calc(100dvh-auto)] overflow-y-auto">
-          <div className="flex items-center gap-2 mb-8 px-2">
-            <Logo size={24} className="text-primary" />
-            <span className="font-bold text-lg tracking-tight">ReplyAI</span>
+        <aside className="hidden md:flex w-56 flex-col border-r bg-sidebar p-3 h-[calc(100dvh-auto)] overflow-y-auto">
+          <div className="flex items-center gap-2 mb-6 px-2 pt-1">
+            <Logo size={22} className="text-primary" />
+            <span className="font-bold text-base tracking-tight">ReplyAI</span>
           </div>
           
-          <nav className="flex flex-col flex-1 gap-1">
+          <nav className="flex flex-col flex-1 gap-0.5">
             <NavItems />
           </nav>
 
           {user && (
-            <div className="mt-6 pt-4 border-t border-sidebar-border">
-              <div className="flex items-center justify-between text-sm mb-2 px-2">
+            <div className="mt-4 pt-3 border-t border-sidebar-border">
+              <div className="flex items-center justify-between text-xs mb-1.5 px-2">
                 <span className="text-sidebar-foreground/70 font-medium">Replies Used</span>
                 <span className="font-medium">
                   {user.plan === "pro" ? "Unlimited" : `${user.repliesUsed} / ${user.repliesLimit}`}
                 </span>
               </div>
               {user.plan !== "pro" && (
-                <div className="h-2 w-full bg-sidebar-accent rounded-full overflow-hidden">
+                <div className="h-1.5 w-full bg-sidebar-accent rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-primary rounded-full transition-all duration-500" 
                     style={{ width: `${Math.min(100, (user.repliesUsed / user.repliesLimit) * 100)}%` }}
@@ -121,8 +157,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-4 flex flex-col bg-sidebar border-r-0">
-                <nav className="flex flex-col flex-1 gap-1 mt-6">
+              <SheetContent side="left" className="w-56 p-3 flex flex-col bg-sidebar border-r-0">
+                <div className="flex items-center gap-2 mb-6 px-2 pt-1">
+                  <Logo size={22} className="text-primary" />
+                  <span className="font-bold text-base tracking-tight">ReplyAI</span>
+                </div>
+                <nav className="flex flex-col flex-1 gap-0.5">
                   <NavItems />
                 </nav>
               </SheetContent>

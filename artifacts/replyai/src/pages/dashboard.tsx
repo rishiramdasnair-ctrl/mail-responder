@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { AppLayout } from "@/components/layout";
+import { useMailFolder, FolderId as FolderIdFromCtx } from "@/contexts/mail-folder";
 import { 
   useGetInbox, 
   useGetThread, 
@@ -119,7 +120,7 @@ const FOLDERS = [
   { id: "TRASH",   label: "Trash",   icon: Trash2 },
 ] as const;
 
-type FolderId = (typeof FOLDERS)[number]["id"];
+type FolderId = FolderIdFromCtx;
 
 const REPLY_FOLDERS: FolderId[] = ["INBOX", "STARRED"];
 
@@ -487,8 +488,8 @@ function AddToCalendarDialog({
 
 export default function Dashboard() {
   const { toast } = useToast();
+  const { activeLabel, setActiveLabel } = useMailFolder();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [activeLabel, setActiveLabel] = useState<FolderId>("INBOX");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showCalendar, setShowCalendar] = useState(true);
@@ -692,54 +693,31 @@ export default function Dashboard() {
         {/* Inbox List Pane */}
         <div className={`flex-shrink-0 flex flex-col border-r bg-background z-10 w-full md:w-[360px] ${selectedThreadId ? "hidden md:flex" : "flex"}`}>
           <div className="border-b flex flex-col shrink-0 bg-sidebar/30">
-            <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2">
+            <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+              <h2 className="font-semibold text-base flex-1">{FOLDERS.find(f => f.id === activeLabel)?.label ?? "Inbox"}</h2>
               <Button
                 onClick={() => setShowCompose(true)}
                 size="sm"
-                className="flex-1 h-8 gap-1.5 text-xs font-medium"
+                className="h-8 gap-1.5 text-xs font-medium shrink-0"
               >
                 <PenSquare className="w-3.5 h-3.5" />
                 Compose
               </Button>
-              <div className="flex items-center gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowCalendar(v => !v)}
-                  className={`h-8 w-8 ${showCalendar ? "text-primary" : "text-muted-foreground"}`}
-                  title="Toggle calendar"
-                >
-                  <Calendar className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => refetchInbox()} className="h-8 w-8 text-muted-foreground" title="Refresh">
-                  <RefreshCw className="w-4 h-4" />
-                </Button>
-              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowCalendar(v => !v)}
+                className={`h-8 w-8 shrink-0 ${showCalendar ? "text-primary" : "text-muted-foreground"}`}
+                title="Toggle calendar"
+              >
+                <Calendar className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => refetchInbox()} className="h-8 w-8 shrink-0 text-muted-foreground" title="Refresh">
+                <RefreshCw className="w-4 h-4" />
+              </Button>
             </div>
 
-            {/* Folder navigation */}
-            <div className="flex gap-0.5 overflow-x-auto px-2 pb-2 scrollbar-none">
-              {FOLDERS.map(folder => {
-                const Icon = folder.icon;
-                const isActive = activeLabel === folder.id;
-                return (
-                  <button
-                    key={folder.id}
-                    onClick={() => setActiveLabel(folder.id)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                  >
-                    <Icon className="w-3 h-3" />
-                    {folder.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="px-3 pb-3 relative">
+            <div className="px-3 pb-3 pt-1 relative">
               <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
                 placeholder={`Search ${FOLDERS.find(f => f.id === activeLabel)?.label ?? ""}...`}

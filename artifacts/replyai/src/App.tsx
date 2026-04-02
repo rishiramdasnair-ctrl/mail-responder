@@ -1,5 +1,6 @@
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { MailFolderProvider } from "@/contexts/mail-folder";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
 import { useEffect, useRef } from "react";
 
@@ -106,6 +107,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <MailFolderProvider>
         <Switch>
           <Route path="/" component={HomeRedirect} />
           <Route path="/sign-in/*?" component={SignInPage} />
@@ -119,6 +121,7 @@ function ClerkProviderWithRoutes() {
           
           <Route component={NotFound} />
         </Switch>
+        </MailFolderProvider>
       </QueryClientProvider>
     </ClerkProvider>
   );

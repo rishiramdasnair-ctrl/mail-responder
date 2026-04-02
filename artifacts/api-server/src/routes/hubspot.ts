@@ -67,6 +67,7 @@ async function getHubSpotToken(userId: string): Promise<{ token: string; portalI
     .where(and(
       eq(connectorsTable.userId, userId),
       eq(connectorsTable.connectorId, "hubspot"),
+      eq(connectorsTable.status, "connected"),
     ))
     .limit(1);
 
@@ -94,9 +95,10 @@ interface HubSpotApiDeal {
   };
 }
 
-interface HubSpotApiAssociationsResult {
-  id: string;
-  type: string;
+interface HubSpotApiAssociationsResultV4 {
+  toObjectId?: number | string;
+  id?: number | string;
+  associationTypes?: Array<{ typeId: number; label: string | null; category: string }>;
 }
 
 async function getFirstDealForContact(
@@ -110,13 +112,16 @@ async function getFirstDealForContact(
     );
     if (!assocRes.ok) return null;
 
-    const assocData = await assocRes.json() as { results?: HubSpotApiAssociationsResult[] };
-    const dealIds = assocData.results ?? [];
-    if (!dealIds.length) return null;
+    const assocData = await assocRes.json() as { results?: HubSpotApiAssociationsResultV4[] };
+    const results = assocData.results ?? [];
+    if (!results.length) return null;
 
-    const firstDealId = dealIds[0].id;
+    const firstResult = results[0];
+    const firstDealId = firstResult.toObjectId ?? firstResult.id;
+    if (!firstDealId) return null;
+
     const dealRes = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/deals/${firstDealId}?properties=dealname,dealstage`,
+      `https://api.hubapi.com/crm/v3/objects/deals/${String(firstDealId)}?properties=dealname,dealstage`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     if (!dealRes.ok) return null;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { AppLayout } from "@/components/layout";
 import { 
   useGetInbox, 
@@ -52,6 +52,55 @@ interface CalendarEvent {
 interface CalendarApiError extends Error {
   code?: string;
   status?: number;
+}
+
+function isHtmlBody(body: string): boolean {
+  return /(<html[\s>]|<!doctype\s+html|<body[\s>]|<table[\s>]|<div\s+[^>]*style|<span\s+[^>]*style)/i.test(body);
+}
+
+function EmailBodyRenderer({ body }: { body: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState(300);
+
+  const html = useMemo(() => {
+    const inject = `<base target="_blank" /><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;word-break:break-word;margin:0;padding:8px;}img{max-width:100%!important;height:auto!important;}a{color:#6366f1;}*{box-sizing:border-box;}</style>`;
+    if (/<\/head>/i.test(body)) {
+      return body.replace(/<\/head>/i, `${inject}</head>`);
+    }
+    if (/<body([\s>])/i.test(body)) {
+      return body.replace(/<body([\s>])/i, (_m, rest) => `<head>${inject}</head><body${rest}`);
+    }
+    return `<!doctype html><html><head>${inject}</head><body>${body}</body></html>`;
+  }, [body]);
+
+  const handleLoad = useCallback(() => {
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (doc?.body) {
+        setIframeHeight(Math.max(100, doc.body.scrollHeight + 24));
+      }
+    } catch {}
+  }, []);
+
+  if (!isHtmlBody(body)) {
+    return (
+      <div className="whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 text-sm">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={html}
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      onLoad={handleLoad}
+      style={{ height: `${iframeHeight}px` }}
+      className="w-full border-none rounded bg-white"
+      title="Email content"
+    />
+  );
 }
 
 function useCalendarEvents() {
@@ -634,12 +683,10 @@ export default function Dashboard() {
 
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Email Content */}
-                <ScrollArea className="flex-1 p-4 md:p-6">
-                  <div className="prose dark:prose-invert max-w-none text-sm">
-                    <div className="whitespace-pre-wrap font-sans leading-relaxed text-foreground/90">
-                      {threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet}
-                    </div>
-                  </div>
+                <ScrollArea className="flex-1 px-4 md:px-6 py-4">
+                  <EmailBodyRenderer
+                    body={threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet || ""}
+                  />
                 </ScrollArea>
 
                 {/* AI Reply Section */}

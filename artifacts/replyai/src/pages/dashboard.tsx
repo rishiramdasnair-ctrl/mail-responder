@@ -717,14 +717,16 @@ export default function Dashboard() {
               </Button>
             </div>
 
-            <div className="px-3 pb-3 pt-1 relative">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input 
-                placeholder={`Search ${FOLDERS.find(f => f.id === activeLabel)?.label ?? ""}...`}
-                className="pl-9 h-9 bg-background shadow-sm"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+            <div className="px-3 pb-3 pt-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <Input 
+                  placeholder={`Search ${FOLDERS.find(f => f.id === activeLabel)?.label ?? ""}...`}
+                  className="pl-9 h-9 bg-background shadow-sm"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
           </div>
           

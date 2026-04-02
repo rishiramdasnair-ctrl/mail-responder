@@ -64,10 +64,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       )}
       
-      {!gmailStatus?.connected && location !== "/settings" && (
-        <div className="bg-destructive/10 text-destructive px-4 py-2 text-sm font-medium flex items-center justify-center gap-2">
-          <span>Gmail is not connected.</span>
-          <Link href="/settings" className="underline underline-offset-2 hover:text-destructive/80">Connect your account</Link>
+      {gmailStatus !== undefined && !gmailStatus?.connected && location !== "/settings" && (
+        <div className="bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 border-b border-amber-200 dark:border-amber-800">
+          <span>Gmail connection unavailable. Please refresh the page or check your settings.</span>
+          <Link href="/settings" className="underline underline-offset-2">View Settings</Link>
         </div>
       )}
 

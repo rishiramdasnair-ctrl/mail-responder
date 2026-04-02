@@ -76,7 +76,10 @@ export default function Settings() {
   };
 
   const handleConnectGmail = () => {
-    window.location.href = "/api/auth/google";
+    toast({
+      title: "Gmail is managed server-side",
+      description: "Your Gmail account is connected via the platform integration. If you're seeing issues, try refreshing the page.",
+    });
   };
 
   return (

@@ -7,7 +7,7 @@ export default function Home() {
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
       <header className="container mx-auto px-4 h-16 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
-          <Logo size={22} className="text-foreground" />
+          <Logo size={44} className="text-foreground" />
           <span className="font-bold text-xl tracking-tight">ReplyAI</span>
         </div>
         <div className="flex items-center gap-4">

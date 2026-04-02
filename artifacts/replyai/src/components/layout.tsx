@@ -116,7 +116,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Desktop Sidebar */}
         <aside className="hidden md:flex w-56 flex-col border-r bg-sidebar p-3 h-[calc(100dvh-auto)] overflow-y-auto">
           <div className="flex items-center gap-2 mb-6 px-2 pt-1">
-            <Logo size={22} className="text-primary" />
+            <Logo size={44} className="text-primary" />
             <span className="font-bold text-base tracking-tight">ReplyAI</span>
           </div>
           
@@ -148,7 +148,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="md:hidden flex items-center justify-between p-4 border-b bg-background">
             <div className="flex items-center gap-2">
-              <Logo size={20} className="text-primary" />
+              <Logo size={40} className="text-primary" />
               <span className="font-bold">ReplyAI</span>
             </div>
             <Sheet>
@@ -159,7 +159,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </SheetTrigger>
               <SheetContent side="left" className="w-56 p-3 flex flex-col bg-sidebar border-r-0">
                 <div className="flex items-center gap-2 mb-6 px-2 pt-1">
-                  <Logo size={22} className="text-primary" />
+                  <Logo size={44} className="text-primary" />
                   <span className="font-bold text-base tracking-tight">ReplyAI</span>
                 </div>
                 <nav className="flex flex-col flex-1 gap-0.5">

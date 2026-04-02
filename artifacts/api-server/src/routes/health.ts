@@ -8,6 +8,17 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
+router.get("/debug/redirect-uri", (_req, res) => {
+  const explicit = process.env.GOOGLE_REDIRECT_URI;
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
+  const computed = `https://${domain}/api/auth/google/callback`;
+  res.json({
+    redirectUri: explicit || computed,
+    source: explicit ? "GOOGLE_REDIRECT_URI env var" : "REPLIT_DOMAINS",
+    allDomains: process.env.REPLIT_DOMAINS || null,
+  });
+});
+
 router.get("/debug/gmail-token", async (_req, res) => {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const hasIdentity = !!process.env.REPL_IDENTITY;

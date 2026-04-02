@@ -9,11 +9,17 @@ import { getOrCreateUser } from "../lib/getOrCreateUser";
 
 const router = Router();
 
+function getRedirectUri() {
+  // Prefer explicit override, then fall back to REPLIT_DOMAINS
+  if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
+  return `https://${domain}/api/auth/google/callback`;
+}
+
 function getOAuthClient() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
-  const redirectUri = `https://${domain}/api/auth/google/callback`;
+  const redirectUri = getRedirectUri();
 
   if (!clientId || !clientSecret) {
     throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set");

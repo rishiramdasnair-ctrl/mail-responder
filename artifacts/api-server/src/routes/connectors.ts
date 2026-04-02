@@ -8,9 +8,9 @@ import { getAuth } from "@clerk/express";
 const router = Router();
 
 router.get("/connectors", requireAuth, async (req, res) => {
+  const auth = getAuth(req);
+  const userId = auth.userId!;
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
     const rows = await db
       .select({
         id: connectorsTable.id,
@@ -30,20 +30,25 @@ router.get("/connectors", requireAuth, async (req, res) => {
 });
 
 router.delete("/connectors/:connectorId", requireAuth, async (req, res) => {
-  try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
-    const { connectorId } = req.params;
+  const auth = getAuth(req);
+  const userId = auth.userId!;
 
+  const rawParam = req.params.connectorId;
+  const connectorId = Array.isArray(rawParam) ? rawParam[0] : rawParam;
+  if (typeof connectorId !== "string" || !connectorId) {
+    res.status(400).json({ error: "connectorId is required" });
+    return;
+  }
+
+  try {
     await db
       .delete(connectorsTable)
       .where(
         and(
           eq(connectorsTable.userId, userId),
-          eq(connectorsTable.connectorId, connectorId)
-        )
+          eq(connectorsTable.connectorId, connectorId),
+        ),
       );
-
     res.json({ success: true });
   } catch (err) {
     console.error("[connectors] delete error:", err);

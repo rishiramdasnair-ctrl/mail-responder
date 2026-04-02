@@ -35,7 +35,7 @@ async function getGoogleClientForUser(userId: string) {
   return auth;
 }
 
-router.post("/drive/save", requireAuth, async (req, res) => {
+router.post("/drive/save", requireAuth, async (req, res): Promise<void> => {
   const authInfo = getAuth(req);
   const userId = authInfo.userId!;
 
@@ -47,7 +47,8 @@ router.post("/drive/save", requireAuth, async (req, res) => {
   };
 
   if (!messageId || !attachmentId || !filename) {
-    return res.status(400).json({ error: "messageId, attachmentId, and filename are required" });
+    res.status(400).json({ error: "messageId, attachmentId, and filename are required" });
+    return;
   }
 
   const [driveConnector] = await db
@@ -61,7 +62,8 @@ router.post("/drive/save", requireAuth, async (req, res) => {
     .limit(1);
 
   if (!driveConnector) {
-    return res.status(403).json({ error: "Google Drive is not connected. Please connect it in Connectors settings." });
+    res.status(403).json({ error: "Google Drive is not connected. Please connect it in Connectors settings." });
+    return;
   }
 
   try {
@@ -77,7 +79,8 @@ router.post("/drive/save", requireAuth, async (req, res) => {
 
     const data = attachment.data.data;
     if (!data) {
-      return res.status(404).json({ error: "Attachment data not found" });
+      res.status(404).json({ error: "Attachment data not found" });
+      return;
     }
 
     const buffer = Buffer.from(data, "base64url");

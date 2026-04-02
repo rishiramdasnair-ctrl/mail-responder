@@ -136,18 +136,20 @@ async function getFirstDealForContact(
   }
 }
 
-router.get("/hubspot/contact", requireAuth, async (req, res) => {
+router.get("/hubspot/contact", requireAuth, async (req, res): Promise<void> => {
   const auth = getAuth(req);
   const userId = auth.userId!;
   const { email } = req.query;
 
   if (!email || typeof email !== "string") {
-    return res.status(400).json({ error: "email query parameter is required" });
+    res.status(400).json({ error: "email query parameter is required" });
+    return;
   }
 
   const tokenInfo = await getHubSpotToken(userId);
   if (!tokenInfo) {
-    return res.status(404).json({ connected: false, contact: null });
+    res.status(404).json({ connected: false, contact: null });
+    return;
   }
   const { token, portalId } = tokenInfo;
 
@@ -177,7 +179,8 @@ router.get("/hubspot/contact", requireAuth, async (req, res) => {
     if (!searchRes.ok) {
       const err = await searchRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
       console.error("[hubspot/contact] search failed:", err);
-      return res.status(500).json({ error: "HubSpot search failed" });
+      res.status(500).json({ error: "HubSpot search failed" });
+      return;
     }
 
     const data = await searchRes.json() as {
@@ -186,13 +189,14 @@ router.get("/hubspot/contact", requireAuth, async (req, res) => {
     };
 
     if (data.total === 0 || !data.results.length) {
-      return res.json({ connected: true, contact: null });
+      res.json({ connected: true, contact: null });
+      return;
     }
 
     const c = data.results[0];
     const deal = await getFirstDealForContact(token, c.id);
 
-    return res.json({
+    res.json({
       connected: true,
       contact: {
         id: c.id,
@@ -214,7 +218,7 @@ router.get("/hubspot/contact", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/hubspot/contact", requireAuth, async (req, res) => {
+router.post("/hubspot/contact", requireAuth, async (req, res): Promise<void> => {
   const auth = getAuth(req);
   const userId = auth.userId!;
   const { email, firstName, lastName, company } = req.body as {
@@ -225,12 +229,14 @@ router.post("/hubspot/contact", requireAuth, async (req, res) => {
   };
 
   if (!email) {
-    return res.status(400).json({ error: "email is required" });
+    res.status(400).json({ error: "email is required" });
+    return;
   }
 
   const tokenInfo = await getHubSpotToken(userId);
   if (!tokenInfo) {
-    return res.status(400).json({ error: "HubSpot not connected" });
+    res.status(400).json({ error: "HubSpot not connected" });
+    return;
   }
 
   try {
@@ -253,7 +259,8 @@ router.post("/hubspot/contact", requireAuth, async (req, res) => {
     if (!createRes.ok) {
       const err = await createRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
       console.error("[hubspot/contact POST] failed:", err);
-      return res.status(500).json({ error: "Failed to create contact" });
+      res.status(500).json({ error: "Failed to create contact" });
+      return;
     }
 
     const created = await createRes.json();

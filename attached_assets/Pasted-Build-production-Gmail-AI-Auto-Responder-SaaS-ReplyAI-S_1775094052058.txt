@@ -1,0 +1,59 @@
+Build production Gmail AI Auto-Responder SaaS ("ReplyAI" – Superhuman for everyone):
+
+Core Concept: Users connect Gmail → dashboard shows inbox → AI instantly suggests 3 perfect replies (Pro/Casual/Fast) → one-click send. Free 10 replies/day, $12/mo unlimited.
+
+Tech Stack:
+- Frontend: Next.js 15 (Tailwind, responsive mobile-first dashboard like Superhuman).
+- Backend: Node.js/Express + Replit Postgres (users, history, templates).
+- Auth: Replit Auth (email/password + Google OAuth).
+- Gmail: Replit Gmail Connector (read inbox, list labels, send drafts/replies).
+- AI: Groq Llama3.1 (fast/cheap) or OpenAI GPT-4o-mini proxy.
+- Payments: Stripe Checkout (subs, instant access).
+- Deploy: Always-on production, custom domain ready.
+
+Pages:
+1. / (Landing): Hero "AI writes your Gmail replies. Save 2hrs/day." Demo video/GIF, Connect Gmail CTA, testimonials.
+2. /dashboard: Superhuman-style inbox:
+   - Left sidebar: Inbox/Sent/Drafts/All Mail (Gmail labels).
+   - Main: Thread list (sender/subject/snippet/time).
+   - Right: Selected email + 3 AI replies (Pro/Casual/Fast buttons).
+   - Top: Search, compose, upgrade nag.
+3. /settings: Tone prefs (formal/casual), custom instructions, API keys, billing.
+4. /history: Past AI replies (searchable).
+
+Key Features (Production Polish):
+Gmail Flow:
+- User clicks "Connect Gmail" → popup auth → fetch unread/last 100 emails.
+- Cron job (every 3min): Poll connected inboxes → store recent threads.
+- Click email → AI analyzes (sender history/context) → generates 3 replies + 1-line "why this works".
+- "Send Reply #1" → Gmail sends as threaded reply.
+Error-proof: Gmail quotas, AI fails → fallback templates.
+
+Pro ($12/mo):
+- Unlimited replies, custom tones/templates.
+- Priority AI (faster models).
+- Reply analytics ("Your Pro replies get 40% more responses").
+
+Free Tier:
+- 10 AI replies/day, basic tones.
+
+Polish:
+- PWA manifest (add to home screen).
+- Keyboard shortcuts (J/K navigate, Tab reply).
+- Dark mode toggle.
+- Rate limiting (5 reqs/min free).
+- Usage dashboard (# replies used).
+- SEO: Meta tags, sitemap.
+- Analytics: PostHog free tier.
+- Email onboarding: Welcome sequence via Resend.
+
+Security:
+- Per-user Gmail scopes (read/send only).
+- Data encrypted, no long-term storage.
+
+Deploy:
+- Always-on, production env vars (Stripe keys, Groq API).
+- Custom domain instructions.
+- 404 page, loading states everywhere.
+
+Make it feel premium like Superhuman but accessible to all – clean, fast, magical.

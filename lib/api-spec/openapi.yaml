@@ -1,22 +1,33 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: ReplyAI API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: User auth and profile
+  - name: gmail
+    description: Gmail inbox operations
+  - name: ai
+    description: AI reply generation
+  - name: history
+    description: Reply history
+  - name: billing
+    description: Subscription and billing
+  - name: settings
+    description: User settings
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +35,307 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user profile
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+
+  /gmail/status:
+    get:
+      operationId: getGmailStatus
+      tags: [gmail]
+      summary: Check if Gmail is connected for user
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Gmail connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailStatus"
+
+  /gmail/inbox:
+    get:
+      operationId: getInbox
+      tags: [gmail]
+      summary: Get inbox emails
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: label
+          in: query
+          schema:
+            type: string
+            default: INBOX
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: pageToken
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Gmail search query
+      responses:
+        "200":
+          description: List of email threads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxResponse"
+
+  /gmail/threads/{threadId}:
+    get:
+      operationId: getThread
+      tags: [gmail]
+      summary: Get a single thread with all messages
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Thread details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thread"
+
+  /gmail/labels:
+    get:
+      operationId: getLabels
+      tags: [gmail]
+      summary: Get user Gmail labels
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: List of Gmail labels
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelsResponse"
+
+  /gmail/send:
+    post:
+      operationId: sendReply
+      tags: [gmail]
+      summary: Send a reply to a thread
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendReplyBody"
+      responses:
+        "200":
+          description: Reply sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendReplyResponse"
+
+  /ai/generate:
+    post:
+      operationId: generateReplies
+      tags: [ai]
+      summary: Generate AI reply suggestions for an email
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateRepliesBody"
+      responses:
+        "200":
+          description: Generated reply suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateRepliesResponse"
+        "429":
+          description: Rate limit or trial expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /history:
+    get:
+      operationId: getHistory
+      tags: [history]
+      summary: Get AI reply history
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reply history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+
+  /history/stats:
+    get:
+      operationId: getHistoryStats
+      tags: [history]
+      summary: Get usage statistics
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Usage stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageStats"
+
+  /billing/plans:
+    get:
+      operationId: getPlans
+      tags: [billing]
+      summary: Get available subscription plans
+      responses:
+        "200":
+          description: Available plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlansResponse"
+
+  /billing/subscription:
+    get:
+      operationId: getSubscription
+      tags: [billing]
+      summary: Get current user subscription
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Current subscription
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+
+  /billing/checkout:
+    post:
+      operationId: createCheckout
+      tags: [billing]
+      summary: Create a Stripe checkout session
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckoutBody"
+      responses:
+        "200":
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+
+  /billing/portal:
+    post:
+      operationId: createBillingPortal
+      tags: [billing]
+      summary: Create Stripe billing portal session
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Billing portal URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPortalResponse"
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get user settings
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: User settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update user settings
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsBody"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+
 components:
+  securitySchemes:
+    clerkAuth:
+      type: http
+      scheme: bearer
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +345,426 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required:
+        - error
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        imageUrl:
+          type: string
+        plan:
+          type: string
+          enum: [trial, pro, expired]
+        trialEndsAt:
+          type: string
+        repliesUsed:
+          type: integer
+        repliesLimit:
+          type: integer
+      required:
+        - id
+        - email
+        - plan
+        - repliesUsed
+        - repliesLimit
+
+    GmailStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        email:
+          type: string
+        lastSynced:
+          type: string
+      required:
+        - connected
+
+    EmailMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        threadId:
+          type: string
+        from:
+          type: string
+        fromName:
+          type: string
+        fromEmail:
+          type: string
+        to:
+          type: string
+        subject:
+          type: string
+        snippet:
+          type: string
+        body:
+          type: string
+        date:
+          type: string
+        isUnread:
+          type: boolean
+        labelIds:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - threadId
+        - from
+        - subject
+        - snippet
+        - date
+        - isUnread
+
+    Thread:
+      type: object
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailMessage"
+        snippet:
+          type: string
+        isUnread:
+          type: boolean
+      required:
+        - id
+        - subject
+        - messages
+
+    InboxResponse:
+      type: object
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailMessage"
+        nextPageToken:
+          type: string
+        resultSizeEstimate:
+          type: integer
+      required:
+        - threads
+
+    LabelsResponse:
+      type: object
+      properties:
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/GmailLabel"
+      required:
+        - labels
+
+    GmailLabel:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        messagesUnread:
+          type: integer
+      required:
+        - id
+        - name
+
+    SendReplyBody:
+      type: object
+      properties:
+        threadId:
+          type: string
+        to:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        inReplyTo:
+          type: string
+        references:
+          type: string
+      required:
+        - threadId
+        - to
+        - subject
+        - body
+
+    SendReplyResponse:
+      type: object
+      properties:
+        messageId:
+          type: string
+        success:
+          type: boolean
+      required:
+        - success
+
+    GenerateRepliesBody:
+      type: object
+      properties:
+        threadId:
+          type: string
+        emailBody:
+          type: string
+        emailFrom:
+          type: string
+        emailSubject:
+          type: string
+        emailHistory:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+              content:
+                type: string
+      required:
+        - threadId
+        - emailBody
+        - emailFrom
+        - emailSubject
+
+    ReplySuggestion:
+      type: object
+      properties:
+        tone:
+          type: string
+          enum: [pro, casual, fast]
+        content:
+          type: string
+        reasoning:
+          type: string
+      required:
+        - tone
+        - content
+        - reasoning
+
+    GenerateRepliesResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReplySuggestion"
+        threadId:
+          type: string
+        repliesRemaining:
+          type: integer
+      required:
+        - suggestions
+        - threadId
+
+    HistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        threadId:
+          type: string
+        subject:
+          type: string
+        fromEmail:
+          type: string
+        tone:
+          type: string
+        replySent:
+          type: string
+        reasoning:
+          type: string
+        sentAt:
+          type: string
+        wasSent:
+          type: boolean
+      required:
+        - id
+        - threadId
+        - subject
+        - tone
+        - replySent
+        - sentAt
+
+    HistoryResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryItem"
+        total:
+          type: integer
+      required:
+        - items
+        - total
+
+    UsageStats:
+      type: object
+      properties:
+        totalRepliesGenerated:
+          type: integer
+        totalRepliesSent:
+          type: integer
+        repliesThisMonth:
+          type: integer
+        favoriteToне:
+          type: string
+        avgRepliesPerDay:
+          type: number
+        plan:
+          type: string
+        trialDaysLeft:
+          type: integer
+      required:
+        - totalRepliesGenerated
+        - totalRepliesSent
+        - repliesThisMonth
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        priceMonthly:
+          type: number
+        priceAnnual:
+          type: number
+        features:
+          type: array
+          items:
+            type: string
+        stripePriceIdMonthly:
+          type: string
+        stripePriceIdAnnual:
+          type: string
+        isPopular:
+          type: boolean
+      required:
+        - id
+        - name
+        - priceMonthly
+        - features
+
+    PlansResponse:
+      type: object
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
+        trialDays:
+          type: integer
+      required:
+        - plans
+        - trialDays
+
+    SubscriptionResponse:
+      type: object
+      properties:
+        plan:
+          type: string
+          enum: [trial, pro, expired]
+        status:
+          type: string
+        trialEndsAt:
+          type: string
+        currentPeriodEnd:
+          type: string
+        cancelAtPeriodEnd:
+          type: boolean
+        repliesUsed:
+          type: integer
+        repliesLimit:
+          type: integer
+      required:
+        - plan
+        - status
+        - repliesUsed
+        - repliesLimit
+
+    CreateCheckoutBody:
+      type: object
+      properties:
+        priceId:
+          type: string
+        interval:
+          type: string
+          enum: [month, year]
+      required:
+        - priceId
+
+    CheckoutResponse:
+      type: object
+      properties:
+        url:
+          type: string
+      required:
+        - url
+
+    BillingPortalResponse:
+      type: object
+      properties:
+        url:
+          type: string
+      required:
+        - url
+
+    UserSettings:
+      type: object
+      properties:
+        defaultTone:
+          type: string
+          enum: [pro, casual, fast]
+        customInstructions:
+          type: string
+        emailSignature:
+          type: string
+        darkMode:
+          type: boolean
+        notifications:
+          type: boolean
+      required:
+        - defaultTone
+
+    UpdateSettingsBody:
+      type: object
+      properties:
+        defaultTone:
+          type: string
+          enum: [pro, casual, fast]
+        customInstructions:
+          type: string
+        emailSignature:
+          type: string
+        darkMode:
+          type: boolean
+        notifications:
+          type: boolean

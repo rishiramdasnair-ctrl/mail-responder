@@ -1,6 +1,8 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import { clerkMiddleware } from "@clerk/express";
+import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -25,9 +27,37 @@ app.use(
     },
   }),
 );
-app.use(cors());
+
+// Stripe webhook needs raw body — register BEFORE express.json()
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    try {
+      const { handleStripeWebhook } = await import("./webhookHandlers");
+      const signature = req.headers["stripe-signature"];
+      if (!signature) {
+        res.status(400).json({ error: "Missing signature" });
+        return;
+      }
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      await handleStripeWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (err) {
+      logger.error({ err }, "Stripe webhook error");
+      res.status(400).json({ error: "Webhook error" });
+    }
+  }
+);
+
+// Clerk proxy must be mounted before body parsers
+app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+
+app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use(clerkMiddleware());
 
 app.use("/api", router);
 

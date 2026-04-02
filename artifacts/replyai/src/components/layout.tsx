@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useClerk } from "@clerk/react";
-import { Clock, Settings, CreditCard, LogOut, Menu, Bot, Mail, Star, Send, FileText, AlertTriangle, Trash2 } from "lucide-react";
+import { Clock, Settings, CreditCard, LogOut, Menu, Bot, Mail, Star, Send, FileText, AlertTriangle, Trash2, Plug } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { useGetMe, useGetSubscription, useGetGmailStatus } from "@workspace/api-client-react";
@@ -73,6 +73,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <Link href="/history" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/history" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
         <Clock className="w-4 h-4" />
         History
+      </Link>
+      <Link href="/connectors" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/connectors" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
+        <Plug className="w-4 h-4" />
+        Connectors
       </Link>
       
       <div className="mt-5 px-3 py-1.5 text-xs font-semibold text-sidebar-foreground/50 tracking-wider uppercase">

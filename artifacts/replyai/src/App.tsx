@@ -16,6 +16,7 @@ import AgentPage from "@/pages/agent";
 import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import Pricing from "@/pages/pricing";
+import ConnectorsPage from "@/pages/connectors";
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -118,6 +119,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/history"><ProtectedRoute component={History} /></Route>
           <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
           <Route path="/pricing"><ProtectedRoute component={Pricing} /></Route>
+          <Route path="/connectors"><ProtectedRoute component={ConnectorsPage} /></Route>
           
           <Route component={NotFound} />
         </Switch>

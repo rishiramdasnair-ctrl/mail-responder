@@ -7,6 +7,7 @@ import {
   parseEmailAddress,
   getHeader,
   decodeBody,
+  extractAttachments,
 } from "../lib/gmailClient";
 import { SendReplyBody } from "@workspace/api-zod";
 
@@ -135,6 +136,7 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
       const date = getHeader(headers, "Date");
       const body = decodeBody(msg.payload);
       const isUnread = (msg.labelIds || []).includes("UNREAD");
+      const attachments = extractAttachments(msg.payload);
 
       return {
         id: msg.id,
@@ -149,6 +151,7 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
         date,
         isUnread,
         labelIds: msg.labelIds || [],
+        attachments,
       };
     });
 

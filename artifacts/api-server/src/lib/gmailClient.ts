@@ -94,3 +94,28 @@ export function decodeBody(part: any): string {
   }
   return "";
 }
+
+export interface EmailAttachment {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+export function extractAttachments(part: any, result: EmailAttachment[] = []): EmailAttachment[] {
+  if (!part) return result;
+  if (part.filename && part.body?.attachmentId) {
+    result.push({
+      attachmentId: part.body.attachmentId,
+      filename: part.filename,
+      mimeType: part.mimeType || "application/octet-stream",
+      size: part.body.size || 0,
+    });
+  }
+  if (part.parts) {
+    for (const p of part.parts) {
+      extractAttachments(p, result);
+    }
+  }
+  return result;
+}

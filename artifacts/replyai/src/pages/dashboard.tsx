@@ -42,6 +42,11 @@ import {
   PenSquare,
   AlertTriangle,
   FileText,
+  Paperclip,
+  HardDrive,
+  Building2,
+  ExternalLink,
+  UserPlus,
 } from "lucide-react";
 import { format, isToday, isTomorrow, isThisWeek, parseISO, startOfDay, isSameDay } from "date-fns";
 
@@ -234,6 +239,212 @@ function useCreateCalendarEvent() {
       queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
     },
   });
+}
+
+interface HubSpotContact {
+  id: string;
+  email: string | null;
+  name: string | null;
+  company: string | null;
+  jobTitle: string | null;
+  phone: string | null;
+  hubspotUrl: string | null;
+}
+
+function useHubSpotContact(email: string | null | undefined) {
+  return useQuery<{ connected: boolean; contact: HubSpotContact | null }>({
+    queryKey: ["hubspot-contact", email],
+    queryFn: async () => {
+      if (!email) return { connected: false, contact: null };
+      const res = await fetch(`/api/hubspot/contact?email=${encodeURIComponent(email)}`, { credentials: "include" });
+      if (!res.ok) return { connected: false, contact: null };
+      return res.json();
+    },
+    enabled: !!email,
+    staleTime: 60_000,
+  });
+}
+
+function useConnectorIds() {
+  return useQuery<{ connectors: Array<{ connectorId: string }> }>({
+    queryKey: ["connector-ids"],
+    queryFn: async () => {
+      const res = await fetch("/api/connectors", { credentials: "include" });
+      if (!res.ok) return { connectors: [] };
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+}
+
+function useDriveSave() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (body: { messageId: string; attachmentId: string; filename: string; mimeType: string }) => {
+      const res = await fetch("/api/drive/save", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as any).error || "Failed to save");
+      }
+      return res.json() as Promise<{ file: { id: string; name: string; url: string | null } }>;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Saved to Drive",
+        description: data.file.url
+          ? `"${data.file.name}" saved.`
+          : `"${data.file.name}" saved to your Drive.`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to save to Drive", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+function HubSpotContactPanel({ senderEmail }: { senderEmail: string }) {
+  const { toast } = useToast();
+  const { data, isLoading } = useHubSpotContact(senderEmail);
+  const createContact = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/hubspot/contact", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: senderEmail }),
+      });
+      if (!res.ok) throw new Error("Failed to create contact");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Contact created", description: `${senderEmail} added to HubSpot.` });
+      queryClient.invalidateQueries({ queryKey: ["hubspot-contact", senderEmail] });
+    },
+    onError: () => {
+      toast({ title: "Failed to create contact", variant: "destructive" });
+    },
+  });
+
+  if (!data?.connected) return null;
+  if (isLoading) return null;
+
+  const contact = data.contact;
+
+  return (
+    <div className="mx-0 mt-3 rounded-lg border bg-card p-3 text-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-5 h-5 rounded bg-[#FF7A59] flex items-center justify-center shrink-0">
+          <span className="text-white text-[10px] font-bold">HS</span>
+        </div>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">HubSpot</span>
+      </div>
+      {contact ? (
+        <div className="space-y-1">
+          {contact.name && (
+            <div className="flex items-center gap-2">
+              <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span className="font-medium text-sm">{contact.name}</span>
+            </div>
+          )}
+          {contact.company && (
+            <div className="flex items-center gap-2">
+              <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span className="text-sm text-muted-foreground">{contact.company}</span>
+            </div>
+          )}
+          {contact.jobTitle && (
+            <p className="text-xs text-muted-foreground pl-5">{contact.jobTitle}</p>
+          )}
+          {contact.hubspotUrl && (
+            <a
+              href={contact.hubspotUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1 pl-5"
+            >
+              View in HubSpot
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Not in HubSpot</p>
+          <button
+            onClick={() => createContact.mutate()}
+            disabled={createContact.isPending}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3" />}
+            Add contact
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AttachmentsBar({
+  messageId,
+  attachments,
+  driveConnected,
+}: {
+  messageId: string;
+  attachments: Array<{ attachmentId: string; filename: string; mimeType: string; size: number }>;
+  driveConnected: boolean;
+}) {
+  const driveSave = useDriveSave();
+  if (!attachments.length) return null;
+
+  const fmt = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="mt-3 rounded-lg border bg-card p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attachments</span>
+      </div>
+      <div className="space-y-1.5">
+        {attachments.map((att) => (
+          <div key={att.attachmentId} className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm truncate">{att.filename}</p>
+              <p className="text-xs text-muted-foreground">{fmt(att.size)}</p>
+            </div>
+            {driveConnected && (
+              <button
+                onClick={() => driveSave.mutate({
+                  messageId,
+                  attachmentId: att.attachmentId,
+                  filename: att.filename,
+                  mimeType: att.mimeType,
+                })}
+                disabled={driveSave.isPending}
+                className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                title="Save to Google Drive"
+              >
+                {driveSave.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <HardDrive className="w-3 h-3" />
+                )}
+                Save to Drive
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function formatEventTime(start: string, isAllDay: boolean) {
@@ -574,6 +785,9 @@ export default function Dashboard() {
   );
 
   const { data: calendarData } = useCalendarEvents();
+  const { data: connectorsData } = useConnectorIds();
+  const driveConnected = connectorsData?.connectors.some(c => c.connectorId === "google-drive") ?? false;
+  const hubspotConnected = connectorsData?.connectors.some(c => c.connectorId === "hubspot") ?? false;
 
   const generateReplies = useGenerateReplies();
   const sendReply = useSendReply();
@@ -946,6 +1160,25 @@ export default function Dashboard() {
                   <EmailBodyRenderer
                     body={threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet || ""}
                   />
+                  {(() => {
+                    const lastMsg = threadData.messages[threadData.messages.length - 1];
+                    const attachments = (lastMsg as any).attachments ?? [];
+                    const senderEmail = lastMsg.fromEmail;
+                    return (
+                      <>
+                        {attachments.length > 0 && (
+                          <AttachmentsBar
+                            messageId={lastMsg.id || ""}
+                            attachments={attachments}
+                            driveConnected={driveConnected}
+                          />
+                        )}
+                        {hubspotConnected && senderEmail && (
+                          <HubSpotContactPanel senderEmail={senderEmail} />
+                        )}
+                      </>
+                    );
+                  })()}
                 </ScrollArea>
 
                 {/* AI Reply Section — only shown for inbox/starred, not sent/trash/spam */}

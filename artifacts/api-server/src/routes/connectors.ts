@@ -12,7 +12,14 @@ router.get("/connectors", requireAuth, async (req, res) => {
     const auth = getAuth(req);
     const userId = auth.userId!;
     const rows = await db
-      .select()
+      .select({
+        id: connectorsTable.id,
+        connectorId: connectorsTable.connectorId,
+        displayName: connectorsTable.displayName,
+        status: connectorsTable.status,
+        createdAt: connectorsTable.createdAt,
+        updatedAt: connectorsTable.updatedAt,
+      })
       .from(connectorsTable)
       .where(eq(connectorsTable.userId, userId));
     res.json({ connectors: rows });
@@ -22,18 +29,18 @@ router.get("/connectors", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/connectors/:id", requireAuth, async (req, res) => {
+router.delete("/connectors/:connectorId", requireAuth, async (req, res) => {
   try {
     const auth = getAuth(req);
     const userId = auth.userId!;
-    const { id } = req.params;
+    const { connectorId } = req.params;
 
     await db
       .delete(connectorsTable)
       .where(
         and(
           eq(connectorsTable.userId, userId),
-          eq(connectorsTable.id, id)
+          eq(connectorsTable.connectorId, connectorId)
         )
       );
 

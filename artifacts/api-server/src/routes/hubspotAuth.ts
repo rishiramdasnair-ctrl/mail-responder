@@ -145,23 +145,4 @@ router.get("/auth/hubspot/callback", async (req, res) => {
   }
 });
 
-router.post("/auth/hubspot/disconnect", requireAuth, async (req, res) => {
-  try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
-
-    await db
-      .delete(connectorsTable)
-      .where(and(
-        eq(connectorsTable.userId, userId),
-        eq(connectorsTable.connectorId, "hubspot"),
-      ));
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("[hubspot-disconnect] error:", err);
-    res.status(500).json({ error: "Failed to disconnect HubSpot" });
-  }
-});
-
 export default router;

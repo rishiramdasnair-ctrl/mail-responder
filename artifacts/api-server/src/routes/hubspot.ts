@@ -14,26 +14,7 @@ interface HubSpotConnectorConfig {
   portalId?: string | null;
 }
 
-async function getHubSpotToken(userId: string): Promise<string | null> {
-  const rows = await db
-    .select()
-    .from(connectorsTable)
-    .where(and(
-      eq(connectorsTable.userId, userId),
-      eq(connectorsTable.connectorId, "hubspot"),
-    ))
-    .limit(1);
-
-  if (!rows.length) return null;
-  const config = rows[0].config as HubSpotConnectorConfig | null;
-  if (!config?.accessToken) return null;
-
-  const expiresAt = config.expiresAt ? new Date(config.expiresAt) : null;
-  if (!expiresAt || expiresAt > new Date()) {
-    return config.accessToken;
-  }
-
-  // Token expired — attempt refresh
+async function refreshHubSpotToken(userId: string, config: HubSpotConnectorConfig): Promise<string | null> {
   const clientId = process.env.HUBSPOT_CLIENT_ID;
   const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
   if (!clientId || !clientSecret || !config.refreshToken) return null;
@@ -49,7 +30,6 @@ async function getHubSpotToken(userId: string): Promise<string | null> {
         refresh_token: config.refreshToken,
       }).toString(),
     });
-
     if (!res.ok) return null;
 
     const tokens = await res.json() as {
@@ -80,6 +60,77 @@ async function getHubSpotToken(userId: string): Promise<string | null> {
   }
 }
 
+async function getHubSpotToken(userId: string): Promise<{ token: string; portalId: string | null } | null> {
+  const rows = await db
+    .select({ id: connectorsTable.id, config: connectorsTable.config })
+    .from(connectorsTable)
+    .where(and(
+      eq(connectorsTable.userId, userId),
+      eq(connectorsTable.connectorId, "hubspot"),
+    ))
+    .limit(1);
+
+  if (!rows.length) return null;
+  const config = rows[0].config as HubSpotConnectorConfig | null;
+  if (!config?.accessToken) return null;
+
+  const portalId = config.portalId ?? null;
+  const expiresAt = config.expiresAt ? new Date(config.expiresAt) : null;
+
+  if (!expiresAt || expiresAt > new Date()) {
+    return { token: config.accessToken, portalId };
+  }
+
+  const refreshed = await refreshHubSpotToken(userId, config);
+  return refreshed ? { token: refreshed, portalId } : null;
+}
+
+interface HubSpotApiDeal {
+  id: string;
+  properties: {
+    dealname?: string | null;
+    dealstage?: string | null;
+    closedate?: string | null;
+  };
+}
+
+interface HubSpotApiAssociationsResult {
+  id: string;
+  type: string;
+}
+
+async function getFirstDealForContact(
+  token: string,
+  contactId: string,
+): Promise<{ dealName: string | null; dealStage: string | null } | null> {
+  try {
+    const assocRes = await fetch(
+      `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/deals`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!assocRes.ok) return null;
+
+    const assocData = await assocRes.json() as { results?: HubSpotApiAssociationsResult[] };
+    const dealIds = assocData.results ?? [];
+    if (!dealIds.length) return null;
+
+    const firstDealId = dealIds[0].id;
+    const dealRes = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${firstDealId}?properties=dealname,dealstage`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!dealRes.ok) return null;
+
+    const deal = await dealRes.json() as HubSpotApiDeal;
+    return {
+      dealName: deal.properties.dealname ?? null,
+      dealStage: deal.properties.dealstage ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 router.get("/hubspot/contact", requireAuth, async (req, res) => {
   const auth = getAuth(req);
   const userId = auth.userId!;
@@ -89,14 +140,15 @@ router.get("/hubspot/contact", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "email query parameter is required" });
   }
 
-  const token = await getHubSpotToken(userId);
-  if (!token) {
+  const tokenInfo = await getHubSpotToken(userId);
+  if (!tokenInfo) {
     return res.status(404).json({ connected: false, contact: null });
   }
+  const { token, portalId } = tokenInfo;
 
   try {
     const searchRes = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/contacts/search`,
+      "https://api.hubapi.com/crm/v3/objects/contacts/search",
       {
         method: "POST",
         headers: {
@@ -111,24 +163,21 @@ router.get("/hubspot/contact", requireAuth, async (req, res) => {
               value: email,
             }],
           }],
-          properties: ["email", "firstname", "lastname", "company", "jobtitle", "phone", "hs_object_id"],
+          properties: ["email", "firstname", "lastname", "company", "jobtitle", "phone"],
           limit: 1,
         }),
       }
     );
 
     if (!searchRes.ok) {
-      const err = await searchRes.json().catch(() => ({}));
+      const err = await searchRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
       console.error("[hubspot/contact] search failed:", err);
       return res.status(500).json({ error: "HubSpot search failed" });
     }
 
     const data = await searchRes.json() as {
       total: number;
-      results: Array<{
-        id: string;
-        properties: Record<string, string | null>;
-      }>;
+      results: Array<{ id: string; properties: Record<string, string | null> }>;
     };
 
     if (data.total === 0 || !data.results.length) {
@@ -136,26 +185,19 @@ router.get("/hubspot/contact", requireAuth, async (req, res) => {
     }
 
     const c = data.results[0];
-    const rows = await db
-      .select({ config: connectorsTable.config })
-      .from(connectorsTable)
-      .where(and(
-        eq(connectorsTable.userId, userId),
-        eq(connectorsTable.connectorId, "hubspot"),
-      ))
-      .limit(1);
-
-    const portalId = (rows[0]?.config as HubSpotConnectorConfig | null)?.portalId;
+    const deal = await getFirstDealForContact(token, c.id);
 
     return res.json({
       connected: true,
       contact: {
         id: c.id,
-        email: c.properties.email,
+        email: c.properties.email ?? null,
         name: [c.properties.firstname, c.properties.lastname].filter(Boolean).join(" ") || null,
-        company: c.properties.company || null,
-        jobTitle: c.properties.jobtitle || null,
-        phone: c.properties.phone || null,
+        company: c.properties.company ?? null,
+        jobTitle: c.properties.jobtitle ?? null,
+        phone: c.properties.phone ?? null,
+        dealName: deal?.dealName ?? null,
+        dealStage: deal?.dealStage ?? null,
         hubspotUrl: portalId
           ? `https://app.hubspot.com/contacts/${portalId}/contact/${c.id}`
           : null,
@@ -181,8 +223,8 @@ router.post("/hubspot/contact", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "email is required" });
   }
 
-  const token = await getHubSpotToken(userId);
-  if (!token) {
+  const tokenInfo = await getHubSpotToken(userId);
+  if (!tokenInfo) {
     return res.status(400).json({ error: "HubSpot not connected" });
   }
 
@@ -190,7 +232,7 @@ router.post("/hubspot/contact", requireAuth, async (req, res) => {
     const createRes = await fetch("https://api.hubapi.com/crm/v3/objects/contacts", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${tokenInfo.token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -204,7 +246,7 @@ router.post("/hubspot/contact", requireAuth, async (req, res) => {
     });
 
     if (!createRes.ok) {
-      const err = await createRes.json().catch(() => ({}));
+      const err = await createRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
       console.error("[hubspot/contact POST] failed:", err);
       return res.status(500).json({ error: "Failed to create contact" });
     }

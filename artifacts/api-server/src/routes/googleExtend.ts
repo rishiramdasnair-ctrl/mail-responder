@@ -9,12 +9,11 @@ import { randomUUID } from "crypto";
 
 const router = Router();
 
-const DRIVE_SCOPES = [
+const GSUITE_EXTENSION_SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
-];
-const CONTACTS_SCOPES = [
   "https://www.googleapis.com/auth/contacts.readonly",
 ];
+
 const BASE_GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
@@ -24,6 +23,8 @@ const BASE_GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.events",
 ];
+
+const ALL_EXTENDED_SCOPES = [...BASE_GOOGLE_SCOPES, ...GSUITE_EXTENSION_SCOPES];
 
 function getExtendRedirectUri() {
   if (process.env.GOOGLE_REDIRECT_URI_EXTEND) return process.env.GOOGLE_REDIRECT_URI_EXTEND;
@@ -41,31 +42,20 @@ function getOAuthClient() {
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-const VALID_EXTENSIONS = ["drive", "contacts"] as const;
-type ExtensionType = typeof VALID_EXTENSIONS[number];
-
 router.get("/auth/google/extend", requireAuth, (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
 
-  const { scope: scopeParam } = req.query;
-  if (!scopeParam || !VALID_EXTENSIONS.includes(scopeParam as ExtensionType)) {
-    return res.redirect(`${frontendUrl}/connectors?error=invalid_scope`);
-  }
-
   const auth = getAuth(req);
   const userId = auth.userId!;
-
-  const extraScopes = scopeParam === "drive" ? DRIVE_SCOPES : CONTACTS_SCOPES;
-  const allScopes = [...BASE_GOOGLE_SCOPES, ...extraScopes];
 
   try {
     const oAuth2Client = getOAuthClient();
     const url = oAuth2Client.generateAuthUrl({
       access_type: "offline",
-      scope: allScopes,
+      scope: ALL_EXTENDED_SCOPES,
       prompt: "consent",
-      state: JSON.stringify({ userId, extension: scopeParam }),
+      state: userId,
     });
     res.redirect(url);
   } catch {
@@ -77,24 +67,14 @@ router.get("/auth/google/extend/callback", async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
 
-  const { code, state: stateStr, error } = req.query;
+  const { code, state: userId, error } = req.query;
 
   if (error) {
     return res.redirect(`${frontendUrl}/connectors?error=google_extend_denied`);
   }
 
-  if (!code || !stateStr) {
+  if (!code || !userId || typeof userId !== "string") {
     return res.redirect(`${frontendUrl}/connectors?error=google_extend_missing_params`);
-  }
-
-  let userId: string;
-  let extension: ExtensionType;
-  try {
-    const parsed = JSON.parse(stateStr as string);
-    userId = parsed.userId;
-    extension = parsed.extension;
-  } catch {
-    return res.redirect(`${frontendUrl}/connectors?error=google_extend_invalid_state`);
   }
 
   try {
@@ -114,56 +94,42 @@ router.get("/auth/google/extend/callback", async (req, res) => {
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
 
-    const connectorId = extension === "drive" ? "google-drive" : "google-contacts";
-    const displayName = extension === "drive" ? "Google Drive" : "Google Contacts";
+    const GSUITE_CONNECTORS = [
+      { connectorId: "google-drive", displayName: "Google Drive" },
+      { connectorId: "google-contacts", displayName: "Google Contacts" },
+    ] as const;
 
-    const existing = await db
-      .select({ id: connectorsTable.id })
-      .from(connectorsTable)
-      .where(and(
-        eq(connectorsTable.userId, userId),
-        eq(connectorsTable.connectorId, connectorId),
-      ))
-      .limit(1);
+    for (const { connectorId, displayName } of GSUITE_CONNECTORS) {
+      const existing = await db
+        .select({ id: connectorsTable.id })
+        .from(connectorsTable)
+        .where(and(
+          eq(connectorsTable.userId, userId),
+          eq(connectorsTable.connectorId, connectorId),
+        ))
+        .limit(1);
 
-    if (existing.length > 0) {
-      await db.update(connectorsTable).set({
-        status: "connected",
-        updatedAt: new Date(),
-      }).where(eq(connectorsTable.id, existing[0].id));
-    } else {
-      await db.insert(connectorsTable).values({
-        id: randomUUID(),
-        userId,
-        connectorId,
-        displayName,
-        status: "connected",
-        config: { extension },
-      });
+      if (existing.length > 0) {
+        await db.update(connectorsTable).set({
+          status: "connected",
+          updatedAt: new Date(),
+        }).where(eq(connectorsTable.id, existing[0].id));
+      } else {
+        await db.insert(connectorsTable).values({
+          id: randomUUID(),
+          userId,
+          connectorId,
+          displayName,
+          status: "connected",
+          config: null,
+        });
+      }
     }
 
-    res.redirect(`${frontendUrl}/connectors?${extension}_connected=true`);
+    res.redirect(`${frontendUrl}/connectors?gsuite_extended=true`);
   } catch (err) {
     console.error("[google-extend-callback] error:", err);
     res.redirect(`${frontendUrl}/connectors?error=google_extend_callback_failed`);
-  }
-});
-
-router.post("/auth/google/extend/disconnect", requireAuth, async (req, res) => {
-  const { extension } = req.body as { extension: string };
-  const auth = getAuth(req);
-  const userId = auth.userId!;
-
-  const connectorId = extension === "drive" ? "google-drive" : "google-contacts";
-
-  try {
-    await db.delete(connectorsTable).where(and(
-      eq(connectorsTable.userId, userId),
-      eq(connectorsTable.connectorId, connectorId),
-    ));
-    res.json({ success: true });
-  } catch {
-    res.status(500).json({ error: "Failed to disconnect" });
   }
 });
 

@@ -1,20 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { AppLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, CheckCircle2, Link2Off, ExternalLink } from "lucide-react";
 
-interface Connector {
+interface ConnectorRow {
   id: string;
   connectorId: string;
   displayName: string;
   status: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 interface ConnectorsResponse {
-  connectors: Connector[];
+  connectors: ConnectorRow[];
 }
 
 interface GmailStatus {
@@ -22,23 +23,38 @@ interface GmailStatus {
   email?: string;
 }
 
-const INTEGRATION_CATALOG = [
+type DisconnectAction =
+  | { kind: "google-base" }
+  | { kind: "connectors-api"; connectorId: string }
+  | null;
+
+interface Integration {
+  id: string;
+  title: string;
+  description: string;
+  logo: React.ReactNode;
+  connectPath: string;
+  disconnect: DisconnectAction;
+  features: string[];
+  note?: string;
+}
+
+const INTEGRATION_CATALOG: Integration[] = [
   {
     id: "gmail",
     title: "Gmail",
     description: "Read, search, and reply to emails from your Gmail inbox.",
     logo: (
       <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
-        <path fill="#EA4335" d="M6 10h36l-18 14z" />
-        <path fill="#FBBC05" d="M6 10v28h6V20z" />
-        <path fill="#34A853" d="M42 10v28h-6V20z" />
-        <path fill="#4285F4" d="M12 38h24v-4L24 24 12 34z" />
-        <rect x="6" y="10" width="36" height="28" rx="3" ry="3" stroke="#ddd" strokeWidth="1" fill="none" />
+        <rect x="6" y="10" width="36" height="28" rx="3" fill="white" stroke="#ddd" />
+        <path fill="#EA4335" d="M6 10h36L24 26z" />
+        <path fill="#FBBC05" d="M6 10v28h6V22z" />
+        <path fill="#34A853" d="M42 10v28h-6V22z" />
+        <path fill="#4285F4" d="M12 38h24l-12-12z" />
       </svg>
     ),
-    oauthType: "google-base",
     connectPath: "/api/auth/google/start",
-    disconnectPath: "/api/auth/google/disconnect",
+    disconnect: { kind: "google-base" },
     features: ["Inbox access", "Send replies", "Label management"],
   },
   {
@@ -48,71 +64,51 @@ const INTEGRATION_CATALOG = [
     logo: (
       <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
         <rect x="6" y="10" width="36" height="32" rx="3" fill="white" stroke="#ddd" />
-        <rect x="6" y="10" width="36" height="10" rx="3" fill="#4285F4" />
-        <rect x="6" y="17" width="36" height="3" fill="#4285F4" />
-        <text x="24" y="35" textAnchor="middle" fontSize="14" fontWeight="bold" fill="#EA4335">31</text>
+        <rect x="6" y="10" width="36" height="11" rx="3" fill="#4285F4" />
+        <rect x="6" y="17" width="36" height="4" fill="#4285F4" />
+        <text x="24" y="36" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#EA4335">31</text>
         <line x1="16" y1="10" x2="16" y2="6" stroke="#4285F4" strokeWidth="2" strokeLinecap="round" />
         <line x1="32" y1="10" x2="32" y2="6" stroke="#4285F4" strokeWidth="2" strokeLinecap="round" />
       </svg>
     ),
-    oauthType: "google-base",
     connectPath: "/api/auth/google/start",
-    disconnectPath: null,
+    disconnect: null,
     features: ["View upcoming events", "Create calendar events", "Meeting detection"],
+    note: "Included with Gmail — reconnect Google to grant calendar access.",
   },
   {
-    id: "google-drive",
-    title: "Google Drive",
-    description: "Save email attachments directly to your Google Drive.",
+    id: "gsuite-extensions",
+    title: "Google Drive & Contacts",
+    description: "Save email attachments to Drive and see Google Contacts info inline — both enabled with one re-authorization.",
     logo: (
       <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
         <path d="M6 38l8-14 8 14z" fill="#FBBC05" />
         <path d="M30 10L16 34h16l8-14z" fill="#34A853" />
-        <path d="M16 34l-10-4 8-14 2 4z" fill="#4285F4" />
         <path d="M30 10l10 20h-8L22 14z" fill="#EA4335" />
+        <path d="M16 34l-10-4 8-14 2 4z" fill="#4285F4" />
       </svg>
     ),
-    oauthType: "google-extend",
-    extension: "drive",
-    connectPath: "/api/auth/google/extend?scope=drive",
-    disconnectPath: "/api/auth/google/extend/disconnect",
-    features: ["Save attachments to Drive", "Access Drive files"],
-  },
-  {
-    id: "google-contacts",
-    title: "Google Contacts",
-    description: "See contact details from your Google address book inline with emails.",
-    logo: (
-      <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
-        <rect x="6" y="6" width="36" height="36" rx="4" fill="#34A853" />
-        <circle cx="24" cy="20" r="7" fill="white" />
-        <ellipse cx="24" cy="38" rx="12" ry="8" fill="white" />
-      </svg>
-    ),
-    oauthType: "google-extend",
-    extension: "contacts",
-    connectPath: "/api/auth/google/extend?scope=contacts",
-    disconnectPath: "/api/auth/google/extend/disconnect",
-    features: ["View contact info inline", "Name and company lookup"],
+    connectPath: "/api/auth/google/extend",
+    disconnect: { kind: "connectors-api", connectorId: "google-drive" },
+    features: ["Save attachments directly to Drive", "Google Contacts info inline with emails"],
   },
   {
     id: "hubspot",
     title: "HubSpot",
-    description: "Look up and create HubSpot contacts from your inbox. Log email activity automatically.",
+    description: "Look up and create HubSpot contacts from your inbox. See deal stage and CRM data right in the thread view.",
     logo: (
       <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
         <circle cx="24" cy="24" r="20" fill="#FF7A59" />
-        <circle cx="24" cy="18" r="5" fill="white" />
+        <circle cx="24" cy="17" r="5" fill="white" />
         <circle cx="34" cy="30" r="4" fill="white" />
         <circle cx="14" cy="30" r="4" fill="white" />
-        <line x1="24" y1="18" x2="34" y2="30" stroke="white" strokeWidth="2" />
-        <line x1="24" y1="18" x2="14" y2="30" stroke="white" strokeWidth="2" />
+        <line x1="24" y1="17" x2="34" y2="30" stroke="white" strokeWidth="2.5" />
+        <line x1="24" y1="17" x2="14" y2="30" stroke="white" strokeWidth="2.5" />
       </svg>
     ),
-    oauthType: "hubspot",
     connectPath: "/api/auth/hubspot/start",
-    disconnectPath: "/api/auth/hubspot/disconnect",
-    features: ["Contact lookup in email threads", "Create contacts from inbox", "Deal stage visibility"],
+    disconnect: { kind: "connectors-api", connectorId: "hubspot" },
+    features: ["Contact lookup in email threads", "Deal stage visibility", "Create contacts from inbox"],
   },
 ];
 
@@ -146,10 +142,10 @@ export default function ConnectorsPage() {
   const { data: connectorsData, isLoading } = useConnectors();
   const { data: gmailStatus, isLoading: isLoadingGmail } = useGmailStatus();
 
-  // Handle OAuth redirect results
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const errorMap: Record<string, string> = {
+
+    const errorMessages: Record<string, string> = {
       hubspot_not_configured: "HubSpot OAuth credentials are not yet configured on the server.",
       hubspot_denied: "You denied HubSpot access. Please try again.",
       hubspot_missing_params: "OAuth response was incomplete. Please try again.",
@@ -161,8 +157,9 @@ export default function ConnectorsPage() {
     };
 
     const error = params.get("error");
-    if (error && errorMap[error]) {
-      toast({ title: "Connection failed", description: errorMap[error], variant: "destructive" });
+    if (error) {
+      const description = errorMessages[error] ?? "Something went wrong. Please try again.";
+      toast({ title: "Connection failed", description, variant: "destructive" });
       window.history.replaceState({}, "", "/connectors");
       return;
     }
@@ -170,70 +167,57 @@ export default function ConnectorsPage() {
     if (params.get("hubspot_connected") === "true") {
       toast({ title: "HubSpot connected", description: "Your HubSpot account is now connected." });
       qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connector-ids"] });
       window.history.replaceState({}, "", "/connectors");
     }
-    if (params.get("drive_connected") === "true") {
-      toast({ title: "Google Drive enabled", description: "You can now save attachments to Drive." });
+    if (params.get("gsuite_extended") === "true") {
+      toast({ title: "Google extensions enabled", description: "Google Drive and Contacts are now active." });
       qc.invalidateQueries({ queryKey: ["connectors"] });
-      window.history.replaceState({}, "", "/connectors");
-    }
-    if (params.get("contacts_connected") === "true") {
-      toast({ title: "Google Contacts enabled", description: "Contact info will now appear inline." });
-      qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connector-ids"] });
       window.history.replaceState({}, "", "/connectors");
     }
   }, []);
 
   const connectedIds = new Set<string>(connectorsData?.connectors.map(c => c.connectorId) ?? []);
   const isGmailConnected = gmailStatus?.connected ?? false;
+  const driveConnected = connectedIds.has("google-drive");
 
   const disconnectMutation = useMutation({
-    mutationFn: async ({ path, body }: { path: string; body?: Record<string, string> }) => {
-      const res = await fetch(path, {
-        method: "POST",
-        credentials: "include",
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!res.ok) throw new Error("Failed to disconnect");
-    },
-    onSuccess: (_, { path }) => {
-      qc.invalidateQueries({ queryKey: ["connectors"] });
-      qc.invalidateQueries({ queryKey: ["gmail-status"] });
-      if (path.includes("gmail")) {
-        toast({ title: "Gmail disconnected" });
-      } else if (path.includes("hubspot")) {
-        toast({ title: "HubSpot disconnected" });
+    mutationFn: async (action: { kind: "google-base" } | { kind: "connectors-api"; connectorId: string }) => {
+      if (action.kind === "google-base") {
+        const res = await fetch("/api/auth/google/disconnect", {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to disconnect Gmail");
       } else {
-        toast({ title: "Disconnected" });
+        const res = await fetch(`/api/connectors/${encodeURIComponent(action.connectorId)}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to disconnect");
       }
+    },
+    onSuccess: (_, action) => {
+      qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connector-ids"] });
+      qc.invalidateQueries({ queryKey: ["gmail-status"] });
+      const label = action.kind === "google-base" ? "Gmail" : action.connectorId === "hubspot" ? "HubSpot" : "Google extensions";
+      toast({ title: `${label} disconnected` });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to disconnect.", variant: "destructive" });
     },
   });
 
-  const isConnected = (integrationId: string) => {
-    if (integrationId === "gmail" || integrationId === "google-calendar") {
+  const isConnected = (integration: Integration): boolean => {
+    if (integration.id === "gmail" || integration.id === "google-calendar") {
       return isGmailConnected;
     }
-    return connectedIds.has(integrationId);
-  };
-
-  const handleConnect = (integration: typeof INTEGRATION_CATALOG[number]) => {
-    window.location.href = integration.connectPath;
-  };
-
-  const handleDisconnect = (integration: typeof INTEGRATION_CATALOG[number]) => {
-    if (!integration.disconnectPath) return;
-    if (integration.oauthType === "google-extend") {
-      disconnectMutation.mutate({
-        path: integration.disconnectPath,
-        body: { extension: (integration as any).extension },
-      });
-    } else {
-      disconnectMutation.mutate({ path: integration.disconnectPath });
+    if (integration.id === "gsuite-extensions") {
+      return driveConnected;
     }
+    return connectedIds.has(integration.id);
   };
 
   const anyLoading = isLoading || isLoadingGmail;
@@ -256,35 +240,30 @@ export default function ConnectorsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {INTEGRATION_CATALOG.map((integration) => {
-              const connected = isConnected(integration.id);
-              const isDisconnecting = disconnectMutation.isPending;
-              const canDisconnect = !!integration.disconnectPath &&
-                integration.id !== "google-calendar";
+              const connected = isConnected(integration);
 
               return (
                 <div
                   key={integration.id}
-                  className={`border rounded-xl p-5 bg-card flex flex-col gap-4 transition-colors ${connected ? "border-border" : "border-border/60"}`}
+                  className="border rounded-xl p-5 bg-card flex flex-col gap-4"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg border bg-background flex items-center justify-center shrink-0">
-                        {integration.logo}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-base">{integration.title}</h3>
-                        {connected ? (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-500" />
-                            <span className="text-xs font-medium text-green-600 dark:text-green-500">Connected</span>
-                            {integration.id === "gmail" && gmailStatus?.email && (
-                              <span className="text-xs text-muted-foreground">· {gmailStatus.email}</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground mt-0.5 block">Not connected</span>
-                        )}
-                      </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-lg border bg-background flex items-center justify-center shrink-0">
+                      {integration.logo}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-base">{integration.title}</h3>
+                      {connected ? (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-500" />
+                          <span className="text-xs font-medium text-green-600 dark:text-green-500">Connected</span>
+                          {integration.id === "gmail" && gmailStatus?.email && (
+                            <span className="text-xs text-muted-foreground">· {gmailStatus.email}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground mt-0.5 block">Not connected</span>
+                      )}
                     </div>
                   </div>
 
@@ -302,15 +281,15 @@ export default function ConnectorsPage() {
                   <div className="flex items-center gap-2 mt-auto pt-1">
                     {connected ? (
                       <>
-                        {canDisconnect && (
+                        {integration.disconnect && integration.id !== "google-calendar" && (
                           <Button
                             variant="outline"
                             size="sm"
                             className="gap-1.5 text-xs"
-                            onClick={() => handleDisconnect(integration)}
-                            disabled={isDisconnecting}
+                            onClick={() => disconnectMutation.mutate(integration.disconnect!)}
+                            disabled={disconnectMutation.isPending}
                           >
-                            {isDisconnecting ? (
+                            {disconnectMutation.isPending ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
                               <Link2Off className="w-3.5 h-3.5" />
@@ -319,31 +298,22 @@ export default function ConnectorsPage() {
                           </Button>
                         )}
                         {integration.id === "hubspot" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1.5 text-xs text-muted-foreground"
-                            asChild
-                          >
-                            <a
-                              href="https://app.hubspot.com"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
+                          <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-muted-foreground" asChild>
+                            <a href="https://app.hubspot.com" target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="w-3.5 h-3.5" />
                               Open HubSpot
                             </a>
                           </Button>
                         )}
-                        {integration.id === "google-calendar" && (
-                          <span className="text-xs text-muted-foreground italic">Included with Gmail</span>
+                        {integration.note && integration.id === "google-calendar" && (
+                          <span className="text-xs text-muted-foreground italic">{integration.note}</span>
                         )}
                       </>
                     ) : (
                       <Button
                         size="sm"
                         className="gap-1.5 text-xs"
-                        onClick={() => handleConnect(integration)}
+                        onClick={() => { window.location.href = integration.connectPath; }}
                         disabled={disconnectMutation.isPending}
                       >
                         Connect {integration.title}

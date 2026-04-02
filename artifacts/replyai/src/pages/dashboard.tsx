@@ -241,6 +241,29 @@ function useCreateCalendarEvent() {
   });
 }
 
+interface EmailAttachment {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+interface EmailMessageWithAttachments {
+  id: string;
+  threadId: string;
+  from: string;
+  fromName?: string;
+  fromEmail?: string;
+  to?: string;
+  subject: string;
+  snippet: string;
+  body?: string;
+  date: string;
+  isUnread: boolean;
+  labelIds?: string[];
+  attachments: EmailAttachment[];
+}
+
 interface HubSpotContact {
   id: string;
   email: string | null;
@@ -248,6 +271,8 @@ interface HubSpotContact {
   company: string | null;
   jobTitle: string | null;
   phone: string | null;
+  dealName: string | null;
+  dealStage: string | null;
   hubspotUrl: string | null;
 }
 
@@ -288,8 +313,8 @@ function useDriveSave() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as any).error || "Failed to save");
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error || "Failed to save");
       }
       return res.json() as Promise<{ file: { id: string; name: string; url: string | null } }>;
     },
@@ -359,6 +384,16 @@ function HubSpotContactPanel({ senderEmail }: { senderEmail: string }) {
           )}
           {contact.jobTitle && (
             <p className="text-xs text-muted-foreground pl-5">{contact.jobTitle}</p>
+          )}
+          {contact.dealName && (
+            <div className="mt-1 text-xs text-muted-foreground pl-5">
+              <span className="font-medium">Deal:</span> {contact.dealName}
+              {contact.dealStage && (
+                <span className="ml-1 px-1.5 py-0.5 rounded bg-secondary text-[10px] uppercase tracking-wide font-medium">
+                  {contact.dealStage}
+                </span>
+              )}
+            </div>
           )}
           {contact.hubspotUrl && (
             <a
@@ -1161,8 +1196,8 @@ export default function Dashboard() {
                     body={threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet || ""}
                   />
                   {(() => {
-                    const lastMsg = threadData.messages[threadData.messages.length - 1];
-                    const attachments = (lastMsg as any).attachments ?? [];
+                    const lastMsg = threadData.messages[threadData.messages.length - 1] as EmailMessageWithAttachments;
+                    const attachments = lastMsg.attachments ?? [];
                     const senderEmail = lastMsg.fromEmail;
                     return (
                       <>

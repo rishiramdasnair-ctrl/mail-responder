@@ -34,6 +34,13 @@ import {
   ChevronLeft,
   X,
   CalendarDays,
+  Star,
+  Archive,
+  Trash2,
+  MailOpen,
+  PenSquare,
+  AlertTriangle,
+  FileText,
 } from "lucide-react";
 import { format, isToday, isTomorrow, isThisWeek, parseISO, startOfDay, isSameDay } from "date-fns";
 
@@ -100,6 +107,90 @@ function EmailBodyRenderer({ body }: { body: string }) {
       className="w-full border-none rounded bg-white"
       title="Email content"
     />
+  );
+}
+
+const FOLDERS = [
+  { id: "INBOX",   label: "Inbox",   icon: Mail },
+  { id: "STARRED", label: "Starred", icon: Star },
+  { id: "SENT",    label: "Sent",    icon: Send },
+  { id: "DRAFTS",  label: "Drafts",  icon: FileText },
+  { id: "SPAM",    label: "Spam",    icon: AlertTriangle },
+  { id: "TRASH",   label: "Trash",   icon: Trash2 },
+] as const;
+
+type FolderId = (typeof FOLDERS)[number]["id"];
+
+const REPLY_FOLDERS: FolderId[] = ["INBOX", "STARRED"];
+
+function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { toast } = useToast();
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+
+  const send = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/gmail/compose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ to, subject, body }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to send");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Email sent", description: `Sent to ${to}` });
+      setTo(""); setSubject(""); setBody("");
+      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["inbox"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to send", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PenSquare className="w-4 h-4" />
+            New Message
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">To</label>
+            <Input value={to} onChange={e => setTo(e.target.value)} placeholder="recipient@example.com" type="email" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Subject</label>
+            <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Message</label>
+            <textarea
+              className="w-full min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              placeholder="Write your message..."
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => send.mutate()} disabled={send.isPending || !to || !subject}>
+            {send.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+            Send
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -397,15 +488,22 @@ function AddToCalendarDialog({
 export default function Dashboard() {
   const { toast } = useToast();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [activeLabel, setActiveLabel] = useState<FolderId>("INBOX");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showCalendar, setShowCalendar] = useState(true);
   const [showAddToCalendar, setShowAddToCalendar] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    setSelectedThreadId(null);
+    setSearchQuery("");
+  }, [activeLabel]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -418,8 +516,56 @@ export default function Dashboard() {
   }, []);
 
   const { data: inboxData, isLoading: isLoadingInbox, refetch: refetchInbox } = useGetInbox(
-    { maxResults: 20, q: debouncedSearch || undefined },
+    { maxResults: 30, label: activeLabel, q: debouncedSearch || undefined },
+    { query: { queryKey: ["inbox", activeLabel, debouncedSearch] } }
   );
+
+  const modifyThread = useMutation({
+    mutationFn: async ({ threadId, addLabelIds = [], removeLabelIds = [] }: { threadId: string; addLabelIds?: string[]; removeLabelIds?: string[] }) => {
+      const res = await fetch(`/api/gmail/threads/${threadId}/modify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ addLabelIds, removeLabelIds }),
+      });
+      if (!res.ok) throw new Error("Failed to modify thread");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inbox"] });
+    },
+  });
+
+  const handleStar = (threadId: string, isStarred: boolean) => {
+    modifyThread.mutate(
+      isStarred
+        ? { threadId, removeLabelIds: ["STARRED"] }
+        : { threadId, addLabelIds: ["STARRED"] },
+      { onSuccess: () => toast({ title: isStarred ? "Unstarred" : "Starred" }) }
+    );
+  };
+
+  const handleArchive = (threadId: string) => {
+    modifyThread.mutate(
+      { threadId, removeLabelIds: ["INBOX"] },
+      { onSuccess: () => { toast({ title: "Archived" }); setSelectedThreadId(null); } }
+    );
+  };
+
+  const handleTrash = (threadId: string) => {
+    modifyThread.mutate(
+      { threadId, addLabelIds: ["TRASH"], removeLabelIds: ["INBOX"] },
+      { onSuccess: () => { toast({ title: "Moved to Trash" }); setSelectedThreadId(null); } }
+    );
+  };
+
+  const handleMarkRead = (threadId: string, isUnread: boolean) => {
+    modifyThread.mutate(
+      isUnread
+        ? { threadId, removeLabelIds: ["UNREAD"] }
+        : { threadId, addLabelIds: ["UNREAD"] },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inbox"] }) }
+    );
+  };
 
   const { data: threadData, isLoading: isLoadingThread } = useGetThread(
     selectedThreadId || "",
@@ -545,10 +691,17 @@ export default function Dashboard() {
         
         {/* Inbox List Pane */}
         <div className={`flex-shrink-0 flex flex-col border-r bg-background z-10 w-full md:w-[360px] ${selectedThreadId ? "hidden md:flex" : "flex"}`}>
-          <div className="p-4 border-b flex flex-col gap-3 shrink-0 bg-sidebar/30">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-lg">Inbox</h2>
-              <div className="flex items-center gap-1">
+          <div className="border-b flex flex-col shrink-0 bg-sidebar/30">
+            <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2">
+              <Button
+                onClick={() => setShowCompose(true)}
+                size="sm"
+                className="flex-1 h-8 gap-1.5 text-xs font-medium"
+              >
+                <PenSquare className="w-3.5 h-3.5" />
+                Compose
+              </Button>
+              <div className="flex items-center gap-0.5">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -558,15 +711,38 @@ export default function Dashboard() {
                 >
                   <Calendar className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => refetchInbox()} className="h-8 w-8 text-muted-foreground">
+                <Button variant="ghost" size="icon" onClick={() => refetchInbox()} className="h-8 w-8 text-muted-foreground" title="Refresh">
                   <RefreshCw className="w-4 h-4" />
                 </Button>
               </div>
             </div>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+
+            {/* Folder navigation */}
+            <div className="flex gap-0.5 overflow-x-auto px-2 pb-2 scrollbar-none">
+              {FOLDERS.map(folder => {
+                const Icon = folder.icon;
+                const isActive = activeLabel === folder.id;
+                return (
+                  <button
+                    key={folder.id}
+                    onClick={() => setActiveLabel(folder.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    <Icon className="w-3 h-3" />
+                    {folder.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="px-3 pb-3 relative">
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder="Search emails..." 
+                placeholder={`Search ${FOLDERS.find(f => f.id === activeLabel)?.label ?? ""}...`}
                 className="pl-9 h-9 bg-background shadow-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -595,29 +771,77 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="divide-y divide-border/50">
-                {inboxData?.threads.map((thread) => (
-                  <button
-                    key={thread.threadId}
-                    onClick={() => setSelectedThreadId(thread.threadId)}
-                    className={`w-full text-left p-4 transition-colors hover:bg-secondary/50 focus:outline-none flex flex-col gap-1
-                      ${selectedThreadId === thread.threadId ? "bg-secondary border-l-2 border-l-primary" : "border-l-2 border-l-transparent"}`}
-                  >
-                    <div className="flex justify-between items-baseline mb-1 w-full">
-                      <span className={`font-medium truncate pr-2 ${thread.isUnread ? "text-foreground" : "text-foreground/80"}`}>
-                        {thread.fromName || thread.from.split("<")[0].replace(/"/g, "")}
-                      </span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                        {(() => { try { const d = new Date(thread.date); return isNaN(d.getTime()) ? "" : format(d, "MMM d"); } catch { return ""; } })()}
-                      </span>
+                {inboxData?.threads.map((thread) => {
+                  const isSentFolder = activeLabel === "SENT" || activeLabel === "DRAFTS";
+                  const displayName = isSentFolder
+                    ? (thread.to || "Unknown recipient")
+                    : (thread.fromName || thread.from?.split("<")[0]?.replace(/"/g, "").trim() || thread.from || "Unknown");
+                  const dateStr = (() => { try { const d = new Date(thread.date); return isNaN(d.getTime()) ? "" : format(d, "MMM d"); } catch { return ""; } })();
+                  return (
+                    <div
+                      key={thread.threadId}
+                      className={`w-full text-left transition-colors group relative border-l-2 ${
+                        selectedThreadId === thread.threadId ? "bg-secondary border-l-primary" : "border-l-transparent hover:bg-secondary/50"
+                      }`}
+                    >
+                      <button
+                        onClick={() => setSelectedThreadId(thread.threadId)}
+                        className="w-full text-left p-4 flex flex-col gap-1 focus:outline-none"
+                      >
+                        <div className="flex justify-between items-center mb-0.5 w-full gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {thread.isUnread && activeLabel === "INBOX" && (
+                              <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                            )}
+                            <span className={`font-medium truncate text-sm ${thread.isUnread ? "text-foreground" : "text-foreground/80"}`}>
+                              {isSentFolder ? `To: ${displayName}` : displayName}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {thread.isStarred && (
+                              <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                            )}
+                            <span className="text-xs text-muted-foreground">{dateStr}</span>
+                          </div>
+                        </div>
+                        <span className={`text-sm truncate w-full ${thread.isUnread ? "font-semibold text-foreground" : "text-foreground/70"}`}>
+                          {thread.subject || "(No subject)"}
+                        </span>
+                        <span className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-relaxed">
+                          {thread.snippet}
+                        </span>
+                      </button>
+                      {/* Quick-action buttons on hover */}
+                      <div className="absolute right-2 top-2 hidden group-hover:flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded border border-border/50 shadow-sm p-0.5">
+                        <button
+                          onClick={e => { e.stopPropagation(); handleStar(thread.threadId, !!thread.isStarred); }}
+                          className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-yellow-500"
+                          title={thread.isStarred ? "Unstar" : "Star"}
+                        >
+                          <Star className={`w-3.5 h-3.5 ${thread.isStarred ? "fill-yellow-500 text-yellow-500" : ""}`} />
+                        </button>
+                        {activeLabel !== "TRASH" && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleTrash(thread.threadId); }}
+                            className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-destructive"
+                            title="Move to Trash"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {activeLabel === "INBOX" && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleArchive(thread.threadId); }}
+                            className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                            title="Archive"
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <span className={`text-sm truncate w-full ${thread.isUnread ? "font-semibold text-foreground" : "text-foreground/70"}`}>
-                      {thread.subject || "(No subject)"}
-                    </span>
-                    <span className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
-                      {thread.snippet}
-                    </span>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </ScrollArea>
@@ -642,7 +866,7 @@ export default function Dashboard() {
             <>
               {/* Thread Header */}
               <div className="p-4 md:p-6 border-b bg-background shrink-0 shadow-sm z-10">
-                <div className="flex items-center gap-2 mb-3 md:mb-4">
+                <div className="flex items-center gap-2 mb-3">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -651,31 +875,86 @@ export default function Dashboard() {
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </Button>
-                  <h1 className="text-lg md:text-xl font-bold tracking-tight leading-tight line-clamp-2">{threadData.subject}</h1>
+                  <h1 className="text-base md:text-lg font-bold tracking-tight leading-tight line-clamp-2 flex-1">{threadData.subject}</h1>
+                  {/* Thread actions */}
+                  <div className="flex items-center gap-0.5 shrink-0 ml-2">
+                    {(() => {
+                      const lastMsg = threadData.messages[threadData.messages.length - 1];
+                      const isStarred = (lastMsg.labelIds || []).includes("STARRED");
+                      const isUnread = (lastMsg.labelIds || []).includes("UNREAD");
+                      return (
+                        <>
+                          <Button
+                            variant="ghost" size="icon"
+                            className={`h-8 w-8 ${isStarred ? "text-yellow-500" : "text-muted-foreground hover:text-yellow-500"}`}
+                            title={isStarred ? "Unstar" : "Star"}
+                            onClick={() => handleStar(selectedThreadId!, isStarred)}
+                          >
+                            <Star className={`w-4 h-4 ${isStarred ? "fill-yellow-500" : ""}`} />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            title={isUnread ? "Mark as read" : "Mark as unread"}
+                            onClick={() => handleMarkRead(selectedThreadId!, isUnread)}
+                          >
+                            <MailOpen className="w-4 h-4" />
+                          </Button>
+                          {activeLabel !== "TRASH" && (
+                            <Button
+                              variant="ghost" size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              title="Archive"
+                              onClick={() => handleArchive(selectedThreadId!)}
+                            >
+                              <Archive className="w-4 h-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            title="Move to Trash"
+                            onClick={() => handleTrash(selectedThreadId!)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                          {showMeetingButton && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs hidden sm:flex"
+                              onClick={() => setShowAddToCalendar(true)}
+                            >
+                              <CalendarPlus className="w-3.5 h-3.5" />
+                              Calendar
+                            </Button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <User className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-semibold truncate">
-                        {threadData.messages[threadData.messages.length - 1].from}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {(() => { try { const d = new Date(threadData.messages[threadData.messages.length - 1].date); return isNaN(d.getTime()) ? "" : format(d, "PPP 'at' p"); } catch { return ""; } })()}
-                      </span>
-                    </div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-semibold text-sm truncate">
+                      {threadData.messages[threadData.messages.length - 1].from}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {(() => { try { const d = new Date(threadData.messages[threadData.messages.length - 1].date); return isNaN(d.getTime()) ? "" : format(d, "PPP 'at' p"); } catch { return ""; } })()}
+                    </span>
                   </div>
                   {showMeetingButton && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="shrink-0 gap-1.5"
+                      className="ml-auto h-8 gap-1.5 text-xs sm:hidden"
                       onClick={() => setShowAddToCalendar(true)}
                     >
                       <CalendarPlus className="w-3.5 h-3.5" />
-                      Add to Calendar
+                      Calendar
                     </Button>
                   )}
                 </div>
@@ -689,8 +968,14 @@ export default function Dashboard() {
                   />
                 </ScrollArea>
 
-                {/* AI Reply Section */}
-                <div className="shrink-0 border-t bg-sidebar/30 p-4 md:p-6 flex flex-col">
+                {/* AI Reply Section — only shown for inbox/starred, not sent/trash/spam */}
+                {!REPLY_FOLDERS.includes(activeLabel) && (
+                  <div className="shrink-0 border-t bg-muted/20 p-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                    <MailOpen className="w-3.5 h-3.5 opacity-50" />
+                    Viewing {FOLDERS.find(f => f.id === activeLabel)?.label} — AI reply suggestions are only available in Inbox and Starred.
+                  </div>
+                )}
+                {REPLY_FOLDERS.includes(activeLabel) && (<div className="shrink-0 border-t bg-sidebar/30 p-4 md:p-6 flex flex-col">
                   <div className="flex items-center gap-2 mb-4">
                     <Sparkles className="w-4 h-4 text-primary" />
                     <h3 className="font-semibold text-sm uppercase tracking-wider text-sidebar-foreground/70">AI Suggestions</h3>
@@ -747,7 +1032,7 @@ export default function Dashboard() {
                       </Button>
                     </div>
                   )}
-                </div>
+                </div>)}
               </div>
             </>
           ) : null}
@@ -772,6 +1057,8 @@ export default function Dashboard() {
           from={lastMessage.from}
         />
       )}
+
+      <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
     </AppLayout>
   );
 }

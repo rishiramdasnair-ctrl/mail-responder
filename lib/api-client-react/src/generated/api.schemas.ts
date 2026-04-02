@@ -53,6 +53,7 @@ export interface EmailMessage {
   body?: string;
   date: string;
   isUnread: boolean;
+  isStarred?: boolean;
   labelIds?: string[];
 }
 

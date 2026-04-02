@@ -60,7 +60,7 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
           userId: "me",
           id: t.id!,
           format: "metadata",
-          metadataHeaders: ["From", "Subject", "Date"],
+          metadataHeaders: ["From", "To", "Subject", "Date"],
         });
         const firstMsg = thread.data.messages?.[0];
         const lastMsg = thread.data.messages?.[thread.data.messages!.length - 1];
@@ -68,10 +68,12 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
 
         const headers = lastMsg.payload?.headers || [];
         const fromRaw = getHeader(headers, "From");
+        const toRaw = getHeader(headers, "To");
         const { name: fromName, email: fromEmail } = parseEmailAddress(fromRaw);
         const subject = getHeader(firstMsg.payload?.headers || [], "Subject");
         const date = getHeader(headers, "Date");
         const isUnread = (lastMsg.labelIds || []).includes("UNREAD");
+        const isStarred = (lastMsg.labelIds || []).includes("STARRED");
 
         return {
           id: lastMsg.id,
@@ -79,12 +81,13 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
           from: fromRaw,
           fromName,
           fromEmail,
-          to: "",
+          to: toRaw,
           subject,
           snippet: thread.data.snippet || "",
           body: "",
           date,
           isUnread,
+          isStarred,
           labelIds: lastMsg.labelIds || [],
         };
       } catch {
@@ -173,6 +176,70 @@ router.get("/gmail/labels", requireAuth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error fetching labels");
     res.status(500).json({ error: "Failed to fetch labels" });
+  }
+});
+
+router.post("/gmail/threads/:threadId/modify", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const gmail = await getGmailClientForUser(userId);
+    const { threadId } = req.params;
+    const addLabelIds: string[] = Array.isArray(req.body?.addLabelIds) ? req.body.addLabelIds : [];
+    const removeLabelIds: string[] = Array.isArray(req.body?.removeLabelIds) ? req.body.removeLabelIds : [];
+
+    await gmail.users.threads.modify({
+      userId: "me",
+      id: threadId,
+      requestBody: { addLabelIds, removeLabelIds },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Error modifying thread");
+    res.status(500).json({ error: "Failed to modify thread" });
+  }
+});
+
+router.post("/gmail/compose", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
+    const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
+    const body = typeof req.body?.body === "string" ? req.body.body : "";
+    const threadId = typeof req.body?.threadId === "string" ? req.body.threadId : undefined;
+
+    if (!to || !subject) {
+      res.status(400).json({ error: "to and subject are required" });
+      return;
+    }
+
+    const gmail = await getGmailClientForUser(userId);
+    const profile = await gmail.users.getProfile({ userId: "me" });
+    const fromEmail = profile.data.emailAddress || "";
+
+    const emailLines = [
+      `From: ${fromEmail}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `Content-Type: text/plain; charset=utf-8`,
+      "",
+      body,
+    ];
+
+    const raw = Buffer.from(emailLines.join("\r\n")).toString("base64url");
+    const result = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw, ...(threadId ? { threadId } : {}) },
+    });
+
+    res.json({ messageId: result.data.id, success: true });
+  } catch (err) {
+    req.log.error({ err }, "Error composing email");
+    res.status(500).json({ error: "Failed to send email" });
   }
 });
 

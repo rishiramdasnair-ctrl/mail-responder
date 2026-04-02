@@ -51,6 +51,8 @@ router.get("/debug/gmail-token", async (_req, res) => {
       settingsKeys,
       hasAccessToken,
       hasOauthToken,
+      hasGoogleClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasGoogleClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
     });
   } catch (err: any) {
     res.json({ error: err.message, hasIdentity, hasRenewal });

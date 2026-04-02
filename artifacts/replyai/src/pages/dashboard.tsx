@@ -31,6 +31,7 @@ import {
   MapPin,
   Users,
   ChevronRight,
+  ChevronLeft,
   X,
   CalendarDays,
 } from "lucide-react";
@@ -494,7 +495,7 @@ export default function Dashboard() {
       <div className="flex h-full overflow-hidden bg-background">
         
         {/* Inbox List Pane */}
-        <div className="w-full md:w-[360px] flex-shrink-0 flex flex-col border-r bg-background z-10">
+        <div className={`flex-shrink-0 flex flex-col border-r bg-background z-10 w-full md:w-[360px] ${selectedThreadId ? "hidden md:flex" : "flex"}`}>
           <div className="p-4 border-b flex flex-col gap-3 shrink-0 bg-sidebar/30">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-lg">Inbox</h2>
@@ -574,7 +575,7 @@ export default function Dashboard() {
         </div>
 
         {/* Thread & Reply Pane */}
-        <div className="flex-1 flex flex-col hidden md:flex min-w-0 bg-secondary/10">
+        <div className={`flex-1 flex-col min-w-0 bg-secondary/10 ${selectedThreadId ? "flex" : "hidden md:flex"}`}>
           {!selectedThreadId ? (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
               <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
@@ -591,10 +592,20 @@ export default function Dashboard() {
           ) : threadData ? (
             <>
               {/* Thread Header */}
-              <div className="p-6 border-b bg-background shrink-0 shadow-sm z-10">
-                <h1 className="text-xl font-bold tracking-tight mb-4">{threadData.subject}</h1>
+              <div className="p-4 md:p-6 border-b bg-background shrink-0 shadow-sm z-10">
+                <div className="flex items-center gap-2 mb-3 md:mb-4">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden -ml-1 shrink-0"
+                    onClick={() => setSelectedThreadId(null)}
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </Button>
+                  <h1 className="text-lg md:text-xl font-bold tracking-tight leading-tight line-clamp-2">{threadData.subject}</h1>
+                </div>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                       <User className="w-5 h-5 text-primary" />
                     </div>
@@ -623,7 +634,7 @@ export default function Dashboard() {
 
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Email Content */}
-                <ScrollArea className="flex-1 p-6">
+                <ScrollArea className="flex-1 p-4 md:p-6">
                   <div className="prose dark:prose-invert max-w-none text-sm">
                     <div className="whitespace-pre-wrap font-sans leading-relaxed text-foreground/90">
                       {threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet}
@@ -632,7 +643,7 @@ export default function Dashboard() {
                 </ScrollArea>
 
                 {/* AI Reply Section */}
-                <div className="shrink-0 border-t bg-sidebar/30 p-6 flex flex-col">
+                <div className="shrink-0 border-t bg-sidebar/30 p-4 md:p-6 flex flex-col">
                   <div className="flex items-center gap-2 mb-4">
                     <Sparkles className="w-4 h-4 text-primary" />
                     <h3 className="font-semibold text-sm uppercase tracking-wider text-sidebar-foreground/70">AI Suggestions</h3>
@@ -645,7 +656,7 @@ export default function Dashboard() {
                   </div>
 
                   {generateReplies.isPending ? (
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {[1,2,3].map(i => (
                         <Card key={i} className="bg-background/50 border-border/50">
                           <CardContent className="p-4 space-y-3">

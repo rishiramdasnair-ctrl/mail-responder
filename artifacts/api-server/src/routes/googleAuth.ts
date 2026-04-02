@@ -69,41 +69,82 @@ router.get("/auth/google/callback", async (req, res) => {
   try {
     const { code, state: userId, error } = req.query;
 
+    console.log("[google-callback] received", { hasCode: !!code, userId, error });
+
     if (error) {
+      console.error("[google-callback] Google returned error:", error);
       res.redirect(`${frontendUrl}/settings?gmail_error=access_denied`);
       return;
     }
 
     if (!code || !userId) {
+      console.error("[google-callback] Missing params", { code: !!code, userId });
       res.redirect(`${frontendUrl}/settings?gmail_error=missing_params`);
       return;
     }
 
-    const oAuth2Client = getOAuthClient();
-    const { tokens } = await oAuth2Client.getToken(code as string);
+    let tokens;
+    try {
+      const result = await getOAuthClient().getToken(code as string);
+      tokens = result.tokens;
+      console.log("[google-callback] token exchange ok", {
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
+        expiresAt: tokens.expiry_date,
+      });
+    } catch (tokenErr: any) {
+      console.error("[google-callback] token exchange FAILED:", tokenErr?.message, tokenErr?.response?.data);
+      res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+      return;
+    }
 
-    oAuth2Client.setCredentials(tokens);
+    if (!tokens.access_token) {
+      console.error("[google-callback] no access_token in response");
+      res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+      return;
+    }
 
     // Get the user's Gmail address
+    const oAuth2Client = getOAuthClient();
+    oAuth2Client.setCredentials(tokens);
     const oauth2 = google.oauth2({ version: "v2", auth: oAuth2Client });
     const userInfo = await oauth2.userinfo.get();
     const googleEmail = userInfo.data.email || "";
 
+    console.log("[google-callback] got gmail address:", googleEmail, "for userId:", userId);
+
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
 
-    await db.update(usersTable)
+    // Upsert so it works even if the user row doesn't exist yet
+    const updated = await db.update(usersTable)
       .set({
         googleAccessToken: tokens.access_token,
-        googleRefreshToken: tokens.refresh_token || undefined,
+        ...(tokens.refresh_token ? { googleRefreshToken: tokens.refresh_token } : {}),
         googleTokenExpiresAt: expiresAt,
         googleEmail,
         updatedAt: new Date(),
       })
-      .where(eq(usersTable.id, userId as string));
+      .where(eq(usersTable.id, userId as string))
+      .returning({ id: usersTable.id });
+
+    console.log("[google-callback] DB update rows:", updated.length, "userId searched:", userId);
+
+    if (updated.length === 0) {
+      // User row doesn't exist yet — create it
+      console.log("[google-callback] user not found in DB, inserting...");
+      await db.insert(usersTable).values({
+        id: userId as string,
+        email: googleEmail,
+        googleEmail,
+        googleAccessToken: tokens.access_token,
+        googleRefreshToken: tokens.refresh_token || null,
+        googleTokenExpiresAt: expiresAt,
+      }).onConflictDoNothing();
+    }
 
     res.redirect(`${frontendUrl}/dashboard?gmail_connected=true`);
   } catch (err) {
-    console.error("Google OAuth callback error:", err);
+    console.error("[google-callback] unexpected error:", err);
     res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
   }
 });

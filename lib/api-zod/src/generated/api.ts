@@ -287,3 +287,22 @@ export const UpdateSettingsResponse = zod.object({
   darkMode: zod.boolean().optional(),
   notifications: zod.boolean().optional(),
 });
+
+export const AgentRunBody = zod.object({
+  task: zod.string().min(1),
+  history: zod
+    .array(
+      zod.object({
+        role: zod.enum(["user", "assistant"]),
+        content: zod.string(),
+      }),
+    )
+    .optional(),
+});
+
+export const AgentSendBody = zod.object({
+  to: zod.string().min(1),
+  subject: zod.string().min(1),
+  body: zod.string(),
+  threadId: zod.string().optional(),
+});

@@ -263,3 +263,47 @@ export type GetHistoryParams = {
   offset?: number;
   q?: string;
 };
+
+export type AgentStepStatus = "success" | "error";
+
+export interface AgentStep {
+  toolName: string;
+  input: Record<string, unknown>;
+  output: string;
+  status: AgentStepStatus;
+}
+
+export interface AgentPendingEmail {
+  to: string;
+  subject: string;
+  body: string;
+  threadId?: string;
+}
+
+export interface AgentHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AgentRunBody {
+  task: string;
+  history?: AgentHistoryMessage[];
+}
+
+export interface AgentRunResponse {
+  answer: string;
+  steps: AgentStep[];
+  pendingEmail?: AgentPendingEmail;
+}
+
+export interface AgentSendBody {
+  to: string;
+  subject: string;
+  body: string;
+  threadId?: string;
+}
+
+export interface AgentSendResponse {
+  messageId?: string;
+  success: boolean;
+}

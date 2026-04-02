@@ -3,6 +3,7 @@ import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
 import { getGmailClientForUser, getCalendarClientForUser, parseEmailAddress, getHeader, decodeBody } from "../lib/gmailClient";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { AgentRunBody as AgentRunBodySchema, AgentSendBody as AgentSendBodySchema } from "@workspace/api-zod";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -12,10 +13,10 @@ import type {
 
 const router = Router();
 
-interface AgentRunBody {
+type AgentRunBody = {
   task: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
-}
+};
 
 interface AgentStep {
   toolName: string;
@@ -211,19 +212,18 @@ router.post("/agent/run", requireAuth, async (req, res) => {
   try {
     const auth = getAuth(req);
     const userId = auth.userId!;
-    const task = typeof req.body?.task === "string" ? req.body.task.trim() : "";
-    if (!task || task.length > 2000) {
-      res.status(400).json({ error: "task must be a non-empty string under 2000 characters" });
+
+    const parsed = AgentRunBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request body" });
       return;
     }
-    const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
-    const history: AgentRunBody["history"] = rawHistory
-      .filter((h: unknown) => h && typeof h === "object" && "role" in (h as object) && "content" in (h as object))
-      .map((h: unknown) => {
-        const item = h as { role: string; content: string };
-        return { role: (item.role === "assistant" ? "assistant" : "user") as "user" | "assistant", content: String(item.content) };
-      })
-      .slice(-20);
+    const { task, history: rawHistory = [] } = parsed.data;
+    if (task.length > 2000) {
+      res.status(400).json({ error: "task must be under 2000 characters" });
+      return;
+    }
+    const history: AgentRunBody["history"] = rawHistory.slice(-20);
 
     const steps: AgentStep[] = [];
     let pendingEmail: PendingEmail | undefined;
@@ -233,7 +233,7 @@ router.post("/agent/run", requireAuth, async (req, res) => {
 Your job is to complete tasks autonomously using the provided tools. Think step by step:
 1. Use search_emails to find relevant emails before reading them
 2. Use read_email to get full content when needed
-3. Use list_calendar_events to check availability before scheduling
+3. SCHEDULING RULE (mandatory): Before suggesting any meeting times, proposing availability, or drafting any scheduling-related reply, you MUST first call list_calendar_events. Only suggest times that do NOT conflict with existing events. If you skip this step, your scheduling suggestions will be wrong.
 4. For send_email: first draft the email content clearly, then call send_email — the user will confirm before it's sent
 5. Use create_calendar_event only when explicitly asked to add something to the calendar
 
@@ -367,15 +367,12 @@ router.post("/agent/send", requireAuth, async (req, res) => {
   try {
     const auth = getAuth(req);
     const userId = auth.userId!;
-    const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
-    const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
-    const body = typeof req.body?.body === "string" ? req.body.body : "";
-    const threadId = typeof req.body?.threadId === "string" ? req.body.threadId : undefined;
-
-    if (!to || !subject) {
-      res.status(400).json({ error: "to and subject are required" });
+    const sendParsed = AgentSendBodySchema.safeParse(req.body);
+    if (!sendParsed.success) {
+      res.status(400).json({ error: sendParsed.error.errors[0]?.message ?? "Invalid request body" });
       return;
     }
+    const { to, subject, body, threadId } = sendParsed.data;
 
     const gmail = await getGmailClientForUser(userId);
     const profile = await gmail.users.getProfile({ userId: "me" });

@@ -52,6 +52,10 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
       state: userId,
     });
 
+    console.log("[google-start] redirect_uri:", getRedirectUri());
+    console.log("[google-start] userId:", userId);
+    console.log("[google-start] oauth_url:", url);
+
     res.redirect(url);
   } catch (err: any) {
     if (err.message?.includes("GOOGLE_CLIENT_ID")) {

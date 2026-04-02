@@ -23,10 +23,9 @@ interface GmailStatus {
   email?: string;
 }
 
-type DisconnectAction =
+type DisconnectSpec =
   | { kind: "google-base" }
-  | { kind: "connectors-api"; connectorId: string }
-  | null;
+  | { kind: "connectors-api"; connectorIds: string[] };
 
 interface Integration {
   id: string;
@@ -34,8 +33,9 @@ interface Integration {
   description: string;
   logo: React.ReactNode;
   connectPath: string;
-  disconnect: DisconnectAction;
+  disconnect: DisconnectSpec | null;
   features: string[];
+  connectorKey: string | null;
   note?: string;
 }
 
@@ -56,6 +56,7 @@ const INTEGRATION_CATALOG: Integration[] = [
     connectPath: "/api/auth/google/start",
     disconnect: { kind: "google-base" },
     features: ["Inbox access", "Send replies", "Label management"],
+    connectorKey: null,
   },
   {
     id: "google-calendar",
@@ -74,12 +75,13 @@ const INTEGRATION_CATALOG: Integration[] = [
     connectPath: "/api/auth/google/start",
     disconnect: null,
     features: ["View upcoming events", "Create calendar events", "Meeting detection"],
+    connectorKey: null,
     note: "Included with Gmail — reconnect Google to grant calendar access.",
   },
   {
-    id: "gsuite-extensions",
-    title: "Google Drive & Contacts",
-    description: "Save email attachments to Drive and see Google Contacts info inline — both enabled with one re-authorization.",
+    id: "google-drive",
+    title: "Google Drive",
+    description: "Save email attachments directly to your Google Drive with one click.",
     logo: (
       <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
         <path d="M6 38l8-14 8 14z" fill="#FBBC05" />
@@ -89,13 +91,32 @@ const INTEGRATION_CATALOG: Integration[] = [
       </svg>
     ),
     connectPath: "/api/auth/google/extend",
-    disconnect: { kind: "connectors-api", connectorId: "google-drive" },
-    features: ["Save attachments directly to Drive", "Google Contacts info inline with emails"],
+    disconnect: { kind: "connectors-api", connectorIds: ["google-drive", "google-contacts"] },
+    features: ["Save attachments to Drive", "Access Drive files you create"],
+    connectorKey: "google-drive",
+    note: "Enabling Drive also enables Google Contacts — both use one re-authorization.",
+  },
+  {
+    id: "google-contacts",
+    title: "Google Contacts",
+    description: "See contact info from your Google address book inline when viewing emails.",
+    logo: (
+      <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
+        <rect x="6" y="6" width="36" height="36" rx="4" fill="#34A853" />
+        <circle cx="24" cy="20" r="7" fill="white" />
+        <ellipse cx="24" cy="38" rx="12" ry="8" fill="white" />
+      </svg>
+    ),
+    connectPath: "/api/auth/google/extend",
+    disconnect: { kind: "connectors-api", connectorIds: ["google-drive", "google-contacts"] },
+    features: ["View contact details inline", "Name and company lookup"],
+    connectorKey: "google-contacts",
+    note: "Enabling Contacts also enables Google Drive — both use one re-authorization.",
   },
   {
     id: "hubspot",
     title: "HubSpot",
-    description: "Look up and create HubSpot contacts from your inbox. See deal stage and CRM data right in the thread view.",
+    description: "Look up HubSpot contacts and deal stage directly inside email threads. Create contacts from your inbox.",
     logo: (
       <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
         <circle cx="24" cy="24" r="20" fill="#FF7A59" />
@@ -107,8 +128,9 @@ const INTEGRATION_CATALOG: Integration[] = [
       </svg>
     ),
     connectPath: "/api/auth/hubspot/start",
-    disconnect: { kind: "connectors-api", connectorId: "hubspot" },
-    features: ["Contact lookup in email threads", "Deal stage visibility", "Create contacts from inbox"],
+    disconnect: { kind: "connectors-api", connectorIds: ["hubspot"] },
+    features: ["Contact lookup in thread view", "Deal stage visibility", "Create contacts from inbox"],
+    connectorKey: "hubspot",
   },
 ];
 
@@ -134,6 +156,17 @@ function useGmailStatus() {
     },
     staleTime: 30_000,
   });
+}
+
+async function disconnectConnectorIds(connectorIds: string[]): Promise<void> {
+  await Promise.all(
+    connectorIds.map(id =>
+      fetch(`/api/connectors/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      }).then(r => { if (!r.ok) throw new Error(`Failed to remove ${id}`); })
+    )
+  );
 }
 
 export default function ConnectorsPage() {
@@ -180,29 +213,29 @@ export default function ConnectorsPage() {
 
   const connectedIds = new Set<string>(connectorsData?.connectors.map(c => c.connectorId) ?? []);
   const isGmailConnected = gmailStatus?.connected ?? false;
-  const driveConnected = connectedIds.has("google-drive");
 
   const disconnectMutation = useMutation({
-    mutationFn: async (action: { kind: "google-base" } | { kind: "connectors-api"; connectorId: string }) => {
-      if (action.kind === "google-base") {
+    mutationFn: async (spec: DisconnectSpec) => {
+      if (spec.kind === "google-base") {
         const res = await fetch("/api/auth/google/disconnect", {
           method: "POST",
           credentials: "include",
         });
         if (!res.ok) throw new Error("Failed to disconnect Gmail");
       } else {
-        const res = await fetch(`/api/connectors/${encodeURIComponent(action.connectorId)}`, {
-          method: "DELETE",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to disconnect");
+        await disconnectConnectorIds(spec.connectorIds);
       }
     },
-    onSuccess: (_, action) => {
+    onSuccess: (_, spec) => {
       qc.invalidateQueries({ queryKey: ["connectors"] });
       qc.invalidateQueries({ queryKey: ["connector-ids"] });
       qc.invalidateQueries({ queryKey: ["gmail-status"] });
-      const label = action.kind === "google-base" ? "Gmail" : action.connectorId === "hubspot" ? "HubSpot" : "Google extensions";
+      const label =
+        spec.kind === "google-base"
+          ? "Gmail"
+          : spec.connectorIds.includes("hubspot")
+          ? "HubSpot"
+          : "Google extensions";
       toast({ title: `${label} disconnected` });
     },
     onError: () => {
@@ -214,10 +247,10 @@ export default function ConnectorsPage() {
     if (integration.id === "gmail" || integration.id === "google-calendar") {
       return isGmailConnected;
     }
-    if (integration.id === "gsuite-extensions") {
-      return driveConnected;
+    if (integration.connectorKey) {
+      return connectedIds.has(integration.connectorKey);
     }
-    return connectedIds.has(integration.id);
+    return false;
   };
 
   const anyLoading = isLoading || isLoadingGmail;
@@ -228,7 +261,7 @@ export default function ConnectorsPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Connectors</h1>
           <p className="text-muted-foreground mt-1.5">
-            Connect your tools to get more out of ReplyAI — CRM data, calendar awareness, and file storage right inside your inbox.
+            Connect your tools to unlock CRM data, calendar awareness, and file storage inside your inbox.
           </p>
         </div>
 
@@ -278,10 +311,14 @@ export default function ConnectorsPage() {
                     ))}
                   </ul>
 
+                  {integration.note && (
+                    <p className="text-xs text-muted-foreground italic border-t pt-2">{integration.note}</p>
+                  )}
+
                   <div className="flex items-center gap-2 mt-auto pt-1">
                     {connected ? (
                       <>
-                        {integration.disconnect && integration.id !== "google-calendar" && (
+                        {integration.disconnect && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -305,8 +342,8 @@ export default function ConnectorsPage() {
                             </a>
                           </Button>
                         )}
-                        {integration.note && integration.id === "google-calendar" && (
-                          <span className="text-xs text-muted-foreground italic">{integration.note}</span>
+                        {integration.id === "google-calendar" && (
+                          <span className="text-xs text-muted-foreground italic">Managed with Gmail</span>
                         )}
                       </>
                     ) : (

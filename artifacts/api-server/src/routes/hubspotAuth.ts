@@ -5,6 +5,7 @@ import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 
 const router = Router();
 
@@ -33,11 +34,18 @@ router.get("/auth/hubspot/start", requireAuth, (req, res) => {
   const auth = getAuth(req);
   const userId = auth.userId!;
 
+  let state: string;
+  try {
+    state = createOAuthState(userId);
+  } catch {
+    return res.redirect(`${frontendUrl}/connectors?error=hubspot_not_configured`);
+  }
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: getHubSpotRedirectUri(),
     scope: HUBSPOT_SCOPES,
-    state: userId,
+    state,
   });
 
   res.redirect(`https://app.hubspot.com/oauth/authorize?${params.toString()}`);
@@ -47,14 +55,26 @@ router.get("/auth/hubspot/callback", async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
 
-  const { code, state: userId, error } = req.query;
+  const { code, state, error } = req.query;
 
   if (error) {
     console.error("[hubspot-callback] OAuth error:", error);
     return res.redirect(`${frontendUrl}/connectors?error=hubspot_denied`);
   }
 
-  if (!code || !userId) {
+  if (!code || !state || typeof state !== "string") {
+    return res.redirect(`${frontendUrl}/connectors?error=hubspot_missing_params`);
+  }
+
+  let userId: string | null;
+  try {
+    userId = verifyOAuthState(state);
+  } catch {
+    userId = null;
+  }
+
+  if (!userId) {
+    console.error("[hubspot-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=hubspot_missing_params`);
   }
 
@@ -79,7 +99,7 @@ router.get("/auth/hubspot/callback", async (req, res) => {
     });
 
     if (!tokenRes.ok) {
-      const err = await tokenRes.json().catch(() => ({}));
+      const err = await tokenRes.json().catch(() => ({})) as { message?: string };
       console.error("[hubspot-callback] token exchange failed:", err);
       return res.redirect(`${frontendUrl}/connectors?error=hubspot_token_failed`);
     }
@@ -88,15 +108,15 @@ router.get("/auth/hubspot/callback", async (req, res) => {
       access_token: string;
       refresh_token: string;
       expires_in: number;
-      hub_id?: number;
     };
 
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-    // Get portal info
     let portalId: string | null = null;
     try {
-      const infoRes = await fetch("https://api.hubapi.com/oauth/v1/access-tokens/" + tokens.access_token);
+      const infoRes = await fetch(
+        `https://api.hubapi.com/oauth/v1/access-tokens/${tokens.access_token}`,
+      );
       if (infoRes.ok) {
         const info = await infoRes.json() as { hub_id?: number };
         portalId = info.hub_id ? String(info.hub_id) : null;
@@ -109,7 +129,7 @@ router.get("/auth/hubspot/callback", async (req, res) => {
       .select({ id: connectorsTable.id })
       .from(connectorsTable)
       .where(and(
-        eq(connectorsTable.userId, userId as string),
+        eq(connectorsTable.userId, userId),
         eq(connectorsTable.connectorId, "hubspot"),
       ))
       .limit(1);
@@ -130,7 +150,7 @@ router.get("/auth/hubspot/callback", async (req, res) => {
     } else {
       await db.insert(connectorsTable).values({
         id: randomUUID(),
-        userId: userId as string,
+        userId,
         connectorId: "hubspot",
         displayName: "HubSpot",
         status: "connected",

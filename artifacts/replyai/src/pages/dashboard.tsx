@@ -1197,8 +1197,9 @@ export default function Dashboard() {
                   />
                   {(() => {
                     const lastMsg = threadData.messages[threadData.messages.length - 1] as EmailMessageWithAttachments;
+                    const firstMsg = threadData.messages[0] as EmailMessageWithAttachments;
                     const attachments = lastMsg.attachments ?? [];
-                    const senderEmail = lastMsg.fromEmail;
+                    const threadOriginatorEmail = firstMsg.fromEmail;
                     return (
                       <>
                         {attachments.length > 0 && (
@@ -1208,8 +1209,8 @@ export default function Dashboard() {
                             driveConnected={driveConnected}
                           />
                         )}
-                        {hubspotConnected && senderEmail && (
-                          <HubSpotContactPanel senderEmail={senderEmail} />
+                        {hubspotConnected && threadOriginatorEmail && (
+                          <HubSpotContactPanel senderEmail={threadOriginatorEmail} />
                         )}
                       </>
                     );

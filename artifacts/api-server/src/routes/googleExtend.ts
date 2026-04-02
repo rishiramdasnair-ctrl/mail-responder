@@ -6,15 +6,11 @@ import { db } from "@workspace/db";
 import { usersTable, connectorsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 
 const router = Router();
 
-const GSUITE_EXTENSION_SCOPES = [
-  "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/contacts.readonly",
-];
-
-const BASE_GOOGLE_SCOPES = [
+const ALL_EXTENDED_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.labels",
@@ -22,9 +18,14 @@ const BASE_GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/contacts.readonly",
 ];
 
-const ALL_EXTENDED_SCOPES = [...BASE_GOOGLE_SCOPES, ...GSUITE_EXTENSION_SCOPES];
+const GSUITE_CONNECTORS = [
+  { connectorId: "google-drive", displayName: "Google Drive" },
+  { connectorId: "google-contacts", displayName: "Google Contacts" },
+] as const;
 
 function getExtendRedirectUri() {
   if (process.env.GOOGLE_REDIRECT_URI_EXTEND) return process.env.GOOGLE_REDIRECT_URI_EXTEND;
@@ -49,13 +50,20 @@ router.get("/auth/google/extend", requireAuth, (req, res) => {
   const auth = getAuth(req);
   const userId = auth.userId!;
 
+  let state: string;
+  try {
+    state = createOAuthState(userId);
+  } catch {
+    return res.redirect(`${frontendUrl}/connectors?error=google_not_configured`);
+  }
+
   try {
     const oAuth2Client = getOAuthClient();
     const url = oAuth2Client.generateAuthUrl({
       access_type: "offline",
       scope: ALL_EXTENDED_SCOPES,
       prompt: "consent",
-      state: userId,
+      state,
     });
     res.redirect(url);
   } catch {
@@ -67,13 +75,25 @@ router.get("/auth/google/extend/callback", async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
 
-  const { code, state: userId, error } = req.query;
+  const { code, state, error } = req.query;
 
   if (error) {
     return res.redirect(`${frontendUrl}/connectors?error=google_extend_denied`);
   }
 
-  if (!code || !userId || typeof userId !== "string") {
+  if (!code || !state || typeof state !== "string") {
+    return res.redirect(`${frontendUrl}/connectors?error=google_extend_missing_params`);
+  }
+
+  let userId: string | null;
+  try {
+    userId = verifyOAuthState(state);
+  } catch {
+    userId = null;
+  }
+
+  if (!userId) {
+    console.error("[google-extend-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=google_extend_missing_params`);
   }
 
@@ -93,11 +113,6 @@ router.get("/auth/google/extend/callback", async (req, res) => {
       googleTokenExpiresAt: expiresAt,
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
-
-    const GSUITE_CONNECTORS = [
-      { connectorId: "google-drive", displayName: "Google Drive" },
-      { connectorId: "google-contacts", displayName: "Google Contacts" },
-    ] as const;
 
     for (const { connectorId, displayName } of GSUITE_CONNECTORS) {
       const existing = await db

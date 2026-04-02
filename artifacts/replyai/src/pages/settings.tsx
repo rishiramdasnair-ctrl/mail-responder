@@ -130,36 +130,48 @@ export default function Settings() {
             {isLoadingGmail ? (
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             ) : (
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Mail className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium">Google Workspace</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {gmailStatus?.connected ? `Connected as ${gmailStatus.email}` : "Not connected"}
-                    </p>
-                  </div>
-                </div>
-                {gmailStatus?.connected ? (
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-500">
-                      <CheckCircle2 className="w-4 h-4" /> Connected
+              <div className="border rounded-lg bg-card overflow-hidden">
+                <div className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Mail className="w-5 h-5 text-primary" />
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => disconnectMutation.mutate()}
-                      disabled={disconnectMutation.isPending}
-                    >
-                      {disconnectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Disconnect"}
+                    <div>
+                      <h3 className="font-medium">Google Workspace</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {gmailStatus?.connected ? `Connected as ${gmailStatus.email}` : "Not connected"}
+                      </p>
+                    </div>
+                  </div>
+                  {gmailStatus?.connected ? (
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-500">
+                        <CheckCircle2 className="w-4 h-4" /> Connected
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => disconnectMutation.mutate()}
+                        disabled={disconnectMutation.isPending}
+                      >
+                        {disconnectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Disconnect"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button onClick={handleConnectGmail}>
+                      Connect Google
+                    </Button>
+                  )}
+                </div>
+                {gmailStatus?.connected && (
+                  <div className="px-4 py-3 border-t bg-muted/30 flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      To enable Calendar integration, reconnect your Google account to grant calendar access.
+                    </p>
+                    <Button variant="outline" size="sm" className="shrink-0 text-xs" onClick={handleConnectGmail}>
+                      Reconnect for Calendar
                     </Button>
                   </div>
-                ) : (
-                  <Button onClick={handleConnectGmail}>
-                    Connect Gmail
-                  </Button>
                 )}
               </div>
             )}

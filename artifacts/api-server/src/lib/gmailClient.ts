@@ -52,6 +52,13 @@ export async function getGmailClientForUser(userId: string) {
   return google.gmail({ version: "v1", auth: oauth2Client });
 }
 
+export async function getCalendarClientForUser(userId: string) {
+  const accessToken = await getFreshAccessToken(userId);
+  const oauth2Client = new google.auth.OAuth2();
+  oauth2Client.setCredentials({ access_token: accessToken });
+  return google.calendar({ version: "v3", auth: oauth2Client });
+}
+
 export async function isGmailConnected(userId: string): Promise<{ connected: boolean; email?: string }> {
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);

@@ -41,7 +41,9 @@ ReplyAI is a production Gmail AI auto-responder. Users connect Gmail, browse the
 - GET /api/gmail/threads/:threadId — single thread
 - GET /api/gmail/labels — Gmail labels
 - POST /api/gmail/send — send reply
-- POST /api/ai/generate — generate 3 AI replies
+- POST /api/ai/generate — generate 3 AI replies (accepts optional calendarContext)
+- GET /api/calendar/events — list upcoming calendar events (next 7 days)
+- POST /api/calendar/events — create a calendar event
 - GET /api/history — reply history
 - GET /api/history/stats — usage stats
 - GET /api/billing/plans — available plans
@@ -51,6 +53,9 @@ ReplyAI is a production Gmail AI auto-responder. Users connect Gmail, browse the
 - GET /api/settings — user settings
 - PUT /api/settings — update settings
 - POST /api/stripe/webhook — Stripe webhook (raw body)
+- GET /api/auth/google/start — start Google OAuth (Gmail + Calendar)
+- GET /api/auth/google/callback — Google OAuth callback
+- POST /api/auth/google/disconnect — disconnect Google account
 
 ## Frontend Pages
 - `/` — Landing page (unauthenticated) / redirect to /dashboard (authenticated)

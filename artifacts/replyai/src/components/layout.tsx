@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useClerk } from "@clerk/react";
-import { Inbox, Clock, Settings, CreditCard, LogOut, Mail, Menu } from "lucide-react";
+import { Inbox, Clock, Settings, CreditCard, LogOut, Mail, Menu, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGetMe, useGetSubscription, useGetGmailStatus } from "@workspace/api-client-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -28,6 +28,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <Link href="/dashboard" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/dashboard" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
         <Inbox className="w-4 h-4" />
         Dashboard
+      </Link>
+      <Link href="/agent" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/agent" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
+        <Bot className="w-4 h-4" />
+        Agent
       </Link>
       <Link href="/history" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/history" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
         <Clock className="w-4 h-4" />

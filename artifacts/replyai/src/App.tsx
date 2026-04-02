@@ -11,6 +11,7 @@ import { queryClient } from "@/lib/queryClient";
 
 import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
+import AgentPage from "@/pages/agent";
 import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import Pricing from "@/pages/pricing";
@@ -111,6 +112,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/sign-up/*?" component={SignUpPage} />
           
           <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
+          <Route path="/agent"><ProtectedRoute component={AgentPage} /></Route>
           <Route path="/history"><ProtectedRoute component={History} /></Route>
           <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
           <Route path="/pricing"><ProtectedRoute component={Pricing} /></Route>

@@ -32,7 +32,7 @@ router.post("/ai/generate", requireAuth, async (req, res) => {
     const body = GenerateRepliesBody.parse(req.body);
 
     const calendarSection = calendarContext
-      ? `\n\nThe user's upcoming calendar (use this when suggesting meeting times or availability):\n${calendarContext}`
+      ? `\n\nCalendar context (next 7 days):\n${calendarContext}\n\nUse the calendar above to:\n- Suggest specific available times when scheduling is requested (times NOT listed as busy)\n- Avoid proposing times that conflict with existing events\n- Acknowledge busy days when relevant`
       : "";
 
     const systemPrompt = `You are ReplyAI, an expert email assistant. Generate 3 distinct reply suggestions for the given email.
@@ -41,9 +41,7 @@ For each reply, provide:
 2. A "casual" tone: Friendly, conversational, warm
 3. A "fast" tone: Ultra-brief, 1-3 sentences max
 
-For each suggestion, also provide a 1-line "reasoning" explaining why this reply works.
-
-When a meeting or scheduling request is mentioned and calendar availability is provided, suggest specific real times from the user's free slots.${calendarSection}
+For each suggestion, also provide a 1-line "reasoning" explaining why this reply works.${calendarSection}
 
 Respond ONLY with a valid JSON object in this exact format:
 {

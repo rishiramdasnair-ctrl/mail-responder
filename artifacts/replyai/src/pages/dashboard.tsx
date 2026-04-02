@@ -236,9 +236,13 @@ function CalendarPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-function isMeetingEmail(subject: string, body: string) {
+function isMeetingEmail(subject: string, body: string): boolean {
   const text = `${subject} ${body}`.toLowerCase();
-  return /\b(meeting|meet|call|schedule|appointment|invite|zoom|teams|google meet|calendar|availability|available|slot|time)\b/.test(text);
+  const strongSignals = /\b(meeting|appointment|schedule a call|book a call|zoom|google meet|microsoft teams|teams call|conference call|video call|phone call|catch up|catchup)\b/;
+  if (strongSignals.test(text)) return true;
+  const weakSignals = /\b(meet|call|schedule|invite|calendar|availability|available)\b/;
+  const timeRef = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next week|this week|today|\d{1,2}\s*(am|pm)|\d{1,2}:\d{2}|morning|afternoon|evening|this month|next month)\b/;
+  return weakSignals.test(text) && timeRef.test(text);
 }
 
 function AddToCalendarDialog({
@@ -377,18 +381,27 @@ export default function Dashboard() {
   const generateReplies = useGenerateReplies();
   const sendReply = useSendReply();
 
-  // Build calendar context string for AI awareness
+  // Build full 7-day calendar context string for AI awareness
   const calendarContext = (() => {
     if (!calendarData?.events?.length) return undefined;
-    const todayEvents = calendarData.events.filter(e => {
+    const byDay = new Map<string, typeof calendarData.events>();
+    for (const event of calendarData.events) {
+      const dayKey = event.start.substring(0, 10);
+      if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+      byDay.get(dayKey)!.push(event);
+    }
+    const lines: string[] = [];
+    for (const [day, events] of [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
       try {
-        return isToday(parseISO(e.start));
-      } catch { return false; }
-    });
-    if (!todayEvents.length) return undefined;
-    return "Today's schedule:\n" + todayEvents.map(e =>
-      `- ${formatEventTime(e.start, e.isAllDay)}: ${e.title}${e.location ? ` @ ${e.location}` : ""}`
-    ).join("\n");
+        const date = parseISO(day + "T00:00:00");
+        const label = isToday(date) ? "Today" : isTomorrow(date) ? "Tomorrow" : format(date, "EEEE, MMM d");
+        lines.push(`${label}:`);
+        for (const e of events) {
+          lines.push(`  - ${formatEventTime(e.start, e.isAllDay)}: ${e.title}${e.location ? ` @ ${e.location}` : ""}`);
+        }
+      } catch { continue; }
+    }
+    return lines.length ? lines.join("\n") : undefined;
   })();
 
   const lastGeneratedRef = useRef<{ threadId: string; hadCalendar: boolean } | null>(null);

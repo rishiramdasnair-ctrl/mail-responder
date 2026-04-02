@@ -89,8 +89,12 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
       htmlLink: event.data.htmlLink,
     });
   } catch (err: any) {
-    if (err.message?.includes("not connected")) {
+    if (err.message?.includes("not connected") || err.message?.includes("Not connected")) {
       res.status(403).json({ error: "Google account not connected", code: "NOT_CONNECTED" });
+      return;
+    }
+    if (err.code === 403 || err.status === 403) {
+      res.status(403).json({ error: "Calendar access not granted. Please reconnect your Google account.", code: "PERMISSION_DENIED" });
       return;
     }
     req.log.error({ err }, "Error creating calendar event");

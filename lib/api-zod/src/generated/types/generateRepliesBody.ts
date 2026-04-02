@@ -13,4 +13,5 @@ export interface GenerateRepliesBody {
   emailFrom: string;
   emailSubject: string;
   emailHistory?: GenerateRepliesBodyEmailHistoryItem[];
+  calendarContext?: string;
 }

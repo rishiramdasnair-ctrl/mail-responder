@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { AppLayout } from "@/components/layout";
 import { 
   useGetInbox, 
@@ -48,16 +48,25 @@ interface CalendarEvent {
   description: string | null;
 }
 
+interface CalendarApiError extends Error {
+  code?: string;
+  status?: number;
+}
+
 function useCalendarEvents() {
-  return useQuery<{ events: CalendarEvent[] }>({
+  return useQuery<{ events: CalendarEvent[] }, CalendarApiError>({
     queryKey: ["calendar-events"],
     queryFn: async () => {
       const res = await fetch("/api/calendar/events", { credentials: "include" });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw Object.assign(new Error(data.error || "Failed to fetch"), { code: data.code, status: res.status });
+        const data: { error?: string; code?: string } = await res.json().catch(() => ({}));
+        const err: CalendarApiError = Object.assign(new Error(data.error || "Failed to fetch"), {
+          code: data.code,
+          status: res.status,
+        });
+        throw err;
       }
-      return res.json();
+      return res.json() as Promise<{ events: CalendarEvent[] }>;
     },
     retry: false,
     staleTime: 60_000,
@@ -124,7 +133,6 @@ function groupEventsByDay(events: CalendarEvent[]) {
 
 function CalendarPanel({ onClose }: { onClose: () => void }) {
   const { data, isLoading, error } = useCalendarEvents();
-  const anyError = error as any;
 
   const events = data?.events || [];
   const grouped = groupEventsByDay(events);
@@ -152,13 +160,13 @@ function CalendarPanel({ onClose }: { onClose: () => void }) {
               </div>
             ))}
           </div>
-        ) : anyError?.code === "NOT_CONNECTED" ? (
+        ) : error?.code === "NOT_CONNECTED" ? (
           <div className="p-4 text-center text-muted-foreground text-xs space-y-2">
             <CalendarDays className="w-6 h-6 mx-auto opacity-30" />
             <p>Calendar not connected.</p>
             <p>Connect Google in Settings.</p>
           </div>
-        ) : anyError?.code === "PERMISSION_DENIED" ? (
+        ) : error?.code === "PERMISSION_DENIED" ? (
           <div className="p-4 text-center text-muted-foreground text-xs space-y-2">
             <CalendarDays className="w-6 h-6 mx-auto opacity-30" />
             <p className="text-xs">Calendar access not granted.</p>
@@ -383,20 +391,44 @@ export default function Dashboard() {
     ).join("\n");
   })();
 
+  const lastGeneratedRef = useRef<{ threadId: string; hadCalendar: boolean } | null>(null);
+
+  const triggerGeneration = useCallback((
+    thread: NonNullable<typeof threadData>,
+    ctx: string | undefined,
+  ) => {
+    const lastMsg = thread.messages[thread.messages.length - 1];
+    generateReplies.mutate({
+      data: {
+        threadId: thread.id,
+        emailBody: lastMsg.body || lastMsg.snippet,
+        emailFrom: lastMsg.from,
+        emailSubject: lastMsg.subject,
+        calendarContext: ctx,
+      },
+    });
+    lastGeneratedRef.current = { threadId: thread.id, hadCalendar: !!ctx };
+  }, [generateReplies.mutate]);
+
+  // Trigger when a new thread is loaded
   useEffect(() => {
     if (threadData && threadData.messages.length > 0) {
-      const lastMessage = threadData.messages[threadData.messages.length - 1];
-      generateReplies.mutate({
-        data: {
-          threadId: threadData.id,
-          emailBody: lastMessage.body || lastMessage.snippet,
-          emailFrom: lastMessage.from,
-          emailSubject: lastMessage.subject,
-          ...(calendarContext ? { calendarContext } : {}),
-        } as any,
-      });
+      triggerGeneration(threadData, calendarContext);
     }
   }, [threadData?.id]);
+
+  // Re-trigger if calendar data arrives AFTER the thread was already generated without it
+  useEffect(() => {
+    if (
+      calendarContext &&
+      threadData &&
+      threadData.messages.length > 0 &&
+      lastGeneratedRef.current?.threadId === threadData.id &&
+      !lastGeneratedRef.current.hadCalendar
+    ) {
+      triggerGeneration(threadData, calendarContext);
+    }
+  }, [calendarContext]);
 
   const handleSend = (content: string, tone: string) => {
     if (!threadData || !selectedThreadId) return;
@@ -639,15 +671,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <div className="text-center py-8">
-                      <Button variant="outline" onClick={() => generateReplies.mutate({
-                        data: {
-                          threadId: threadData.id,
-                          emailBody: threadData.messages[threadData.messages.length - 1].body || "",
-                          emailFrom: threadData.messages[threadData.messages.length - 1].from,
-                          emailSubject: threadData.subject,
-                          ...(calendarContext ? { calendarContext } : {}),
-                        } as any,
-                      })}>
+                      <Button variant="outline" onClick={() => triggerGeneration(threadData, calendarContext)}>
                         Regenerate Suggestions
                       </Button>
                     </div>

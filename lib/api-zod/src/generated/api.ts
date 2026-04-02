@@ -149,6 +149,7 @@ export const GenerateRepliesBody = zod.object({
       }),
     )
     .optional(),
+  calendarContext: zod.string().optional(),
 });
 
 export const GenerateRepliesResponse = zod.object({

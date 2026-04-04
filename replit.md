@@ -30,13 +30,17 @@ ReplyAI is a production Gmail AI auto-responder. Users connect Gmail, browse the
 - Gmail: Google Mail Replit Connector (conn_google-mail_01KKPXV03F028D1G1GV18TTR3E)
 
 ## Database Schema
-- `users` — id (Clerk userId), email, plan (trial/pro), trialEndsAt, repliesUsed, stripeCustomerId, stripeSubscriptionId
+- `users` — id (Clerk userId), email, plan (trial/pro), trialEndsAt, repliesUsed, stripeCustomerId, stripeSubscriptionId; also holds googleAccessToken/refreshToken for backward-compat (primary account)
+- `gmail_accounts` — id (serial), userId, email, accessToken, refreshToken, tokenExpiresAt, isPrimary; unique index on (userId, email); source of truth for multi-account Gmail
 - `reply_history` — id, userId, threadId, subject, fromEmail, tone, replySent, reasoning, wasSent
 - `user_settings` — userId, defaultTone, customInstructions, emailSignature, darkMode, notifications
 
 ## API Routes (all under /api prefix)
 - GET /api/auth/me — current user profile + plan
-- GET /api/gmail/status — Gmail connection status
+- GET /api/gmail/accounts — list all connected Gmail accounts for user
+- DELETE /api/gmail/accounts/:email — disconnect specific Gmail account
+- GET /api/auth/google/start?addAccount=true — OAuth flow to add a new Gmail account
+- GET /api/gmail/status — Gmail connection status; accepts ?account= param
 - GET /api/gmail/inbox — inbox thread list
 - GET /api/gmail/threads/:threadId — single thread
 - GET /api/gmail/labels — Gmail labels

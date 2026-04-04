@@ -13,6 +13,10 @@ import { SendReplyBody } from "@workspace/api-zod";
 
 const router = Router();
 
+function getAccount(req: any): string | undefined {
+  return (req.query.account as string) || (req.body?.account as string) || undefined;
+}
+
 router.get("/gmail/status", requireAuth, async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -21,8 +25,8 @@ router.get("/gmail/status", requireAuth, async (req, res) => {
     const status = await isGmailConnected(userId);
     if (!status.connected) { res.json({ connected: false }); return; }
 
-    // Verify the token actually works
-    const gmail = await getGmailClientForUser(userId);
+    const account = getAccount(req);
+    const gmail = await getGmailClientForUser(userId, account);
     const profile = await gmail.users.getProfile({ userId: "me" });
     res.json({
       connected: true,
@@ -39,7 +43,8 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
     const { userId } = getAuth(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const gmail = await getGmailClientForUser(userId);
+    const account = getAccount(req);
+    const gmail = await getGmailClientForUser(userId, account);
     const label = (req.query.label as string) || "INBOX";
     const maxResults = parseInt((req.query.maxResults as string) || "50");
     const pageToken = req.query.pageToken as string | undefined;
@@ -119,7 +124,8 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
     const { userId } = getAuth(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const gmail = await getGmailClientForUser(userId);
+    const account = getAccount(req);
+    const gmail = await getGmailClientForUser(userId, account);
     const threadId = req.params.threadId;
 
     const thread = await gmail.users.threads.get({
@@ -171,7 +177,8 @@ router.get("/gmail/labels", requireAuth, async (req, res) => {
     const { userId } = getAuth(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const gmail = await getGmailClientForUser(userId);
+    const account = getAccount(req);
+    const gmail = await getGmailClientForUser(userId, account);
     const labelsRes = await gmail.users.labels.list({ userId: "me" });
     const labels = labelsRes.data.labels || [];
 
@@ -187,7 +194,8 @@ router.post("/gmail/threads/:threadId/modify", requireAuth, async (req, res) => 
     const { userId } = getAuth(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const gmail = await getGmailClientForUser(userId);
+    const account = getAccount(req);
+    const gmail = await getGmailClientForUser(userId, account);
     const { threadId } = req.params;
     const addLabelIds: string[] = Array.isArray(req.body?.addLabelIds) ? req.body.addLabelIds : [];
     const removeLabelIds: string[] = Array.isArray(req.body?.removeLabelIds) ? req.body.removeLabelIds : [];
@@ -216,15 +224,16 @@ router.post("/gmail/compose", requireAuth, async (req, res) => {
     const cc = typeof req.body?.cc === "string" ? req.body.cc.trim() : "";
     const bcc = typeof req.body?.bcc === "string" ? req.body.bcc.trim() : "";
     const threadId = typeof req.body?.threadId === "string" ? req.body.threadId : undefined;
+    const account = getAccount(req);
 
     if (!to || !subject) {
       res.status(400).json({ error: "to and subject are required" });
       return;
     }
 
-    const gmail = await getGmailClientForUser(userId);
+    const gmail = await getGmailClientForUser(userId, account);
     const profile = await gmail.users.getProfile({ userId: "me" });
-    const fromEmail = profile.data.emailAddress || "";
+    const fromEmail = account || profile.data.emailAddress || "";
 
     const emailLines = [
       `From: ${fromEmail}`,
@@ -255,11 +264,12 @@ router.post("/gmail/send", requireAuth, async (req, res) => {
     const { userId } = getAuth(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    const account = (req.body?.account as string) || undefined;
     const body = SendReplyBody.parse(req.body);
-    const gmail = await getGmailClientForUser(userId);
+    const gmail = await getGmailClientForUser(userId, account);
 
     const profile = await gmail.users.getProfile({ userId: "me" });
-    const fromEmail = profile.data.emailAddress || "";
+    const fromEmail = account || profile.data.emailAddress || "";
 
     const emailLines = [
       `From: ${fromEmail}`,
@@ -295,8 +305,9 @@ router.get("/gmail/messages/:messageId/attachments/:attachmentId", requireAuth, 
     const { messageId, attachmentId } = req.params;
     const filename = (req.query.filename as string) || "attachment";
     const mimeType = (req.query.mimeType as string) || "application/octet-stream";
+    const account = getAccount(req);
 
-    const gmail = await getGmailClientForUser(userId);
+    const gmail = await getGmailClientForUser(userId, account);
     const response = await gmail.users.messages.attachments.get({
       userId: "me",
       messageId,

@@ -1,8 +1,8 @@
 // Gmail integration via per-user Google OAuth tokens stored in the database
 import { google } from "googleapis";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usersTable, gmailAccountsTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 
 function getOAuthClient() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -12,30 +12,88 @@ function getOAuthClient() {
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-async function getFreshAccessToken(userId: string): Promise<string> {
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+// Auto-migrate: if user has tokens in users table but no gmail_accounts rows,
+// insert a primary row so multi-account works transparently.
+async function ensureMigrated(userId: string, user: { googleRefreshToken: string | null; googleAccessToken: string | null; googleTokenExpiresAt: Date | null; googleEmail: string | null }) {
+  if (!user.googleRefreshToken) return;
+  const existing = await db.select({ id: gmailAccountsTable.id })
+    .from(gmailAccountsTable)
+    .where(eq(gmailAccountsTable.userId, userId))
+    .limit(1);
+  if (existing.length > 0) return; // already migrated
+  const email = user.googleEmail || "";
+  if (!email) return;
+  await db.insert(gmailAccountsTable).values({
+    userId,
+    email,
+    accessToken: user.googleAccessToken,
+    refreshToken: user.googleRefreshToken,
+    tokenExpiresAt: user.googleTokenExpiresAt,
+    isPrimary: true,
+  }).onConflictDoNothing();
+}
 
-  if (!user?.googleRefreshToken) {
-    throw new Error("Gmail not connected. Please connect your Gmail account.");
+async function getFreshAccessToken(userId: string, accountEmail?: string): Promise<string> {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) throw new Error("User not found");
+
+  // Try to migrate legacy tokens first
+  await ensureMigrated(userId, user);
+
+  let account;
+  if (accountEmail) {
+    const [found] = await db.select().from(gmailAccountsTable)
+      .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, accountEmail)))
+      .limit(1);
+    if (!found) throw new Error(`Gmail account ${accountEmail} not connected.`);
+    account = found;
+  } else {
+    // Use primary account from gmail_accounts
+    const accounts = await db.select().from(gmailAccountsTable)
+      .where(eq(gmailAccountsTable.userId, userId));
+    account = accounts.find(a => a.isPrimary) ?? accounts[0];
+    if (!account) {
+      // Final fallback: old users table tokens (pre-migration)
+      if (!user.googleRefreshToken) throw new Error("Gmail not connected. Please connect your Gmail account.");
+      account = {
+        id: -1,
+        userId,
+        email: user.googleEmail || "",
+        accessToken: user.googleAccessToken,
+        refreshToken: user.googleRefreshToken!,
+        tokenExpiresAt: user.googleTokenExpiresAt,
+        isPrimary: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
   }
 
   const oAuth2Client = getOAuthClient();
   oAuth2Client.setCredentials({
-    refresh_token: user.googleRefreshToken,
-    access_token: user.googleAccessToken,
-    expiry_date: user.googleTokenExpiresAt?.getTime(),
+    refresh_token: account.refreshToken,
+    access_token: account.accessToken,
+    expiry_date: account.tokenExpiresAt?.getTime(),
   });
 
-  // Refresh token if expired or expiring within 60 seconds
-  const expiresAt = user.googleTokenExpiresAt?.getTime() ?? 0;
-  if (!user.googleAccessToken || expiresAt < Date.now() + 60_000) {
+  // Refresh if expired or expiring within 60 seconds
+  const expiresAt = account.tokenExpiresAt?.getTime() ?? 0;
+  if (!account.accessToken || expiresAt < Date.now() + 60_000) {
     const { credentials } = await oAuth2Client.refreshAccessToken();
-    // Update stored token
-    await db.update(usersTable).set({
-      googleAccessToken: credentials.access_token,
-      googleTokenExpiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined,
-      updatedAt: new Date(),
-    }).where(eq(usersTable.id, userId));
+    if (account.id !== -1) {
+      await db.update(gmailAccountsTable).set({
+        accessToken: credentials.access_token,
+        tokenExpiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined,
+        updatedAt: new Date(),
+      }).where(eq(gmailAccountsTable.id, account.id));
+    } else {
+      // legacy path: update users table
+      await db.update(usersTable).set({
+        googleAccessToken: credentials.access_token,
+        googleTokenExpiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined,
+        updatedAt: new Date(),
+      }).where(eq(usersTable.id, userId));
+    }
     oAuth2Client.setCredentials(credentials);
   }
 
@@ -45,21 +103,21 @@ async function getFreshAccessToken(userId: string): Promise<string> {
 }
 
 // Returns a raw OAuth2 client (for use with any Google API: People, Drive, etc.)
-export async function getOAuth2ClientForUser(userId: string) {
-  const accessToken = await getFreshAccessToken(userId);
+export async function getOAuth2ClientForUser(userId: string, accountEmail?: string) {
+  const accessToken = await getFreshAccessToken(userId, accountEmail);
   const oauth2Client = new google.auth.OAuth2();
   oauth2Client.setCredentials({ access_token: accessToken });
   return oauth2Client;
 }
 
 // WARNING: Never cache this client. Access tokens expire.
-export async function getGmailClientForUser(userId: string) {
-  const oauth2Client = await getOAuth2ClientForUser(userId);
+export async function getGmailClientForUser(userId: string, accountEmail?: string) {
+  const oauth2Client = await getOAuth2ClientForUser(userId, accountEmail);
   return google.gmail({ version: "v1", auth: oauth2Client });
 }
 
-export async function getCalendarClientForUser(userId: string) {
-  const accessToken = await getFreshAccessToken(userId);
+export async function getCalendarClientForUser(userId: string, accountEmail?: string) {
+  const accessToken = await getFreshAccessToken(userId, accountEmail);
   const oauth2Client = new google.auth.OAuth2();
   oauth2Client.setCredentials({ access_token: accessToken });
   return google.calendar({ version: "v3", auth: oauth2Client });
@@ -68,11 +126,24 @@ export async function getCalendarClientForUser(userId: string) {
 export async function isGmailConnected(userId: string): Promise<{ connected: boolean; email?: string }> {
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user?.googleRefreshToken) return { connected: false };
+    if (!user) return { connected: false };
+    // Check gmail_accounts table first
+    const accounts = await db.select().from(gmailAccountsTable).where(eq(gmailAccountsTable.userId, userId)).limit(1);
+    if (accounts.length > 0) return { connected: true, email: accounts[0].email };
+    // Fall back to users table
+    if (!user.googleRefreshToken) return { connected: false };
     return { connected: true, email: user.googleEmail || undefined };
   } catch {
     return { connected: false };
   }
+}
+
+export async function getConnectedGmailAccounts(userId: string): Promise<Array<{ email: string; isPrimary: boolean }>> {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (user) await ensureMigrated(userId, user);
+  const accounts = await db.select().from(gmailAccountsTable)
+    .where(eq(gmailAccountsTable.userId, userId));
+  return accounts.map(a => ({ email: a.email, isPrimary: a.isPrimary }));
 }
 
 export function parseEmailAddress(header: string): { name: string; email: string } {

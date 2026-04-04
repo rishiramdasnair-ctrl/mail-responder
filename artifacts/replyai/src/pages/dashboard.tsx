@@ -2,16 +2,13 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { AppLayout } from "@/components/layout";
 import { useMailFolder, FolderId as FolderIdFromCtx } from "@/contexts/mail-folder";
 import { 
-  useGetInbox, 
-  useGetThread, 
   useGenerateReplies, 
-  useSendReply,
-  getGetInboxQueryKey,
   type EmailAttachment,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +45,10 @@ import {
   Building2,
   ExternalLink,
   UserPlus,
+  ChevronDown,
+  Plus,
+  Check,
+  LogOut,
 } from "lucide-react";
 import { format, isToday, isTomorrow, isThisWeek, parseISO, startOfDay, isSameDay } from "date-fns";
 
@@ -1123,6 +1124,18 @@ export default function Dashboard() {
   const [showCalendar, setShowCalendar] = useState(true);
   const [showAddToCalendar, setShowAddToCalendar] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+
+  const { data: gmailAccountsData, refetch: refetchAccounts } = useQuery({
+    queryKey: ["gmail-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/gmail/accounts", { credentials: "include" });
+      if (!res.ok) return { accounts: [] as Array<{ email: string; isPrimary: boolean }> };
+      return res.json() as Promise<{ accounts: Array<{ email: string; isPrimary: boolean }> }>;
+    },
+  });
+  const gmailAccounts = gmailAccountsData?.accounts ?? [];
+  const activeAccount = selectedAccount ?? gmailAccounts.find(a => a.isPrimary)?.email ?? gmailAccounts[0]?.email ?? null;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
@@ -1136,18 +1149,37 @@ export default function Dashboard() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const url = new URL(window.location.href);
     if (params.get("gmail_connected") === "true") {
       toast({ title: "Gmail connected!", description: "Your inbox is now loading." });
-      const url = new URL(window.location.href);
       url.searchParams.delete("gmail_connected");
       window.history.replaceState({}, "", url.toString());
+      refetchAccounts();
+    } else if (params.get("gmail_account_added") === "true") {
+      toast({ title: "Account added!", description: "Your new Gmail account is now connected." });
+      url.searchParams.delete("gmail_account_added");
+      window.history.replaceState({}, "", url.toString());
+      refetchAccounts();
     }
   }, []);
 
-  const { data: inboxData, isLoading: isLoadingInbox, isError: isInboxError, refetch: refetchInbox } = useGetInbox(
-    { maxResults: 30, label: activeLabel, q: debouncedSearch || undefined },
-    { query: { queryKey: ["inbox", activeLabel, debouncedSearch], retry: 1 } }
-  );
+  const { data: inboxData, isLoading: isLoadingInbox, isError: isInboxError, refetch: refetchInbox } = useQuery({
+    queryKey: ["inbox", activeLabel, debouncedSearch, activeAccount],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ maxResults: "30", label: activeLabel });
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      if (activeAccount) params.set("account", activeAccount);
+      const res = await fetch(`/api/gmail/inbox?${params}`, { credentials: "include", signal });
+      if (!res.ok) {
+        const err: any = new Error("Failed to fetch inbox");
+        const data = await res.json().catch(() => ({}));
+        if (data.notConnected) err.notConnected = true;
+        throw err;
+      }
+      return res.json() as Promise<{ threads: any[]; nextPageToken?: string }>;
+    },
+    retry: 1,
+  });
 
   const modifyThread = useMutation({
     mutationFn: async ({ threadId, addLabelIds = [], removeLabelIds = [] }: { threadId: string; addLabelIds?: string[]; removeLabelIds?: string[] }) => {
@@ -1155,7 +1187,7 @@ export default function Dashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ addLabelIds, removeLabelIds }),
+        body: JSON.stringify({ addLabelIds, removeLabelIds, account: activeAccount }),
       });
       if (!res.ok) throw new Error("Failed to modify thread");
     },
@@ -1196,10 +1228,18 @@ export default function Dashboard() {
     );
   };
 
-  const { data: threadData, isLoading: isLoadingThread } = useGetThread(
-    selectedThreadId || "",
-    { query: { enabled: !!selectedThreadId, queryKey: [selectedThreadId] } }
-  );
+  const { data: threadData, isLoading: isLoadingThread } = useQuery({
+    queryKey: ["thread", selectedThreadId, activeAccount],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams();
+      if (activeAccount) params.set("account", activeAccount);
+      const qs = params.toString() ? `?${params}` : "";
+      const res = await fetch(`/api/gmail/threads/${selectedThreadId}${qs}`, { credentials: "include", signal });
+      if (!res.ok) throw new Error("Failed to fetch thread");
+      return res.json();
+    },
+    enabled: !!selectedThreadId,
+  });
 
   const { data: calendarData } = useCalendarEvents();
   const { data: connectorsData } = useConnectorIds();
@@ -1208,7 +1248,18 @@ export default function Dashboard() {
   const contactsConnected = connectorsData?.connectors.some(c => c.connectorId === "google-contacts") ?? false;
 
   const generateReplies = useGenerateReplies();
-  const sendReply = useSendReply();
+  const sendReplyMutation = useMutation({
+    mutationFn: async (payload: { threadId: string; to: string; subject: string; body: string; inReplyTo?: string; account?: string | null }) => {
+      const res = await fetch("/api/gmail/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to send reply");
+      return res.json();
+    },
+  });
 
   // Build full 7-day calendar context string for AI awareness
   const calendarContext = (() => {
@@ -1266,7 +1317,7 @@ export default function Dashboard() {
       threadData &&
       threadData.messages.length > 0 &&
       lastGeneratedRef.current?.threadId === threadData.id &&
-      !lastGeneratedRef.current.hadCalendar
+      !lastGeneratedRef.current?.hadCalendar
     ) {
       triggerGeneration(threadData, calendarContext);
     }
@@ -1275,20 +1326,19 @@ export default function Dashboard() {
   const handleSend = (content: string, tone: string) => {
     if (!threadData || !selectedThreadId) return;
     const lastMessage = threadData.messages[threadData.messages.length - 1];
-    sendReply.mutate(
+    sendReplyMutation.mutate(
       {
-        data: {
-          threadId: selectedThreadId,
-          to: lastMessage.from,
-          subject: lastMessage.subject.startsWith("Re:") ? lastMessage.subject : `Re: ${lastMessage.subject}`,
-          body: content,
-          inReplyTo: lastMessage.id,
-        }
+        threadId: selectedThreadId,
+        to: lastMessage.from,
+        subject: lastMessage.subject.startsWith("Re:") ? lastMessage.subject : `Re: ${lastMessage.subject}`,
+        body: content,
+        inReplyTo: lastMessage.id,
+        account: activeAccount,
       },
       {
         onSuccess: () => {
           toast({ title: "Reply sent", description: `Sent ${tone} reply successfully.` });
-          queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["inbox"] });
           setSelectedThreadId(null);
         },
         onError: () => {
@@ -1326,7 +1376,68 @@ export default function Dashboard() {
         <div className={`flex-shrink-0 flex flex-col border-r bg-background z-10 w-full md:w-[360px] ${selectedThreadId ? "hidden md:flex" : "flex"}`}>
           <div className="border-b flex flex-col shrink-0 bg-sidebar/30">
             <div className="px-3 pt-3 pb-2 flex items-center gap-2">
-              <h2 className="font-semibold text-base flex-1">{FOLDERS.find(f => f.id === activeLabel)?.label ?? "Inbox"}</h2>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-semibold text-base leading-tight">{FOLDERS.find(f => f.id === activeLabel)?.label ?? "Inbox"}</h2>
+                {gmailAccounts.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5">
+                        <span className="truncate max-w-[140px]">{activeAccount ?? "Select account"}</span>
+                        <ChevronDown className="w-3 h-3 shrink-0" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-64">
+                      {gmailAccounts.map(account => (
+                        <DropdownMenuItem
+                          key={account.email}
+                          onClick={() => { setSelectedAccount(account.email); setSelectedThreadId(null); }}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center shrink-0 text-xs font-semibold">
+                            {account.email[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm truncate">{account.email}</p>
+                            {account.isPrimary && <p className="text-xs text-muted-foreground">Primary</p>}
+                          </div>
+                          {(activeAccount === account.email) && <Check className="w-3.5 h-3.5 shrink-0 text-foreground" />}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => { window.location.href = "/api/auth/google/start?addAccount=true"; }}
+                        className="gap-2 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Gmail account
+                      </DropdownMenuItem>
+                      {activeAccount && gmailAccounts.length > 1 && (
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            await fetch(`/api/gmail/accounts/${encodeURIComponent(activeAccount)}`, { method: "DELETE", credentials: "include" });
+                            setSelectedAccount(null);
+                            await refetchAccounts();
+                            queryClient.invalidateQueries({ queryKey: ["inbox"] });
+                          }}
+                          className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Remove this account
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                {gmailAccounts.length === 0 && (
+                  <button
+                    onClick={() => { window.location.href = "/api/auth/google/start?addAccount=true"; }}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add account
+                  </button>
+                )}
+              </div>
               <Button
                 onClick={() => setShowCompose(true)}
                 size="sm"
@@ -1672,9 +1783,9 @@ export default function Dashboard() {
                                 className="w-full mt-auto"
                                 size="sm"
                                 onClick={() => handleSend(suggestion.content, suggestion.tone)}
-                                disabled={sendReply.isPending}
+                                disabled={sendReplyMutation.isPending}
                               >
-                                {sendReply.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-3 h-3 mr-2" /> Send Reply</>}
+                                {sendReplyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-3 h-3 mr-2" /> Send Reply</>}
                               </Button>
                             </CardContent>
                           </Card>

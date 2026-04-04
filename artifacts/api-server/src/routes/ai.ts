@@ -100,10 +100,10 @@ ${body.emailBody}`;
       await db.insert(replyHistoryTable).values({
         userId,
         threadId: body.threadId,
-        emailSubject: body.emailSubject,
-        emailFrom: body.emailFrom,
+        subject: body.emailSubject || "(no subject)",
+        fromEmail: body.emailFrom || null,
         tone: "pro",
-        content: lastMsg.content,
+        replySent: lastMsg.content,
         createdAt: new Date(),
       }).onConflictDoNothing();
     }

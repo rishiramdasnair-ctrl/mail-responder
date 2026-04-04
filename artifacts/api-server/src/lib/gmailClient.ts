@@ -44,11 +44,17 @@ async function getFreshAccessToken(userId: string): Promise<string> {
   return token;
 }
 
-// WARNING: Never cache this client. Access tokens expire.
-export async function getGmailClientForUser(userId: string) {
+// Returns a raw OAuth2 client (for use with any Google API: People, Drive, etc.)
+export async function getOAuth2ClientForUser(userId: string) {
   const accessToken = await getFreshAccessToken(userId);
   const oauth2Client = new google.auth.OAuth2();
   oauth2Client.setCredentials({ access_token: accessToken });
+  return oauth2Client;
+}
+
+// WARNING: Never cache this client. Access tokens expire.
+export async function getGmailClientForUser(userId: string) {
+  const oauth2Client = await getOAuth2ClientForUser(userId);
   return google.gmail({ version: "v1", auth: oauth2Client });
 }
 

@@ -5,7 +5,7 @@ import { google } from "googleapis";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
-import { getGmailClientForUser } from "../lib/gmailClient";
+import { getOAuth2ClientForUser } from "../lib/gmailClient";
 
 const router = Router();
 
@@ -20,8 +20,8 @@ async function getContactsClient(userId: string) {
     ))
     .limit(1);
   if (!connector) return null;
-  const authClient = await getGmailClientForUser(userId);
-  return google.people({ version: "v1", auth: authClient });
+  const oauth2Client = await getOAuth2ClientForUser(userId);
+  return google.people({ version: "v1", auth: oauth2Client });
 }
 
 router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
@@ -93,8 +93,8 @@ router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
   }
 
   try {
-    const authClient = await getGmailClientForUser(userId);
-    const people = google.people({ version: "v1", auth: authClient });
+    const oauth2Client = await getOAuth2ClientForUser(userId);
+    const people = google.people({ version: "v1", auth: oauth2Client });
 
     const searchRes = await people.people.searchContacts({
       query: q,

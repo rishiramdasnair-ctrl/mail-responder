@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { ThreadMessageView } from "@/components/EmailMessageView";
 import { AppLayout } from "@/components/layout";
 import { useMailFolder, FolderId as FolderIdFromCtx } from "@/contexts/mail-folder";
 import { 
@@ -69,124 +70,7 @@ interface CalendarApiError extends Error {
   status?: number;
 }
 
-function isHtmlBody(body: string): boolean {
-  return /(<html[\s>]|<!doctype\s+html|<body[\s>]|<table[\s>]|<div\s+[^>]*style|<span\s+[^>]*style)/i.test(body);
-}
 
-const URL_REGEX = /https?:\/\/[^\s\)\]>,"]+/g;
-
-function renderWithLinks(text: string, keyPrefix: string) {
-  const parts: React.ReactNode[] = [];
-  let last = 0;
-  let match: RegExpExecArray | null;
-  URL_REGEX.lastIndex = 0;
-  while ((match = URL_REGEX.exec(text)) !== null) {
-    if (match.index > last) {
-      parts.push(text.slice(last, match.index));
-    }
-    const url = match[0];
-    parts.push(
-      <a
-        key={`${keyPrefix}-${match.index}`}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 underline break-all"
-        onClick={e => e.stopPropagation()}
-      >
-        {url}
-      </a>
-    );
-    last = match.index + url.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
-
-function EmailBodyRenderer({ body }: { body: string }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [iframeHeight, setIframeHeight] = useState(300);
-
-  const html = useMemo(() => {
-    const inject = `<base target="_blank" /><style>
-      html,body{margin:0;padding:12px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;background:#fff;overflow-wrap:break-word;word-wrap:break-word;-webkit-text-size-adjust:100%;}
-      img{max-width:100%;height:auto;}
-      a{color:#0969da;overflow-wrap:break-word;}
-      blockquote{margin:8px 0 8px 12px;padding-left:12px;border-left:3px solid #d0d7de;color:#57606a;}
-      pre,code{font-family:ui-monospace,monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px;white-space:pre-wrap;overflow-wrap:break-word;}
-      *{box-sizing:border-box;}
-    </style>`;
-    if (/<\/head>/i.test(body)) {
-      return body.replace(/<\/head>/i, `${inject}</head>`);
-    }
-    if (/<body([\s>])/i.test(body)) {
-      return body.replace(/<body([\s>])/i, (_m, rest) => `<head>${inject}</head><body${rest}`);
-    }
-    return `<!doctype html><html><head>${inject}</head><body>${body}</body></html>`;
-  }, [body]);
-
-  const handleLoad = useCallback(() => {
-    try {
-      const iframe = iframeRef.current;
-      const doc = iframe?.contentDocument;
-      if (!doc?.body) return;
-      const natural = doc.documentElement.scrollHeight;
-      setIframeHeight(Math.max(100, natural + 4));
-    } catch {}
-  }, []);
-
-  if (!isHtmlBody(body)) {
-    const lines = body.split("\n");
-    return (
-      <div
-        className="font-sans text-sm leading-relaxed text-foreground/90 overflow-x-hidden"
-        style={{ overflowWrap: "break-word", wordBreak: "break-word" }}
-      >
-        {lines.map((line, i) => {
-          const quoteMatch = line.match(/^(>{1,}\s*)/);
-          const quotePrefix = quoteMatch ? quoteMatch[0] : "";
-          const text = line.slice(quotePrefix.length);
-          if (quotePrefix.length > 0) {
-            return (
-              <div
-                key={i}
-                className="pl-3 border-l-2 border-border text-muted-foreground/70 text-xs my-0.5"
-                style={{ overflowWrap: "break-word", wordBreak: "break-word" }}
-              >
-                {renderWithLinks(text, `q${i}`) || "\u00a0"}
-              </div>
-            );
-          }
-          const isEmpty = line.trim() === "";
-          return (
-            <div
-              key={i}
-              className={isEmpty ? "h-3" : "my-0.5"}
-              style={{ overflowWrap: "break-word", wordBreak: "break-word" }}
-            >
-              {isEmpty ? null : renderWithLinks(line, `l${i}`)}
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
-    <div ref={containerRef} className="w-full overflow-x-auto rounded">
-      <iframe
-        ref={iframeRef}
-        srcDoc={html}
-        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-        onLoad={handleLoad}
-        style={{ height: `${iframeHeight}px`, minWidth: "100%", display: "block" }}
-        className="border-none bg-white"
-        title="Email content"
-      />
-    </div>
-  );
-}
 
 const FOLDERS = [
   { id: "INBOX",   label: "Inbox",   icon: Mail },
@@ -1739,38 +1623,14 @@ export default function Dashboard() {
                     })()}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-semibold text-sm truncate">
-                      {threadData.messages[threadData.messages.length - 1].from}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {(() => { try { const d = new Date(threadData.messages[threadData.messages.length - 1].date); return isNaN(d.getTime()) ? "" : format(d, "PPP 'at' p"); } catch { return ""; } })()}
-                    </span>
-                  </div>
-                  {showMeetingButton && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="ml-auto h-8 gap-1.5 text-xs sm:hidden"
-                      onClick={() => setShowAddToCalendar(true)}
-                    >
-                      <CalendarPlus className="w-3.5 h-3.5" />
-                      Calendar
-                    </Button>
-                  )}
-                </div>
               </div>
 
               <ScrollArea className="flex-1">
-                {/* Email Content */}
-                <div className="px-4 md:px-6 py-5">
-                  <EmailBodyRenderer
-                    body={threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet || ""}
-                  />
+                {/* Thread messages */}
+                <div className="px-4 md:px-6 py-5 space-y-3">
+                  <ThreadMessageView messages={threadData.messages} />
+
+                  {/* Attachments + contact panels for the last message */}
                   {(() => {
                     const lastMsg = threadData.messages[threadData.messages.length - 1];
                     const firstMsg = threadData.messages[0];

@@ -14,6 +14,7 @@ import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
 import AgentPage from "@/pages/agent";
 import History from "@/pages/history";
+import CalendarPage from "@/pages/calendar";
 import Settings from "@/pages/settings";
 import Pricing from "@/pages/pricing";
 import ConnectorsPage from "@/pages/connectors";
@@ -117,6 +118,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
           <Route path="/agent"><ProtectedRoute component={AgentPage} /></Route>
           <Route path="/history"><ProtectedRoute component={History} /></Route>
+          <Route path="/calendar"><ProtectedRoute component={CalendarPage} /></Route>
           <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
           <Route path="/pricing"><ProtectedRoute component={Pricing} /></Route>
           <Route path="/connectors"><ProtectedRoute component={ConnectorsPage} /></Route>

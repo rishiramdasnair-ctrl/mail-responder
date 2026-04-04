@@ -12,15 +12,23 @@ router.get("/calendar/events", requireAuth, async (req, res) => {
     const calendar = await getCalendarClientForUser(userId);
 
     const now = new Date();
-    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const defaultEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    // Allow callers to pass an explicit window (ISO strings or YYYY-MM-DD)
+    const timeMin = req.query.start
+      ? new Date(req.query.start as string).toISOString()
+      : now.toISOString();
+    const timeMax = req.query.end
+      ? new Date(req.query.end as string).toISOString()
+      : defaultEnd.toISOString();
 
     const response = await calendar.events.list({
       calendarId: "primary",
-      timeMin: now.toISOString(),
-      timeMax: nextWeek.toISOString(),
+      timeMin,
+      timeMax,
       singleEvents: true,
       orderBy: "startTime",
-      maxResults: 25,
+      maxResults: 500,
     });
 
     const events = (response.data.items || []).map((event) => ({

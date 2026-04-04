@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useClerk } from "@clerk/react";
-import { Clock, Settings, CreditCard, LogOut, Bot, Mail, Star, Send, FileText, AlertTriangle, Trash2, Plug, PenSquare, History } from "lucide-react";
+import { CalendarDays, Clock, Settings, CreditCard, LogOut, Bot, Mail, Star, Send, FileText, AlertTriangle, Trash2, Plug, PenSquare, History } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { useGetMe, useGetSubscription, useGetGmailStatus } from "@workspace/api-client-react";
 import { useMailFolder, FolderId } from "@/contexts/mail-folder";
@@ -68,6 +68,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <Bot className="w-4 h-4" />
         Agent
       </Link>
+      <Link href="/calendar" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/calendar" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
+        <CalendarDays className="w-4 h-4" />
+        Calendar
+      </Link>
       <Link href="/history" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${location === "/history" ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"}`}>
         <Clock className="w-4 h-4" />
         History
@@ -121,10 +125,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     // Compose FAB placeholder (rendered separately)
     null,
     {
-      label: "History",
-      icon: History,
-      active: location === "/history",
-      action: () => setLocation("/history"),
+      label: "Calendar",
+      icon: CalendarDays,
+      active: location === "/calendar",
+      action: () => setLocation("/calendar"),
     },
     {
       label: "Settings",

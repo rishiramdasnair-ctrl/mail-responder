@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { AppLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Bot, Send, ChevronDown, ChevronRight, Search, Mail, CalendarPlus,
   CalendarDays, CheckCircle2, XCircle, Loader2, Sparkles, AlertCircle,
+  Globe, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ interface AgentStep {
   input: Record<string, unknown>;
   output: string;
   status: "success" | "error";
+  url?: string;
 }
 
 interface PendingEmail {
@@ -35,11 +37,22 @@ interface AgentMessage {
   error?: string;
 }
 
-const QUICK_ACTIONS = [
-  { label: "Check me into a flight", prompt: "Find my most recent flight booking confirmation email and give me the check-in link or booking reference number." },
-  { label: "Schedule a meeting", prompt: "Check my calendar availability for next week and draft a reply to the most recent email asking to meet." },
-  { label: "Summarize unread emails", prompt: "Search for my unread emails and give me a summary of the most important ones." },
-  { label: "Find invoice emails", prompt: "Search for any invoice or billing emails from this month and summarize what I owe." },
+interface Suggestion {
+  label: string;
+  prompt: string;
+  icon: string;
+}
+
+const FLIGHT_CHECKIN_ACTION: Suggestion = {
+  label: "Check in for a flight",
+  prompt: "Find my most recent flight booking confirmation email. Extract the booking reference/confirmation number and my last name. Then search the web for the airline's online check-in page, navigate to it, enter my details, and complete the check-in process. Report the boarding pass details or any issues encountered.",
+  icon: "globe",
+};
+
+const FALLBACK_SUGGESTIONS: Suggestion[] = [
+  { label: "Summarize unread emails", prompt: "Search for my unread emails and give me a summary of the most important ones.", icon: "mail" },
+  { label: "Check my calendar", prompt: "List my upcoming calendar events for the next 7 days.", icon: "calendar" },
+  { label: "Find invoice emails", prompt: "Search for any invoice or billing emails from this month and summarize what I owe.", icon: "search" },
 ];
 
 const TOOL_ICONS: Record<string, React.ReactNode> = {
@@ -48,6 +61,11 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   send_email: <Send className="w-3.5 h-3.5" />,
   list_calendar_events: <CalendarDays className="w-3.5 h-3.5" />,
   create_calendar_event: <CalendarPlus className="w-3.5 h-3.5" />,
+  search_web: <Search className="w-3.5 h-3.5" />,
+  browse_url: <Globe className="w-3.5 h-3.5" />,
+  get_page_state: <Globe className="w-3.5 h-3.5" />,
+  click_element: <Globe className="w-3.5 h-3.5" />,
+  type_text: <Globe className="w-3.5 h-3.5" />,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -56,21 +74,36 @@ const TOOL_LABELS: Record<string, string> = {
   send_email: "Drafting email",
   list_calendar_events: "Checking calendar",
   create_calendar_event: "Creating calendar event",
+  search_web: "Searching web",
+  browse_url: "Browsing page",
+  get_page_state: "Reading page",
+  click_element: "Clicking element",
+  type_text: "Filling in field",
 };
+
+const BROWSER_TOOLS = new Set(["search_web", "browse_url", "get_page_state", "click_element", "type_text"]);
+
+function SuggestionIcon({ icon }: { icon: string }) {
+  if (icon === "calendar") return <CalendarDays className="w-4 h-4 text-primary shrink-0" />;
+  if (icon === "globe") return <Globe className="w-4 h-4 text-primary shrink-0" />;
+  if (icon === "search") return <Search className="w-4 h-4 text-primary shrink-0" />;
+  return <Mail className="w-4 h-4 text-primary shrink-0" />;
+}
 
 function ToolStepCard({ step }: { step: AgentStep }) {
   const [open, setOpen] = useState(false);
   const label = TOOL_LABELS[step.toolName] || step.toolName;
   const icon = TOOL_ICONS[step.toolName] || <Bot className="w-3.5 h-3.5" />;
-  const inputSummary = getInputSummary(step.toolName, step.input);
+  const inputSummary = getInputSummary(step.toolName, step.input, step.url);
+  const isBrowsing = BROWSER_TOOLS.has(step.toolName);
 
   return (
-    <div className="text-xs border rounded-md overflow-hidden bg-muted/30">
+    <div className={cn("text-xs border rounded-md overflow-hidden", isBrowsing ? "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-800/40" : "bg-muted/30")}>
       <button
         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left"
         onClick={() => setOpen(!open)}
       >
-        <span className="text-muted-foreground">{icon}</span>
+        <span className={cn("shrink-0", isBrowsing ? "text-blue-500" : "text-muted-foreground")}>{icon}</span>
         <span className="font-medium text-foreground/80">{label}</span>
         {inputSummary && <span className="text-muted-foreground truncate flex-1">{inputSummary}</span>}
         <span className="ml-auto flex items-center gap-1.5 shrink-0">
@@ -83,6 +116,12 @@ function ToolStepCard({ step }: { step: AgentStep }) {
       </button>
       {open && (
         <div className="px-3 pb-3 pt-1 border-t bg-background/50">
+          {step.url && (
+            <div className="mb-2">
+              <span className="text-muted-foreground font-medium uppercase tracking-wide text-[10px]">URL </span>
+              <a href={step.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">{step.url}</a>
+            </div>
+          )}
           <div className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Result</div>
           <pre className="whitespace-pre-wrap text-xs text-foreground/80 max-h-48 overflow-y-auto font-mono leading-relaxed">
             {step.output}
@@ -93,12 +132,17 @@ function ToolStepCard({ step }: { step: AgentStep }) {
   );
 }
 
-function getInputSummary(toolName: string, input: Record<string, unknown>): string {
+function getInputSummary(toolName: string, input: Record<string, unknown>, url?: string): string {
   if (toolName === "search_emails" && input.query) return `"${input.query}"`;
   if (toolName === "read_email" && input.threadId) return `thread ${String(input.threadId).slice(0, 12)}…`;
   if (toolName === "send_email" && input.to) return `to ${input.to}`;
   if (toolName === "list_calendar_events" && input.days) return `next ${input.days} days`;
   if (toolName === "create_calendar_event" && input.title) return `"${input.title}"`;
+  if (toolName === "search_web" && input.query) return `"${input.query}"`;
+  if (toolName === "browse_url" && input.url) return String(input.url);
+  if (toolName === "get_page_state" && url) return url;
+  if (toolName === "click_element" && input.description) return `"${input.description}"`;
+  if (toolName === "type_text" && input.field_description) return `"${input.field_description}"`;
   return "";
 }
 
@@ -187,17 +231,77 @@ function AssistantMessage({
   );
 }
 
+function SuggestionsGrid({ suggestions, onSelect, isLoading }: {
+  suggestions: Suggestion[];
+  onSelect: (prompt: string) => void;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg mt-2">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="p-3 rounded-xl border bg-card">
+            <Skeleton className="h-3 w-32 mb-1.5" />
+            <Skeleton className="h-2.5 w-48" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg mt-2">
+      {suggestions.map((s) => (
+        <button
+          key={s.label}
+          onClick={() => onSelect(s.prompt)}
+          className="text-left p-3 rounded-xl border bg-card hover:bg-muted/50 transition-colors text-sm flex items-start gap-2.5"
+        >
+          <SuggestionIcon icon={s.icon} />
+          <span className="font-medium leading-snug">{s.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function AgentPage() {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try { return !localStorage.getItem("agent_onboarded"); } catch { return true; }
   });
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  const fetchSuggestions = useCallback(async () => {
+    setSuggestionsLoading(true);
+    try {
+      const res = await fetch("/api/agent/suggestions", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        const fetched: Suggestion[] = data.suggestions || [];
+        const base = fetched.length > 0 ? fetched : FALLBACK_SUGGESTIONS;
+        const hasFlight = base.some((s) => s.icon === "globe" && s.label.toLowerCase().includes("flight"));
+        setSuggestions(hasFlight ? base : [...base, FLIGHT_CHECKIN_ACTION]);
+      } else {
+        setSuggestions([...FALLBACK_SUGGESTIONS, FLIGHT_CHECKIN_ACTION]);
+      }
+    } catch {
+      setSuggestions([...FALLBACK_SUGGESTIONS, FLIGHT_CHECKIN_ACTION]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -321,7 +425,7 @@ export default function AgentPage() {
                 <p className="font-semibold mb-1">Meet your AI inbox agent</p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   Type any task and I'll work through it step by step — searching your emails, checking your calendar,
-                  drafting replies. I'll always ask before sending anything.
+                  drafting replies, and even browsing the web. I'll always ask before sending anything.
                 </p>
               </div>
               <Button variant="ghost" size="sm" className="text-xs h-7 shrink-0" onClick={handleDismissOnboarding}>
@@ -333,25 +437,28 @@ export default function AgentPage() {
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
           {messages.length === 0 && !isLoading && (
-            <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-4">
               <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
                 <Bot className="w-7 h-7 text-primary" />
               </div>
               <div>
                 <h2 className="font-semibold text-lg mb-1">What can I help you with?</h2>
-                <p className="text-muted-foreground text-sm">I can search your inbox, check your calendar, draft and send emails.</p>
+                <p className="text-muted-foreground text-sm">Suggested actions based on your inbox</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg mt-2">
-                {QUICK_ACTIONS.map((action) => (
-                  <button
-                    key={action.label}
-                    onClick={() => runTask(action.prompt)}
-                    className="text-left p-3 rounded-xl border bg-card hover:bg-muted/50 transition-colors text-sm"
-                  >
-                    <span className="font-medium">{action.label}</span>
-                  </button>
-                ))}
-              </div>
+              <SuggestionsGrid
+                suggestions={suggestions}
+                onSelect={runTask}
+                isLoading={suggestionsLoading}
+              />
+              {!suggestionsLoading && (
+                <button
+                  onClick={fetchSuggestions}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Refresh suggestions
+                </button>
+              )}
             </div>
           )}
 
@@ -396,14 +503,14 @@ export default function AgentPage() {
         <div className="px-4 pb-4 pt-2 border-t bg-background">
           {messages.length > 0 && !isLoading && (
             <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-none">
-              {QUICK_ACTIONS.map((action) => (
+              {suggestions.map((s) => (
                 <Badge
-                  key={action.label}
+                  key={s.label}
                   variant="outline"
                   className="cursor-pointer whitespace-nowrap hover:bg-muted/50 transition-colors text-xs py-1 px-2.5 shrink-0"
-                  onClick={() => runTask(action.prompt)}
+                  onClick={() => runTask(s.prompt)}
                 >
-                  {action.label}
+                  {s.label}
                 </Badge>
               ))}
             </div>
@@ -414,7 +521,7 @@ export default function AgentPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask me to search emails, schedule meetings, summarize threads…"
+              placeholder="Ask me to search emails, schedule meetings, browse the web…"
               className="min-h-[52px] max-h-36 resize-none pr-12 text-sm"
               disabled={isLoading}
             />

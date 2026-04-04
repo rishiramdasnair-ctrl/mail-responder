@@ -311,6 +311,82 @@ function useDriveSave() {
   });
 }
 
+interface GoogleContact {
+  resourceName: string | null;
+  name: string | null;
+  givenName: string | null;
+  familyName: string | null;
+  email: string;
+  phone: string | null;
+  organization: string | null;
+  jobTitle: string | null;
+  photoUrl: string | null;
+}
+
+function useGoogleContact(email: string | null | undefined) {
+  return useQuery<{ connected: boolean; contact: GoogleContact | null }>({
+    queryKey: ["google-contact", email],
+    queryFn: async () => {
+      if (!email) return { connected: false, contact: null };
+      const res = await fetch(`/api/contacts/lookup?email=${encodeURIComponent(email)}`, { credentials: "include" });
+      if (!res.ok) return { connected: false, contact: null };
+      return res.json();
+    },
+    enabled: !!email,
+    staleTime: 60_000,
+  });
+}
+
+function GoogleContactPanel({ senderEmail }: { senderEmail: string }) {
+  const { data, isLoading } = useGoogleContact(senderEmail);
+
+  if (isLoading || !data?.connected) return null;
+
+  const contact = data.contact;
+
+  return (
+    <div className="mx-0 mt-3 rounded-lg border bg-card p-3 text-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-5 h-5 rounded bg-blue-500 flex items-center justify-center shrink-0">
+          <span className="text-white text-[10px] font-bold">G</span>
+        </div>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Google Contact</span>
+      </div>
+      {contact ? (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            {contact.photoUrl ? (
+              <img src={contact.photoUrl} alt={contact.name ?? ""} className="w-7 h-7 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <User className="w-3.5 h-3.5 text-primary" />
+              </div>
+            )}
+            <div className="min-w-0">
+              {contact.name && <p className="font-medium text-sm leading-tight">{contact.name}</p>}
+              <p className="text-xs text-muted-foreground truncate">{senderEmail}</p>
+            </div>
+          </div>
+          {contact.organization && (
+            <div className="flex items-center gap-2 pl-0.5">
+              <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span className="text-xs text-muted-foreground">{contact.organization}</span>
+            </div>
+          )}
+          {contact.jobTitle && (
+            <p className="text-xs text-muted-foreground pl-5">{contact.jobTitle}</p>
+          )}
+          {contact.phone && (
+            <p className="text-xs text-muted-foreground pl-5">{contact.phone}</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Not in your Google Contacts</p>
+      )}
+    </div>
+  );
+}
+
 function HubSpotContactPanel({ senderEmail }: { senderEmail: string }) {
   const { toast } = useToast();
   const { data, isLoading } = useHubSpotContact(senderEmail);
@@ -741,9 +817,9 @@ export default function Dashboard() {
     }
   }, []);
 
-  const { data: inboxData, isLoading: isLoadingInbox, refetch: refetchInbox } = useGetInbox(
+  const { data: inboxData, isLoading: isLoadingInbox, isError: isInboxError, refetch: refetchInbox } = useGetInbox(
     { maxResults: 30, label: activeLabel, q: debouncedSearch || undefined },
-    { query: { queryKey: ["inbox", activeLabel, debouncedSearch] } }
+    { query: { queryKey: ["inbox", activeLabel, debouncedSearch], retry: 1 } }
   );
 
   const modifyThread = useMutation({
@@ -802,6 +878,7 @@ export default function Dashboard() {
   const { data: connectorsData } = useConnectorIds();
   const driveConnected = connectorsData?.connectors.some(c => c.connectorId === "google-drive") ?? false;
   const hubspotConnected = connectorsData?.connectors.some(c => c.connectorId === "hubspot") ?? false;
+  const contactsConnected = connectorsData?.connectors.some(c => c.connectorId === "google-contacts") ?? false;
 
   const generateReplies = useGenerateReplies();
   const sendReply = useSendReply();
@@ -972,10 +1049,30 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
+            ) : isInboxError ? (
+              <div className="p-8 text-center flex flex-col items-center justify-center gap-3">
+                <AlertTriangle className="w-8 h-8 text-amber-500 opacity-70" />
+                <div>
+                  <p className="font-medium text-sm">Couldn't load your inbox</p>
+                  <p className="text-xs text-muted-foreground mt-1">Your Gmail connection may have expired.</p>
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <Button size="sm" variant="outline" onClick={() => refetchInbox()}>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                    Retry
+                  </Button>
+                  <Button size="sm" variant="default" onClick={() => window.location.href = "/api/auth/google/start"}>
+                    Reconnect Gmail
+                  </Button>
+                </div>
+              </div>
             ) : inboxData?.threads.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground flex flex-col items-center justify-center h-full">
                 <Mail className="w-8 h-8 mb-3 opacity-20" />
-                <p>No emails found</p>
+                <p className="text-sm">{debouncedSearch ? `No results for "${debouncedSearch}"` : "No emails found"}</p>
+                {debouncedSearch && (
+                  <button onClick={() => setSearchQuery("")} className="text-xs text-primary hover:underline mt-1">Clear search</button>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-border/50">
@@ -1187,6 +1284,9 @@ export default function Dashboard() {
                             attachments={attachments}
                             driveConnected={driveConnected}
                           />
+                        )}
+                        {contactsConnected && threadOriginatorEmail && (
+                          <GoogleContactPanel senderEmail={threadOriginatorEmail} />
                         )}
                         {hubspotConnected && threadOriginatorEmail && (
                           <HubSpotContactPanel senderEmail={threadOriginatorEmail} />

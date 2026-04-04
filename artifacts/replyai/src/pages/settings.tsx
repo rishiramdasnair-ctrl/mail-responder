@@ -20,6 +20,7 @@ const settingsSchema = z.object({
   customInstructions: z.string().max(500).optional(),
   emailSignature: z.string().max(1000).optional(),
   darkMode: z.boolean(),
+  notifications: z.boolean(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
@@ -63,16 +64,18 @@ export default function Settings() {
       customInstructions: "",
       emailSignature: "",
       darkMode: false,
+      notifications: true,
     },
   });
 
   useEffect(() => {
     if (settings) {
       form.reset({
-        defaultTone: settings.defaultTone as any,
+        defaultTone: settings.defaultTone as "pro" | "casual" | "fast",
         customInstructions: settings.customInstructions || "",
         emailSignature: settings.emailSignature || "",
         darkMode: settings.darkMode || false,
+        notifications: settings.notifications ?? true,
       });
     }
   }, [settings, form]);
@@ -246,7 +249,7 @@ export default function Settings() {
                         <FormLabel>Email Signature</FormLabel>
                         <FormControl>
                           <Textarea 
-                            placeholder="Your signature..."
+                            placeholder={"Best,\nYour Name\nCompany | yourwebsite.com"}
                             className="resize-none h-24 font-mono text-sm"
                             {...field}
                           />
@@ -254,6 +257,11 @@ export default function Settings() {
                         <FormDescription>
                           Appended to the end of sent replies.
                         </FormDescription>
+                        {field.value && (
+                          <div className="mt-2 rounded-md border bg-muted/40 px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+                            {field.value}
+                          </div>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -268,6 +276,27 @@ export default function Settings() {
                           <FormLabel className="text-base">Dark Mode</FormLabel>
                           <FormDescription>
                             Enable dark theme for the application.
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="notifications"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 bg-card">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">In-App Notifications</FormLabel>
+                          <FormDescription>
+                            Show alerts for trial expiry and usage limits.
                           </FormDescription>
                         </div>
                         <FormControl>

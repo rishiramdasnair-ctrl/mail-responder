@@ -14,6 +14,7 @@ import hubspotAuthRouter from "./hubspotAuth";
 import googleExtendRouter from "./googleExtend";
 import hubspotRouter from "./hubspot";
 import driveRouter from "./drive";
+import contactsRouter from "./contacts";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(settingsRouter);
 router.use(connectorsRouter);
 router.use(hubspotRouter);
 router.use(driveRouter);
+router.use(contactsRouter);
 
 export default router;

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request } from "express";
 import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
@@ -7,10 +7,29 @@ import { db } from "@workspace/db";
 import { usersTable, replyHistoryTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import rateLimit from "express-rate-limit";
 
 const router = Router();
 
-router.post("/ai/generate", requireAuth, async (req, res) => {
+const aiRateLimit = rateLimit({
+  windowMs: 60_000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => getAuth(req).userId || req.ip || "anon",
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "Too many requests. Please wait a moment before generating more replies.",
+      code: "RATE_LIMITED",
+    });
+  },
+  skip: (req: Request) => {
+    const userId = getAuth(req).userId;
+    return !userId;
+  },
+});
+
+router.post("/ai/generate", requireAuth, aiRateLimit, async (req, res) => {
   try {
     const auth = getAuth(req);
     const userId = auth.userId!;
@@ -78,6 +97,20 @@ ${body.emailBody}`;
     await db.update(usersTable)
       .set({ repliesUsed: user.repliesUsed + 1, updatedAt: new Date() })
       .where(eq(usersTable.id, userId));
+
+    const lastMsg = parsed.suggestions?.[0];
+    if (lastMsg) {
+      await db.insert(replyHistoryTable).values({
+        id: crypto.randomUUID(),
+        userId,
+        threadId: body.threadId,
+        emailSubject: body.emailSubject,
+        emailFrom: body.emailFrom,
+        tone: "pro",
+        content: lastMsg.content,
+        createdAt: new Date(),
+      }).onConflictDoNothing();
+    }
 
     const repliesRemaining = repliesLimit - (user.repliesUsed + 1);
 

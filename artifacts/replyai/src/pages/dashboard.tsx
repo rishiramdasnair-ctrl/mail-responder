@@ -130,6 +130,118 @@ type FolderId = FolderIdFromCtx;
 
 const REPLY_FOLDERS: FolderId[] = ["INBOX", "STARRED"];
 
+interface ContactSuggestion {
+  name: string | null;
+  email: string;
+  organization: string | null;
+  photoUrl: string | null;
+}
+
+function ContactAutocomplete({
+  value,
+  onChange,
+  placeholder = "recipient@example.com",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<ContactSuggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleChange = (v: string) => {
+    setQuery(v);
+    onChange(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (v.trim().length < 2) { setResults([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/contacts/search?q=${encodeURIComponent(v)}`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json() as { connected: boolean; results: ContactSuggestion[] };
+        if (data.connected && data.results.length > 0) {
+          setResults(data.results);
+          setOpen(true);
+        } else {
+          setResults([]);
+          setOpen(false);
+        }
+      } catch { /* ignore */ } finally {
+        setLoading(false);
+      }
+    }, 280);
+  };
+
+  const select = (c: ContactSuggestion) => {
+    const displayValue = c.name ? `${c.name} <${c.email}>` : c.email;
+    setQuery(displayValue);
+    onChange(c.email);
+    setOpen(false);
+    setResults([]);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="relative">
+        <Input
+          value={query}
+          onChange={(e) => handleChange(e.target.value)}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+          placeholder={placeholder}
+          autoComplete="off"
+          className="pr-8"
+        />
+        {loading && (
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2" />
+        )}
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border bg-popover shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+          {results.map((c, i) => (
+            <button
+              key={i}
+              type="button"
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-accent transition-colors text-sm"
+              onMouseDown={(e) => { e.preventDefault(); select(c); }}
+            >
+              {c.photoUrl ? (
+                <img src={c.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-xs font-medium text-primary">
+                  {c.name ? c.name[0].toUpperCase() : c.email[0].toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                {c.name && <p className="font-medium text-sm leading-tight truncate">{c.name}</p>}
+                <p className="text-xs text-muted-foreground truncate">{c.email}</p>
+                {c.organization && <p className="text-xs text-muted-foreground/70 truncate">{c.organization}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
   const [to, setTo] = useState("");
@@ -173,7 +285,7 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
         <div className="space-y-3 py-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">To</label>
-            <Input value={to} onChange={e => setTo(e.target.value)} placeholder="recipient@example.com" type="email" />
+            <ContactAutocomplete value={to} onChange={setTo} placeholder="Search contacts or type an email..." />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Subject</label>

@@ -9,13 +9,7 @@ import { getGmailClientForUser } from "../lib/gmailClient";
 
 const router = Router();
 
-router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
-  const { userId } = getAuth(req);
-  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-  const email = req.query.email as string;
-  if (!email) { res.status(400).json({ error: "email query parameter required" }); return; }
-
+async function getContactsClient(userId: string) {
   const [connector] = await db
     .select({ id: connectorsTable.id })
     .from(connectorsTable)
@@ -25,16 +19,25 @@ router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
       eq(connectorsTable.status, "connected"),
     ))
     .limit(1);
+  if (!connector) return null;
+  const authClient = await getGmailClientForUser(userId);
+  return google.people({ version: "v1", auth: authClient });
+}
 
-  if (!connector) {
+router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
+  const { userId } = getAuth(req);
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const email = req.query.email as string;
+  if (!email) { res.status(400).json({ error: "email query parameter required" }); return; }
+
+  const people = await getContactsClient(userId);
+  if (!people) {
     res.json({ connected: false, contact: null });
     return;
   }
 
   try {
-    const authClient = await getGmailClientForUser(userId);
-    const people = google.people({ version: "v1", auth: authClient });
-
     const searchRes = await people.people.searchContacts({
       query: email,
       readMask: "names,emailAddresses,phoneNumbers,organizations,photos",
@@ -75,6 +78,55 @@ router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Contacts lookup failed";
     console.error("[contacts/lookup] error:", err);
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
+  const { userId } = getAuth(req);
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const q = (req.query.q as string || "").trim();
+  if (!q || q.length < 2) {
+    res.json({ connected: true, results: [] });
+    return;
+  }
+
+  const people = await getContactsClient(userId);
+  if (!people) {
+    res.json({ connected: false, results: [] });
+    return;
+  }
+
+  try {
+    const searchRes = await people.people.searchContacts({
+      query: q,
+      readMask: "names,emailAddresses,organizations,photos",
+      pageSize: 8,
+    });
+
+    const results = (searchRes.data.results || [])
+      .flatMap((r) => {
+        const person = r.person;
+        if (!person) return [];
+        const nameObj = person.names?.[0];
+        const orgObj = person.organizations?.[0];
+        const photoObj = person.photos?.[0];
+        const name = nameObj?.displayName ?? null;
+        const emails = person.emailAddresses || [];
+        return emails.map((e) => ({
+          name,
+          email: e.value ?? "",
+          organization: orgObj?.name ?? null,
+          photoUrl: photoObj?.url ?? null,
+        }));
+      })
+      .filter((r) => r.email);
+
+    res.json({ connected: true, results });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Search failed";
+    console.error("[contacts/search] error:", err);
     res.status(500).json({ error: message });
   }
 });

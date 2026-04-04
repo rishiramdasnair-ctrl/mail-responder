@@ -16,16 +16,13 @@ const aiRateLimit = rateLimit({
   max: 12,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request) => getAuth(req).userId || req.ip || "anon",
+  keyGenerator: (req: Request) => getAuth(req).userId ?? "anon",
+  validate: { xForwardedForHeader: false },
   handler: (_req, res) => {
     res.status(429).json({
       error: "Too many requests. Please wait a moment before generating more replies.",
       code: "RATE_LIMITED",
     });
-  },
-  skip: (req: Request) => {
-    const userId = getAuth(req).userId;
-    return !userId;
   },
 });
 

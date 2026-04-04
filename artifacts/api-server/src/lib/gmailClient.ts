@@ -87,16 +87,30 @@ export function getHeader(headers: any[], name: string): string {
   return headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
-export function decodeBody(part: any): string {
+function findBodyByMime(part: any, mimeType: string): string {
   if (!part) return "";
-  if (part.body?.data) {
+  if (part.mimeType === mimeType && part.body?.data) {
     return Buffer.from(part.body.data, "base64url").toString("utf-8");
   }
   if (part.parts) {
     for (const p of part.parts) {
-      const text = decodeBody(p);
-      if (text) return text;
+      const result = findBodyByMime(p, mimeType);
+      if (result) return result;
     }
+  }
+  return "";
+}
+
+export function decodeBody(part: any): string {
+  if (!part) return "";
+  // Always prefer HTML over plain text (mirrors what Gmail shows)
+  const html = findBodyByMime(part, "text/html");
+  if (html) return html;
+  const plain = findBodyByMime(part, "text/plain");
+  if (plain) return plain;
+  // Fallback: top-level body with no mime type
+  if (part.body?.data) {
+    return Buffer.from(part.body.data, "base64url").toString("utf-8");
   }
   return "";
 }

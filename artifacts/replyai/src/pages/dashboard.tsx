@@ -1480,7 +1480,7 @@ export default function Dashboard() {
         </div>
 
         {/* Thread & Reply Pane */}
-        <div className={`flex-1 flex-col min-w-0 bg-secondary/10 ${selectedThreadId ? "flex" : "hidden md:flex"}`}>
+        <div className={`flex-1 flex-col min-w-0 bg-secondary/10 overflow-hidden ${selectedThreadId ? "flex" : "hidden md:flex"}`}>
           {!selectedThreadId ? (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
               <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
@@ -1592,9 +1592,9 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="flex-1 flex flex-col overflow-hidden">
+              <ScrollArea className="flex-1">
                 {/* Email Content */}
-                <ScrollArea className="flex-1 px-4 md:px-6 py-4">
+                <div className="px-4 md:px-6 py-5">
                   <EmailBodyRenderer
                     body={threadData.messages[threadData.messages.length - 1].body || threadData.messages[threadData.messages.length - 1].snippet || ""}
                   />
@@ -1621,74 +1621,75 @@ export default function Dashboard() {
                       </>
                     );
                   })()}
-                </ScrollArea>
+                </div>
 
-                {/* AI Reply Section — only shown for inbox/starred, not sent/trash/spam */}
-                {!REPLY_FOLDERS.includes(activeLabel) && (
-                  <div className="shrink-0 border-t bg-muted/20 p-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
-                    <MailOpen className="w-3.5 h-3.5 opacity-50" />
+                {/* AI Reply Section */}
+                {!REPLY_FOLDERS.includes(activeLabel) ? (
+                  <div className="mx-4 md:mx-6 mb-6 border rounded-lg bg-muted/20 px-4 py-3 text-xs text-muted-foreground flex items-center gap-2">
+                    <MailOpen className="w-3.5 h-3.5 opacity-50 shrink-0" />
                     Viewing {FOLDERS.find(f => f.id === activeLabel)?.label} — AI reply suggestions are only available in Inbox and Starred.
                   </div>
-                )}
-                {REPLY_FOLDERS.includes(activeLabel) && (<div className="shrink-0 border-t bg-sidebar/30 p-4 md:p-6 flex flex-col">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Sparkles className="w-4 h-4 text-primary" />
-                    <h3 className="font-semibold text-sm uppercase tracking-wider text-sidebar-foreground/70">AI Suggestions</h3>
-                    {calendarContext && (
-                      <Badge variant="secondary" className="text-[10px] h-5 gap-1">
-                        <Calendar className="w-2.5 h-2.5" />
-                        Calendar-aware
-                      </Badge>
+                ) : (
+                  <div className="border-t bg-muted/10 px-4 md:px-6 py-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Sparkles className="w-4 h-4 text-primary" />
+                      <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">AI Suggestions</h3>
+                      {calendarContext && (
+                        <Badge variant="secondary" className="text-[10px] h-5 gap-1">
+                          <Calendar className="w-2.5 h-2.5" />
+                          Calendar-aware
+                        </Badge>
+                      )}
+                    </div>
+
+                    {generateReplies.isPending ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {[1,2,3].map(i => (
+                          <Card key={i} className="bg-background/50 border-border/50">
+                            <CardContent className="p-4 space-y-3">
+                              <Skeleton className="h-4 w-20" />
+                              <Skeleton className="h-16 w-full" />
+                              <Skeleton className="h-8 w-full mt-4" />
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : generateReplies.data?.suggestions ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4">
+                        {generateReplies.data.suggestions.map((suggestion, idx) => (
+                          <Card key={idx} className="flex flex-col border-border/50 hover:border-primary/50 transition-colors shadow-sm bg-background">
+                            <div className="px-4 py-2 border-b bg-secondary/30 flex justify-between items-center">
+                              <span className="text-xs font-semibold uppercase tracking-wider">{suggestion.tone}</span>
+                            </div>
+                            <CardContent className="p-4 flex-1 flex flex-col">
+                              <div className="text-sm flex-1 whitespace-pre-wrap mb-4 text-foreground/90 leading-relaxed font-sans">
+                                {suggestion.content}
+                              </div>
+                              <div className="text-xs text-muted-foreground bg-secondary/50 p-2 rounded mb-4 italic">
+                                "{suggestion.reasoning}"
+                              </div>
+                              <Button
+                                className="w-full mt-auto"
+                                size="sm"
+                                onClick={() => handleSend(suggestion.content, suggestion.tone)}
+                                disabled={sendReply.isPending}
+                              >
+                                {sendReply.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-3 h-3 mr-2" /> Send Reply</>}
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Button variant="outline" onClick={() => triggerGeneration(threadData, calendarContext)}>
+                          Regenerate Suggestions
+                        </Button>
+                      </div>
                     )}
                   </div>
-
-                  {generateReplies.isPending ? (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {[1,2,3].map(i => (
-                        <Card key={i} className="bg-background/50 border-border/50">
-                          <CardContent className="p-4 space-y-3">
-                            <Skeleton className="h-4 w-20" />
-                            <Skeleton className="h-16 w-full" />
-                            <Skeleton className="h-8 w-full mt-4" />
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : generateReplies.data?.suggestions ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                      {generateReplies.data.suggestions.map((suggestion, idx) => (
-                        <Card key={idx} className="flex flex-col border-border/50 hover:border-primary/50 transition-colors shadow-sm bg-background">
-                          <div className="px-4 py-2 border-b bg-secondary/30 flex justify-between items-center">
-                            <span className="text-xs font-semibold uppercase tracking-wider">{suggestion.tone}</span>
-                          </div>
-                          <CardContent className="p-4 flex-1 flex flex-col">
-                            <div className="text-sm flex-1 whitespace-pre-wrap mb-4 text-foreground/90 leading-relaxed font-sans">
-                              {suggestion.content}
-                            </div>
-                            <div className="text-xs text-muted-foreground bg-secondary/50 p-2 rounded mb-4 italic">
-                              "{suggestion.reasoning}"
-                            </div>
-                            <Button 
-                              className="w-full mt-auto" 
-                              size="sm"
-                              onClick={() => handleSend(suggestion.content, suggestion.tone)}
-                              disabled={sendReply.isPending}
-                            >
-                              {sendReply.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-3 h-3 mr-2" /> Send Reply</>}
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Button variant="outline" onClick={() => triggerGeneration(threadData, calendarContext)}>
-                        Regenerate Suggestions
-                      </Button>
-                    </div>
-                  )}
-                </div>)}
-              </div>
+                )}
+              </ScrollArea>
             </>
           ) : null}
         </div>

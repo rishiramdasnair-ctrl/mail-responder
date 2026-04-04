@@ -83,10 +83,18 @@ function isHtmlBody(body: string): boolean {
 
 function EmailBodyRenderer({ body }: { body: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [iframeHeight, setIframeHeight] = useState(300);
 
   const html = useMemo(() => {
-    const inject = `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" /><base target="_blank" /><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;word-break:break-word;margin:0;padding:8px;max-width:100%!important;overflow-x:hidden;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;}td{max-width:100%!important;}a{color:#6366f1;}*{box-sizing:border-box;}</style>`;
+    const inject = `<base target="_blank" /><style>
+      html,body{margin:0;padding:12px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;background:#fff;word-wrap:break-word;-webkit-text-size-adjust:100%;}
+      img{max-width:100%;height:auto;}
+      a{color:#0969da;}
+      blockquote{margin:8px 0 8px 12px;padding-left:12px;border-left:3px solid #d0d7de;color:#57606a;}
+      pre,code{font-family:ui-monospace,monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px;}
+      *{box-sizing:border-box;}
+    </style>`;
     if (/<\/head>/i.test(body)) {
       return body.replace(/<\/head>/i, `${inject}</head>`);
     }
@@ -98,31 +106,46 @@ function EmailBodyRenderer({ body }: { body: string }) {
 
   const handleLoad = useCallback(() => {
     try {
-      const doc = iframeRef.current?.contentDocument;
-      if (doc?.body) {
-        setIframeHeight(Math.max(100, doc.body.scrollHeight + 24));
-      }
+      const iframe = iframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (!doc?.body) return;
+      const natural = doc.documentElement.scrollHeight;
+      setIframeHeight(Math.max(100, natural + 4));
     } catch {}
   }, []);
 
   if (!isHtmlBody(body)) {
+    const lines = body.split("\n");
     return (
-      <div className="whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 text-sm">
-        {body}
+      <div className="font-sans text-sm leading-relaxed text-foreground/90 space-y-0.5">
+        {lines.map((line, i) => {
+          const quoteDepth = (line.match(/^(>+\s?)/) || [""])[0].length;
+          const text = line.slice(quoteDepth ? quoteDepth : 0);
+          if (quoteDepth > 0) {
+            return (
+              <div key={i} className="pl-3 border-l-2 border-border text-muted-foreground text-xs">
+                {text || "\u00a0"}
+              </div>
+            );
+          }
+          return <div key={i}>{line || "\u00a0"}</div>;
+        })}
       </div>
     );
   }
 
   return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={html}
-      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-      onLoad={handleLoad}
-      style={{ height: `${iframeHeight}px` }}
-      className="w-full border-none rounded bg-white"
-      title="Email content"
-    />
+    <div ref={containerRef} className="w-full overflow-x-auto rounded">
+      <iframe
+        ref={iframeRef}
+        srcDoc={html}
+        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        onLoad={handleLoad}
+        style={{ height: `${iframeHeight}px`, minWidth: "100%", display: "block" }}
+        className="border-none bg-white"
+        title="Email content"
+      />
+    </div>
   );
 }
 
@@ -258,9 +281,6 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   const [showCc, setShowCc] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [minimized, setMinimized] = useState(false);
-  const [maximized, setMaximized] = useState(false);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const send = useMutation({
     mutationFn: async () => {
@@ -278,7 +298,7 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     },
     onSuccess: () => {
       toast({ title: "Email sent", description: `Sent to ${to}` });
-      setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false); setMinimized(false); setMaximized(false);
+      setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false);
       onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: ["inbox"] });
     },
@@ -288,87 +308,44 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   });
 
   const handleClose = () => {
-    setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false); setMinimized(false); setMaximized(false);
+    setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false);
     onOpenChange(false);
   };
 
-  if (!open) return null;
-
-  const toolbarBtn = "p-1.5 rounded hover:bg-white/10 text-white/70 hover:text-white transition-colors";
-  const fieldRow = "flex items-start px-4 border-b border-[#e0e0e0] min-h-[40px]";
-  const fieldLabel = "text-[13px] text-[#444] w-7 pt-2.5 shrink-0 select-none";
-  const fieldInput = "flex-1 text-[13px] text-[#202124] bg-transparent border-none outline-none placeholder-[#757575] py-2 resize-none";
-
   return (
-    <div
-      className={`fixed z-50 shadow-[0_8px_40px_rgba(0,0,0,0.35)] overflow-hidden flex flex-col bg-white transition-all duration-150 ${
-        maximized
-          ? "inset-0 sm:inset-4 rounded-none sm:rounded-xl"
-          : minimized
-          ? "bottom-0 right-0 left-0 sm:left-auto sm:right-6 sm:w-[320px] rounded-t-xl"
-          : "bottom-0 right-0 left-0 sm:left-auto sm:right-6 sm:w-[500px] rounded-t-xl"
-      }`}
-      style={maximized ? {} : minimized ? { height: "auto" } : { height: "min(480px, 90dvh)" }}
-    >
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-2.5 bg-[#404040] rounded-t-xl cursor-pointer select-none"
-        onClick={() => minimized && setMinimized(false)}
-      >
-        <span className="text-[14px] font-medium text-white">New Message</span>
-        <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-          <button
-            className={toolbarBtn}
-            onClick={() => setMinimized(m => !m)}
-            title="Minimize"
-          >
-            <Minus className="w-3.5 h-3.5" />
-          </button>
-          <button
-            className={toolbarBtn}
-            onClick={() => { setMaximized(m => !m); setMinimized(false); }}
-            title={maximized ? "Restore" : "Full screen"}
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            className={toolbarBtn}
-            onClick={handleClose}
-            title="Close"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="sm:max-w-[580px] p-0 gap-0 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div className="flex items-center gap-2.5">
+            <PenSquare className="w-4 h-4 text-muted-foreground" />
+            <span className="font-semibold text-[15px]">New Message</span>
+          </div>
         </div>
-      </div>
 
-      {!minimized && (
-        <>
-          {/* To field */}
-          <div className={fieldRow}>
-            <span className={fieldLabel}>To</span>
-            <div className="flex-1 py-0.5">
-              <ContactAutocomplete
-                value={to}
-                onChange={setTo}
-                placeholder="Recipients"
-              />
+        <div className="flex flex-col">
+          {/* To */}
+          <div className="flex items-center gap-3 px-5 py-2.5 border-b">
+            <span className="text-sm text-muted-foreground w-14 shrink-0">To</span>
+            <div className="flex-1 min-w-0">
+              <ContactAutocomplete value={to} onChange={setTo} placeholder="Recipients" />
             </div>
             {!showCc && (
               <button
-                className="text-[12px] text-[#444] hover:text-[#202124] pt-2.5 pl-2 shrink-0"
-                onClick={() => { setShowCc(true); }}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                onClick={() => setShowCc(true)}
               >
                 Cc
               </button>
             )}
           </div>
 
-          {/* CC field */}
+          {/* Cc */}
           {showCc && (
-            <div className={fieldRow}>
-              <span className={fieldLabel}>Cc</span>
-              <input
-                className={fieldInput}
+            <div className="flex items-center gap-3 px-5 py-2.5 border-b">
+              <span className="text-sm text-muted-foreground w-14 shrink-0">Cc</span>
+              <Input
+                className="border-0 shadow-none p-0 h-auto text-sm focus-visible:ring-0"
                 value={cc}
                 onChange={e => setCc(e.target.value)}
                 placeholder=""
@@ -377,9 +354,10 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
           )}
 
           {/* Subject */}
-          <div className={fieldRow}>
-            <input
-              className={`${fieldInput} w-full`}
+          <div className="flex items-center gap-3 px-5 py-2.5 border-b">
+            <span className="text-sm text-muted-foreground w-14 shrink-0">Subject</span>
+            <Input
+              className="border-0 shadow-none p-0 h-auto text-sm focus-visible:ring-0 font-medium"
               value={subject}
               onChange={e => setSubject(e.target.value)}
               placeholder="Subject"
@@ -387,57 +365,39 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
           </div>
 
           {/* Body */}
-          <div className="flex-1 min-h-0 px-4 pt-2 pb-1 overflow-y-auto">
-            <textarea
-              ref={bodyRef}
-              className="w-full h-full text-[13px] text-[#202124] bg-transparent border-none outline-none placeholder-[#757575] resize-none leading-relaxed"
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              placeholder="Write your message here..."
-              style={{ minHeight: maximized ? 300 : 180 }}
-            />
-          </div>
+          <textarea
+            className="w-full px-5 py-4 text-sm text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground resize-none leading-relaxed min-h-[220px]"
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            placeholder="Write your message here..."
+          />
+        </div>
 
-          {/* Footer toolbar */}
-          <div className="flex items-center gap-1 px-3 py-2 border-t border-[#e0e0e0] bg-white">
-            {/* Send */}
-            <button
-              className="flex items-center gap-2 px-5 py-2 rounded-full bg-[#0b57d0] hover:bg-[#0842a0] text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed mr-1"
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-muted/20">
+          <div className="flex items-center gap-1">
+            <Button
               onClick={() => send.mutate()}
               disabled={send.isPending || !to || !subject}
+              size="sm"
+              className="gap-2"
             >
-              {send.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {send.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               Send
-            </button>
-
-            {/* Formatting */}
-            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="Formatting options">
-              <AlignLeft className="w-4 h-4" />
-            </button>
-            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="Attach files">
-              <Paperclip className="w-4 h-4" />
-            </button>
-            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="Insert link">
-              <Link2 className="w-4 h-4" />
-            </button>
-            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="More options">
-              <MoreHorizontal className="w-4 h-4" />
-            </button>
-
-            <div className="flex-1" />
-
-            {/* Trash */}
-            <button
-              className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors"
-              title="Discard draft"
-              onClick={handleClose}
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
-        </>
-      )}
-    </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-destructive gap-1.5"
+            onClick={handleClose}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Discard
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

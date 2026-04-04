@@ -49,15 +49,29 @@ router.get("/calendar/events", requireAuth, async (req, res) => {
 
     res.json({ events });
   } catch (err: any) {
+    // Always log the full error so we can diagnose it
+    const googleMsg = err?.response?.data?.error?.message || err?.response?.data?.error || err?.message || String(err);
+    const googleStatus = err?.response?.status || err?.code || err?.status;
+    req.log.error({ googleStatus, googleMsg, err }, "Calendar API error");
+
     if (err.message?.includes("not connected") || err.message?.includes("Not connected")) {
       res.status(403).json({ error: "Google account not connected", code: "NOT_CONNECTED" });
       return;
     }
-    if (err.code === 403 || err.status === 403) {
+    // Detect "API not enabled in GCP project" specifically
+    const notEnabled = typeof googleMsg === "string" && (
+      googleMsg.includes("has not been used") ||
+      googleMsg.includes("is disabled") ||
+      googleMsg.includes("Calendar API")
+    );
+    if (notEnabled) {
+      res.status(403).json({ error: "Google Calendar API is not enabled in the Google Cloud project.", code: "API_NOT_ENABLED" });
+      return;
+    }
+    if (googleStatus === 403 || googleStatus === "403") {
       res.status(403).json({ error: "Calendar access not granted. Please reconnect your Google account.", code: "PERMISSION_DENIED" });
       return;
     }
-    req.log.error({ err }, "Error fetching calendar events");
     res.status(500).json({ error: "Failed to fetch calendar events" });
   }
 });

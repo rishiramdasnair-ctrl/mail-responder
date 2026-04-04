@@ -670,8 +670,10 @@ export default function CalendarPage() {
   const { data, isLoading, error } = useRangeEvents(rangeStart, rangeEnd);
   const events = data?.events ?? [];
 
-  const notConnected = (error as any)?.code === "NOT_CONNECTED";
-  const permDenied   = (error as any)?.code === "PERMISSION_DENIED";
+  const errorCode    = (error as any)?.code as string | undefined;
+  const notConnected = errorCode === "NOT_CONNECTED";
+  const permDenied   = errorCode === "PERMISSION_DENIED";
+  const apiNotEnabled = errorCode === "API_NOT_ENABLED";
 
   // Navigation
   const navigate = useCallback((dir: 1 | -1) => {
@@ -734,22 +736,37 @@ export default function CalendarPage() {
     <AppLayout>
       <div className="flex h-[100dvh] flex-col overflow-hidden">
 
-        {/* ── Not-connected banner ────────────────────────────────────────── */}
-        {(notConnected || permDenied) && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-muted/50 border-b shrink-0">
-            <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
-            <p className="text-xs text-muted-foreground flex-1 min-w-0">
-              {notConnected
-                ? "Connect your Google account to see real events on this calendar."
-                : "Calendar access was not granted. Reconnect your Google account to enable it."}
+        {/* ── Not-connected / error banner ────────────────────────────────── */}
+        {(notConnected || permDenied || apiNotEnabled) && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 shrink-0">
+            <CalendarDays className="w-4 h-4 text-amber-600 shrink-0" />
+            <p className="text-xs text-amber-800 flex-1 min-w-0">
+              {apiNotEnabled
+                ? "Google Calendar API is not enabled in your Google Cloud project. Enable it at console.cloud.google.com → APIs & Services → Google Calendar API."
+                : notConnected
+                  ? "Connect your Google account to see real events on this calendar."
+                  : "Calendar access was not granted. Click Reconnect and make sure to approve Calendar access."}
             </p>
-            <Button
-              size="sm"
-              className="h-7 text-xs shrink-0"
-              onClick={() => { window.location.href = "/api/auth/google/start"; }}
-            >
-              {notConnected ? "Connect Google" : "Reconnect"}
-            </Button>
+            {!apiNotEnabled && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100"
+                onClick={() => { window.location.href = "/api/auth/google/start"; }}
+              >
+                {notConnected ? "Connect Google" : "Reconnect"}
+              </Button>
+            )}
+            {apiNotEnabled && (
+              <a
+                href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-amber-800 underline underline-offset-2 whitespace-nowrap hover:opacity-70 shrink-0"
+              >
+                Enable API →
+              </a>
+            )}
           </div>
         )}
 

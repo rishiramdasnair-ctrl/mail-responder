@@ -4,16 +4,22 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
-import { useGetSettings, useUpdateSettings, useGetGmailStatus, getGetGmailStatusQueryKey, getGetSettingsQueryKey } from "@workspace/api-client-react";
-import { Loader2, Mail, CheckCircle2, AlertCircle } from "lucide-react";
+import { useGetSettings, useUpdateSettings, getGetSettingsQueryKey } from "@workspace/api-client-react";
+import { Loader2, Mail, CheckCircle2, AlertCircle, Plus, Trash2 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+
+interface GmailAccount {
+  email: string;
+  isPrimary: boolean;
+}
 
 const settingsSchema = z.object({
   defaultTone: z.enum(["pro", "casual", "fast"]),
@@ -28,10 +34,37 @@ type SettingsFormValues = z.infer<typeof settingsSchema>;
 export default function Settings() {
   const { toast } = useToast();
   const { setTheme } = useTheme();
+  const [removingEmail, setRemovingEmail] = useState<string | null>(null);
   
   const { data: settings, isLoading: isLoadingSettings } = useGetSettings();
-  const { data: gmailStatus, isLoading: isLoadingGmail, refetch: refetchGmailStatus } = useGetGmailStatus();
   const updateSettings = useUpdateSettings();
+
+  const { data: gmailAccountsData, isLoading: isLoadingAccounts, refetch: refetchAccounts } = useQuery({
+    queryKey: ["gmail-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/gmail/accounts", { credentials: "include" });
+      if (!res.ok) return { accounts: [] as GmailAccount[] };
+      return res.json() as Promise<{ accounts: GmailAccount[] }>;
+    },
+  });
+  const gmailAccounts = gmailAccountsData?.accounts ?? [];
+
+  const removeAccount = async (email: string) => {
+    setRemovingEmail(email);
+    try {
+      const res = await fetch(`/api/gmail/accounts/${encodeURIComponent(email)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error();
+      await refetchAccounts();
+      toast({ title: "Account removed", description: `${email} has been disconnected.` });
+    } catch {
+      toast({ title: "Error", description: "Failed to remove account.", variant: "destructive" });
+    } finally {
+      setRemovingEmail(null);
+    }
+  };
 
   // Show error toast if redirected back from OAuth with error
   useEffect(() => {
@@ -103,24 +136,6 @@ export default function Settings() {
     );
   };
 
-  const handleConnectGmail = () => {
-    window.location.href = "/api/auth/google/start";
-  };
-
-  const disconnectMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/auth/google/disconnect", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to disconnect");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: getGetGmailStatusQueryKey() });
-      toast({ title: "Gmail disconnected", description: "Your Gmail account has been disconnected." });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to disconnect Gmail.", variant: "destructive" });
-    },
-  });
-
   return (
     <AppLayout>
       <div className="h-full overflow-y-auto p-6 md:p-10 max-w-3xl mx-auto">
@@ -129,60 +144,78 @@ export default function Settings() {
         <div className="space-y-10">
           
           <section>
-            <h2 className="text-xl font-semibold mb-4 pb-2 border-b">Integrations</h2>
-            {isLoadingGmail ? (
+            <h2 className="text-xl font-semibold mb-1 pb-2 border-b">Gmail Accounts</h2>
+            <p className="text-sm text-muted-foreground mb-4">Connect one or more Gmail accounts. You can switch between them in the inbox.</p>
+
+            {isLoadingAccounts ? (
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             ) : (
-              <div className="border rounded-lg bg-card overflow-hidden">
-                <div className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Mail className="w-5 h-5 text-primary" />
+              <div className="space-y-3">
+                {gmailAccounts.length === 0 && (
+                  <div className="border rounded-lg p-6 flex flex-col items-center gap-3 text-center bg-card">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                      <Mail className="w-6 h-6 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Google Workspace</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {gmailStatus?.connected ? `Connected as ${gmailStatus.email}` : "Not connected"}
-                      </p>
+                      <p className="font-medium">No Gmail accounts connected</p>
+                      <p className="text-sm text-muted-foreground mt-1">Connect your Gmail to start using ReplyAI.</p>
                     </div>
+                    <Button onClick={() => { window.location.href = "/api/auth/google/start"; }} className="mt-1">
+                      <Mail className="w-4 h-4 mr-2" />
+                      Connect Gmail
+                    </Button>
                   </div>
-                  {gmailStatus?.connected ? (
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-500">
-                        <CheckCircle2 className="w-4 h-4" /> Connected
+                )}
+
+                {gmailAccounts.map((account) => (
+                  <div key={account.email} className="border rounded-lg bg-card overflow-hidden">
+                    <div className="flex items-center gap-4 p-4">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-semibold text-primary">
+                        {account.email[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium truncate">{account.email}</p>
+                          {account.isPrimary && (
+                            <Badge variant="secondary" className="text-xs shrink-0">Primary</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-500" />
+                          <span className="text-xs text-green-600 dark:text-green-500 font-medium">Connected</span>
+                        </div>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => disconnectMutation.mutate()}
-                        disabled={disconnectMutation.isPending}
+                        onClick={() => removeAccount(account.email)}
+                        disabled={removingEmail === account.email}
+                        className="shrink-0 text-destructive hover:text-destructive"
                       >
-                        {disconnectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Disconnect"}
+                        {removingEmail === account.email
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />}
                       </Button>
                     </div>
-                  ) : (
-                    <Button onClick={handleConnectGmail}>
-                      Connect Google
-                    </Button>
-                  )}
-                </div>
-                {gmailStatus?.connected && (
-                  <div className="px-4 py-3 border-t bg-muted/30 flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">
-                      To enable Calendar integration, reconnect your Google account to grant calendar access.
-                    </p>
-                    <Button variant="outline" size="sm" className="shrink-0 text-xs" onClick={handleConnectGmail}>
-                      Reconnect for Calendar
-                    </Button>
                   </div>
+                ))}
+
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed gap-2 h-11"
+                  onClick={() => { window.location.href = "/api/auth/google/start?addAccount=true"; }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add another Gmail account
+                </Button>
+
+                {gmailAccounts.length === 0 && (
+                  <p className="text-sm text-destructive flex items-center gap-2 mt-2">
+                    <AlertCircle className="w-4 h-4" />
+                    You must connect a Gmail account to use ReplyAI.
+                  </p>
                 )}
               </div>
-            )}
-            {!gmailStatus?.connected && !isLoadingGmail && (
-              <p className="mt-3 text-sm text-destructive flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                You must connect your Gmail account to use ReplyAI.
-              </p>
             )}
           </section>
 

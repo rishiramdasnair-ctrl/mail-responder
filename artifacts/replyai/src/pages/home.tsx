@@ -294,7 +294,7 @@ export default function Home() {
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Logo size={24} className="text-muted-foreground" />
+            <Logo size={24} className="text-foreground" />
             <span>ReplyAI © {new Date().getFullYear()}</span>
           </div>
           <div className="flex items-center gap-4">

@@ -471,29 +471,20 @@ export default function CalendarPage() {
         </div>
 
         {/* ── Body ───────────────────────────────────────────────────────── */}
-        {notConnected || permDenied ? (
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="text-center space-y-4 max-w-xs">
-              <div className="w-16 h-16 rounded-2xl bg-muted mx-auto flex items-center justify-center">
-                <CalendarDays className="w-7 h-7 text-muted-foreground" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-base mb-1">
-                  {notConnected ? "Calendar not connected" : "Calendar access not granted"}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {notConnected
-                    ? "Connect your Google account to see and manage your calendar events."
-                    : "We need calendar permissions. Please reconnect your Google account in Settings."}
-                </p>
-              </div>
-              <Button size="sm" onClick={() => window.location.href = "/settings"}>
-                Go to Settings
-              </Button>
-            </div>
+        {(notConnected || permDenied) && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-muted/60 border-b text-xs text-muted-foreground shrink-0">
+            <span>
+              {notConnected
+                ? "Connect Google Calendar in Settings to see your events here."
+                : "Calendar access not granted — reconnect your Google account in Settings."}
+            </span>
+            <a href="/settings" className="text-foreground font-medium underline underline-offset-2 whitespace-nowrap hover:opacity-70 transition-opacity">
+              Go to Settings
+            </a>
           </div>
-        ) : (
-          <div className="flex flex-1 overflow-hidden">
+        )}
+
+        <div className="flex flex-1 overflow-hidden">
 
             {/* ── Monthly grid ─────────────────────────────────────────── */}
             <div className="flex flex-col flex-1 overflow-hidden">
@@ -673,8 +664,7 @@ export default function CalendarPage() {
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
 
       {/* Add event modal */}
       <AddEventModal

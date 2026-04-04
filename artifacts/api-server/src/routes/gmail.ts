@@ -283,4 +283,35 @@ router.post("/gmail/send", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/gmail/messages/:messageId/attachments/:attachmentId", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { messageId, attachmentId } = req.params;
+    const filename = (req.query.filename as string) || "attachment";
+    const mimeType = (req.query.mimeType as string) || "application/octet-stream";
+
+    const gmail = await getGmailClientForUser(userId);
+    const response = await gmail.users.messages.attachments.get({
+      userId: "me",
+      messageId,
+      id: attachmentId,
+    });
+
+    const data = response.data.data;
+    if (!data) { res.status(404).json({ error: "Attachment not found" }); return; }
+
+    const buffer = Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+    res.setHeader("Content-Length", buffer.length);
+    res.send(buffer);
+  } catch (err) {
+    req.log.error({ err }, "Error downloading attachment");
+    res.status(500).json({ error: "Failed to download attachment" });
+  }
+});
+
 export default router;

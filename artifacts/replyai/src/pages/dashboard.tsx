@@ -86,7 +86,7 @@ function EmailBodyRenderer({ body }: { body: string }) {
   const [iframeHeight, setIframeHeight] = useState(300);
 
   const html = useMemo(() => {
-    const inject = `<base target="_blank" /><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;word-break:break-word;margin:0;padding:8px;}img{max-width:100%!important;height:auto!important;}a{color:#6366f1;}*{box-sizing:border-box;}</style>`;
+    const inject = `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" /><base target="_blank" /><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;word-break:break-word;margin:0;padding:8px;max-width:100%!important;overflow-x:hidden;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;}td{max-width:100%!important;}a{color:#6366f1;}*{box-sizing:border-box;}</style>`;
     if (/<\/head>/i.test(body)) {
       return body.replace(/<\/head>/i, `${inject}</head>`);
     }
@@ -301,14 +301,14 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
 
   return (
     <div
-      className={`fixed z-50 shadow-[0_8px_40px_rgba(0,0,0,0.35)] rounded-t-xl overflow-hidden flex flex-col bg-white transition-all duration-150 ${
+      className={`fixed z-50 shadow-[0_8px_40px_rgba(0,0,0,0.35)] overflow-hidden flex flex-col bg-white transition-all duration-150 ${
         maximized
-          ? "inset-4 rounded-xl"
+          ? "inset-0 sm:inset-4 rounded-none sm:rounded-xl"
           : minimized
-          ? "bottom-0 right-6 w-[320px]"
-          : "bottom-0 right-6 w-[500px]"
+          ? "bottom-0 right-0 left-0 sm:left-auto sm:right-6 sm:w-[320px] rounded-t-xl"
+          : "bottom-0 right-0 left-0 sm:left-auto sm:right-6 sm:w-[500px] rounded-t-xl"
       }`}
-      style={maximized ? {} : minimized ? { height: "auto" } : { height: 480 }}
+      style={maximized ? {} : minimized ? { height: "auto" } : { height: "min(480px, 90dvh)" }}
     >
       {/* Header */}
       <div
@@ -737,41 +737,56 @@ function AttachmentsBar({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith("image/")) return "🖼";
+    if (mimeType === "application/pdf") return "📄";
+    if (mimeType.includes("word") || mimeType.includes("document")) return "📝";
+    if (mimeType.includes("sheet") || mimeType.includes("excel") || mimeType.includes("csv")) return "📊";
+    if (mimeType.includes("zip") || mimeType.includes("archive") || mimeType.includes("compressed")) return "🗜";
+    return "📎";
+  };
+
   return (
     <div className="mt-3 rounded-lg border bg-card p-3">
       <div className="flex items-center gap-2 mb-2">
         <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attachments</span>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attachments ({attachments.length})</span>
       </div>
-      <div className="space-y-1.5">
-        {attachments.map((att) => (
-          <div key={att.attachmentId} className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm truncate">{att.filename}</p>
-              <p className="text-xs text-muted-foreground">{fmt(att.size)}</p>
-            </div>
-            {driveConnected && (
-              <button
-                onClick={() => driveSave.mutate({
-                  messageId,
-                  attachmentId: att.attachmentId,
-                  filename: att.filename,
-                  mimeType: att.mimeType,
-                })}
-                disabled={driveSave.isPending}
-                className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-                title="Save to Google Drive"
-              >
-                {driveSave.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <HardDrive className="w-3 h-3" />
+      <div className="flex flex-wrap gap-2">
+        {attachments.map((att) => {
+          const downloadUrl = `/api/gmail/messages/${messageId}/attachments/${att.attachmentId}?filename=${encodeURIComponent(att.filename)}&mimeType=${encodeURIComponent(att.mimeType)}`;
+          return (
+            <div key={att.attachmentId} className="flex items-center gap-2 rounded-lg border bg-background p-2.5 min-w-0 max-w-full sm:max-w-[260px]">
+              <span className="text-xl shrink-0">{getFileIcon(att.mimeType)}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium truncate">{att.filename}</p>
+                <p className="text-xs text-muted-foreground">{fmt(att.size)}</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <a
+                  href={downloadUrl}
+                  download={att.filename}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  title="Download"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </a>
+                {driveConnected && (
+                  <button
+                    onClick={() => driveSave.mutate({ messageId, attachmentId: att.attachmentId, filename: att.filename, mimeType: att.mimeType })}
+                    disabled={driveSave.isPending}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                    title="Save to Google Drive"
+                  >
+                    {driveSave.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <HardDrive className="w-3.5 h-3.5" />}
+                  </button>
                 )}
-                Save to Drive
-              </button>
-            )}
-          </div>
-        ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

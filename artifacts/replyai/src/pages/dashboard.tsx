@@ -48,15 +48,6 @@ import {
   Building2,
   ExternalLink,
   UserPlus,
-  Minus,
-  Maximize2,
-  Bold,
-  Italic,
-  Underline,
-  Link2,
-  AlignLeft,
-  MoreHorizontal,
-  ChevronDown,
 } from "lucide-react";
 import { format, isToday, isTomorrow, isThisWeek, parseISO, startOfDay, isSameDay } from "date-fns";
 
@@ -88,12 +79,12 @@ function EmailBodyRenderer({ body }: { body: string }) {
 
   const html = useMemo(() => {
     const inject = `<base target="_blank" /><style>
-      html,body{margin:0;padding:12px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;background:#fff;word-wrap:break-word;-webkit-text-size-adjust:100%;}
+      html,body{margin:0;padding:12px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;background:#fff;word-wrap:break-word;word-break:break-word;overflow-wrap:break-word;-webkit-text-size-adjust:100%;}
       img{max-width:100%;height:auto;}
-      a{color:#0969da;}
+      a{color:#0969da;word-break:break-all;}
       blockquote{margin:8px 0 8px 12px;padding-left:12px;border-left:3px solid #d0d7de;color:#57606a;}
-      pre,code{font-family:ui-monospace,monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px;}
-      *{box-sizing:border-box;}
+      pre,code{font-family:ui-monospace,monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px;white-space:pre-wrap;word-break:break-all;}
+      *{box-sizing:border-box;max-width:100%;}
     </style>`;
     if (/<\/head>/i.test(body)) {
       return body.replace(/<\/head>/i, `${inject}</head>`);
@@ -117,18 +108,33 @@ function EmailBodyRenderer({ body }: { body: string }) {
   if (!isHtmlBody(body)) {
     const lines = body.split("\n");
     return (
-      <div className="font-sans text-sm leading-relaxed text-foreground/90 space-y-0.5">
+      <div
+        className="font-sans text-sm leading-relaxed text-foreground/90 space-y-0.5 overflow-x-hidden"
+        style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+      >
         {lines.map((line, i) => {
-          const quoteDepth = (line.match(/^(>+\s?)/) || [""])[0].length;
-          const text = line.slice(quoteDepth ? quoteDepth : 0);
-          if (quoteDepth > 0) {
+          const match = line.match(/^(>{1,}\s*)/);
+          const quotePrefix = match ? match[0] : "";
+          const text = line.slice(quotePrefix.length);
+          if (quotePrefix.length > 0) {
             return (
-              <div key={i} className="pl-3 border-l-2 border-border text-muted-foreground text-xs">
+              <div
+                key={i}
+                className="pl-3 border-l-2 border-border text-muted-foreground text-xs"
+                style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+              >
                 {text || "\u00a0"}
               </div>
             );
           }
-          return <div key={i}>{line || "\u00a0"}</div>;
+          return (
+            <div
+              key={i}
+              style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+            >
+              {line || "\u00a0"}
+            </div>
+          );
         })}
       </div>
     );
@@ -274,13 +280,34 @@ function ContactAutocomplete({
   );
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 640 : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
+
 function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+
+  const reset = () => {
+    setTo(""); setCc(""); setBcc(""); setSubject(""); setBody(""); setShowCc(false); setShowBcc(false);
+  };
 
   const send = useMutation({
     mutationFn: async () => {
@@ -288,7 +315,7 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ to, subject, body }),
+        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -298,7 +325,7 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     },
     onSuccess: () => {
       toast({ title: "Email sent", description: `Sent to ${to}` });
-      setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false);
+      reset();
       onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: ["inbox"] });
     },
@@ -307,95 +334,148 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     },
   });
 
-  const handleClose = () => {
-    setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false);
-    onOpenChange(false);
-  };
+  const handleClose = () => { reset(); onOpenChange(false); };
+
+  const fieldRow = "flex items-center gap-0 border-b";
+  const fieldLabel = "text-sm text-muted-foreground w-14 shrink-0 pl-5";
+  const fieldInput = "flex-1 min-w-0 border-0 shadow-none px-3 py-3 h-auto text-sm focus-visible:ring-0 bg-transparent outline-none";
+
+  const composeBody = (
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-3.5 border-b shrink-0">
+        {isMobile && (
+          <button
+            onClick={handleClose}
+            className="p-1 -ml-1 rounded-full hover:bg-muted transition-colors text-muted-foreground"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+        )}
+        <span className="font-semibold text-[15px] flex-1">New Message</span>
+        <div className="flex items-center gap-1">
+          {!showCc && (
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
+              onClick={() => setShowCc(true)}
+            >
+              Cc
+            </button>
+          )}
+          {!showBcc && (
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
+              onClick={() => setShowBcc(true)}
+            >
+              Bcc
+            </button>
+          )}
+          {!isMobile && (
+            <button
+              onClick={handleClose}
+              className="ml-1 p-1.5 rounded-full hover:bg-muted transition-colors text-muted-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Fields */}
+      <div className="shrink-0">
+        {/* To */}
+        <div className={fieldRow}>
+          <span className={fieldLabel}>To</span>
+          <div className="flex-1 min-w-0 pr-4">
+            <ContactAutocomplete value={to} onChange={setTo} placeholder="Recipients" />
+          </div>
+        </div>
+
+        {/* CC */}
+        {showCc && (
+          <div className={fieldRow}>
+            <span className={fieldLabel}>Cc</span>
+            <input
+              className={fieldInput}
+              value={cc}
+              onChange={e => setCc(e.target.value)}
+              placeholder="Cc recipients"
+            />
+          </div>
+        )}
+
+        {/* BCC */}
+        {showBcc && (
+          <div className={fieldRow}>
+            <span className={fieldLabel}>Bcc</span>
+            <input
+              className={fieldInput}
+              value={bcc}
+              onChange={e => setBcc(e.target.value)}
+              placeholder="Bcc recipients"
+            />
+          </div>
+        )}
+
+        {/* Subject */}
+        <div className={fieldRow}>
+          <span className={fieldLabel}>Subject</span>
+          <input
+            className={`${fieldInput} font-medium`}
+            value={subject}
+            onChange={e => setSubject(e.target.value)}
+            placeholder="Subject"
+          />
+        </div>
+      </div>
+
+      {/* Body — fills remaining space */}
+      <textarea
+        className="flex-1 w-full px-5 py-4 text-sm text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground resize-none leading-relaxed"
+        style={{ minHeight: isMobile ? 0 : 200 }}
+        value={body}
+        onChange={e => setBody(e.target.value)}
+        placeholder="Write your message here..."
+        autoFocus
+      />
+
+      {/* Footer */}
+      <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-muted/20 shrink-0">
+        <Button
+          onClick={() => send.mutate()}
+          disabled={send.isPending || !to || !subject}
+          size="sm"
+          className="gap-2"
+        >
+          {send.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          Send
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground hover:text-destructive gap-1.5"
+          onClick={handleClose}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Discard
+        </Button>
+      </div>
+    </div>
+  );
+
+  if (isMobile) {
+    if (!open) return null;
+    return (
+      <div className="fixed inset-0 z-50 bg-background flex flex-col">
+        {composeBody}
+      </div>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="sm:max-w-[580px] p-0 gap-0 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <div className="flex items-center gap-2.5">
-            <PenSquare className="w-4 h-4 text-muted-foreground" />
-            <span className="font-semibold text-[15px]">New Message</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col">
-          {/* To */}
-          <div className="flex items-center gap-3 px-5 py-2.5 border-b">
-            <span className="text-sm text-muted-foreground w-14 shrink-0">To</span>
-            <div className="flex-1 min-w-0">
-              <ContactAutocomplete value={to} onChange={setTo} placeholder="Recipients" />
-            </div>
-            {!showCc && (
-              <button
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                onClick={() => setShowCc(true)}
-              >
-                Cc
-              </button>
-            )}
-          </div>
-
-          {/* Cc */}
-          {showCc && (
-            <div className="flex items-center gap-3 px-5 py-2.5 border-b">
-              <span className="text-sm text-muted-foreground w-14 shrink-0">Cc</span>
-              <Input
-                className="border-0 shadow-none p-0 h-auto text-sm focus-visible:ring-0"
-                value={cc}
-                onChange={e => setCc(e.target.value)}
-                placeholder=""
-              />
-            </div>
-          )}
-
-          {/* Subject */}
-          <div className="flex items-center gap-3 px-5 py-2.5 border-b">
-            <span className="text-sm text-muted-foreground w-14 shrink-0">Subject</span>
-            <Input
-              className="border-0 shadow-none p-0 h-auto text-sm focus-visible:ring-0 font-medium"
-              value={subject}
-              onChange={e => setSubject(e.target.value)}
-              placeholder="Subject"
-            />
-          </div>
-
-          {/* Body */}
-          <textarea
-            className="w-full px-5 py-4 text-sm text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground resize-none leading-relaxed min-h-[220px]"
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="Write your message here..."
-          />
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-muted/20">
-          <div className="flex items-center gap-1">
-            <Button
-              onClick={() => send.mutate()}
-              disabled={send.isPending || !to || !subject}
-              size="sm"
-              className="gap-2"
-            >
-              {send.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              Send
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-destructive gap-1.5"
-            onClick={handleClose}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Discard
-          </Button>
-        </div>
+      <DialogContent className="sm:max-w-[600px] p-0 gap-0 overflow-hidden flex flex-col max-h-[85dvh]">
+        {composeBody}
       </DialogContent>
     </Dialog>
   );

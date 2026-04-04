@@ -213,6 +213,8 @@ router.post("/gmail/compose", requireAuth, async (req, res) => {
     const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
     const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
     const body = typeof req.body?.body === "string" ? req.body.body : "";
+    const cc = typeof req.body?.cc === "string" ? req.body.cc.trim() : "";
+    const bcc = typeof req.body?.bcc === "string" ? req.body.bcc.trim() : "";
     const threadId = typeof req.body?.threadId === "string" ? req.body.threadId : undefined;
 
     if (!to || !subject) {
@@ -227,6 +229,8 @@ router.post("/gmail/compose", requireAuth, async (req, res) => {
     const emailLines = [
       `From: ${fromEmail}`,
       `To: ${to}`,
+      ...(cc ? [`Cc: ${cc}`] : []),
+      ...(bcc ? [`Bcc: ${bcc}`] : []),
       `Subject: ${subject}`,
       `Content-Type: text/plain; charset=utf-8`,
       "",

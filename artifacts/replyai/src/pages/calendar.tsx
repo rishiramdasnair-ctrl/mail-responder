@@ -648,6 +648,10 @@ export default function CalendarPage() {
   const [showAddEvent, setShowAddEvent]   = useState(false);
   const [addEventTime, setAddEventTime]   = useState<{ day: Date; hour: number } | null>(null);
 
+  // Swipe-to-navigate
+  const swipeRef  = useRef<HTMLDivElement>(null);
+  const touchOrigin = useRef<{ x: number; y: number } | null>(null);
+
   // Compute fetch range based on view
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (view === "month") {
@@ -686,6 +690,30 @@ export default function CalendarPage() {
       return addDays(prev, dir);
     });
   }, [view]);
+
+  // Attach swipe listeners to the calendar body
+  useEffect(() => {
+    const el = swipeRef.current;
+    if (!el) return;
+    const onStart = (e: TouchEvent) => {
+      touchOrigin.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!touchOrigin.current) return;
+      const dx = e.changedTouches[0].clientX - touchOrigin.current.x;
+      const dy = e.changedTouches[0].clientY - touchOrigin.current.y;
+      touchOrigin.current = null;
+      // Only treat as horizontal swipe if clearly more horizontal than vertical
+      if (Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx) * 0.8) return;
+      navigate(dx < 0 ? 1 : -1);
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchend", onEnd);
+    };
+  }, [navigate]);
 
   const goToday = () => {
     const t = new Date(); t.setHours(0,0,0,0);
@@ -820,7 +848,7 @@ export default function CalendarPage() {
         </div>
 
         {/* ── Body ───────────────────────────────────────────────────────── */}
-        <div className="flex flex-1 overflow-hidden">
+        <div ref={swipeRef} className="flex flex-1 overflow-hidden">
           {/* Main calendar area */}
           <div className="flex flex-col flex-1 overflow-hidden">
             {isLoading && (view === "week" || view === "day") ? (

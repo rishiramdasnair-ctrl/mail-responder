@@ -138,7 +138,7 @@ export default function Settings() {
 
   return (
     <AppLayout>
-      <div className="h-full overflow-y-auto p-6 md:p-10 max-w-3xl mx-auto">
+      <div className="h-full overflow-y-auto p-6 md:p-10 pb-24 md:pb-10 max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold tracking-tight mb-8">Settings</h1>
 
         <div className="space-y-10">

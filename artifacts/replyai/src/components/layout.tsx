@@ -139,7 +139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
+    <div className="h-[100dvh] flex flex-col bg-background text-foreground overflow-hidden">
       {showTrialBanner && (
         <div className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium flex items-center justify-center gap-2">
           <span>Your trial expires in {daysLeft} days.</span>

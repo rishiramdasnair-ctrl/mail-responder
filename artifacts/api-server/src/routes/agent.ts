@@ -46,6 +46,7 @@ interface AgentStep {
   output: string;
   status: "success" | "error";
   url?: string;
+  screenshot?: string;
 }
 
 interface PendingEmail {
@@ -367,7 +368,7 @@ router.post("/agent/run", requireAuth, async (req, res) => {
       res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request body" });
       return;
     }
-    const { task, history: rawHistory = [] } = parsed.data;
+    const { task, history: rawHistory = [], sessionId: incomingSessionId } = parsed.data;
     if (task.length > 2000) {
       res.status(400).json({ error: "task must be under 2000 characters" });
       return;
@@ -376,8 +377,11 @@ router.post("/agent/run", requireAuth, async (req, res) => {
 
     const steps: AgentStep[] = [];
     let pendingEmail: PendingEmail | undefined;
-    const sessionId = `${userId}-${randomUUID()}`;
+    const sessionId = incomingSessionId && activeSessions.has(incomingSessionId)
+      ? incomingSessionId
+      : `${userId}-${randomUUID()}`;
     let browserStepCount = 0;
+    let browserWasUsed = false;
     const MAX_BROWSER_STEPS = 10;
 
     const systemPrompt = `You are ReplyAI Agent, an autonomous AI assistant with access to the user's Gmail, Google Calendar, and a web browser.
@@ -630,7 +634,18 @@ Be concise but informative. Explain what you found and what actions you took.`;
             }
           }
 
-          steps.push({ toolName, input: args, output: toolOutput, status, ...(stepUrl ? { url: stepUrl } : {}) });
+          let stepScreenshot: string | undefined;
+          if (isBrowserTool && status !== "error") {
+            browserWasUsed = true;
+            const liveSession = activeSessions.get(sessionId);
+            if (liveSession) {
+              try {
+                const buf = await liveSession.page.screenshot({ type: "jpeg", quality: 55, fullPage: false });
+                stepScreenshot = buf.toString("base64");
+              } catch { /* ignore screenshot errors */ }
+            }
+          }
+          steps.push({ toolName, input: args, output: toolOutput, status, ...(stepUrl ? { url: stepUrl } : {}), ...(stepScreenshot ? { screenshot: stepScreenshot } : {}) });
           const toolMsg: ChatCompletionToolMessageParam = {
             role: "tool",
             tool_call_id: toolCall.id,
@@ -657,7 +672,9 @@ Be concise but informative. Explain what you found and what actions you took.`;
         }
       }
     } finally {
-      cleanupSession(sessionId);
+      if (!browserWasUsed) {
+        cleanupSession(sessionId);
+      }
     }
 
     if (!finalAnswer) {
@@ -668,6 +685,7 @@ Be concise but informative. Explain what you found and what actions you took.`;
       answer: finalAnswer,
       steps,
       ...(pendingEmail ? { pendingEmail } : {}),
+      ...(browserWasUsed ? { sessionId, browserSessionActive: true } : {}),
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
@@ -677,6 +695,17 @@ Be concise but informative. Explain what you found and what actions you took.`;
       return;
     }
     res.status(500).json({ error: "Agent task failed. Please try again." });
+  }
+});
+
+router.delete("/agent/session/:sessionId", requireAuth, (req, res) => {
+  const { userId } = getAuth(req);
+  const { sessionId } = req.params;
+  if (sessionId.startsWith(userId + "-")) {
+    cleanupSession(sessionId);
+    res.json({ closed: true });
+  } else {
+    res.status(403).json({ error: "Forbidden" });
   }
 });
 

@@ -11,6 +11,7 @@ export const AgentRunBody = zod.object({
     )
     .optional()
     .default([]),
+  sessionId: zod.string().optional(),
 });
 
 export const AgentSendBody = zod.object({

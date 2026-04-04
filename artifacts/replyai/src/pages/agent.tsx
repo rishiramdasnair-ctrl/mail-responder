@@ -19,6 +19,7 @@ interface AgentStep {
   output: string;
   status: "success" | "error";
   url?: string;
+  screenshot?: string;
 }
 
 interface PendingEmail {
@@ -115,17 +116,30 @@ function ToolStepCard({ step }: { step: AgentStep }) {
         </span>
       </button>
       {open && (
-        <div className="px-3 pb-3 pt-1 border-t bg-background/50">
+        <div className="px-3 pb-3 pt-1 border-t bg-background/50 space-y-2">
           {step.url && (
-            <div className="mb-2">
+            <div>
               <span className="text-muted-foreground font-medium uppercase tracking-wide text-[10px]">URL </span>
-              <a href={step.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">{step.url}</a>
+              <a href={step.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all text-xs">{step.url}</a>
             </div>
           )}
-          <div className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Result</div>
-          <pre className="whitespace-pre-wrap text-xs text-foreground/80 max-h-48 overflow-y-auto font-mono leading-relaxed">
-            {step.output}
-          </pre>
+          {step.screenshot && (
+            <div>
+              <div className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Browser screenshot</div>
+              <img
+                src={`data:image/jpeg;base64,${step.screenshot}`}
+                alt="Browser screenshot"
+                className="w-full rounded border border-border/50 object-cover"
+                style={{ maxHeight: 320 }}
+              />
+            </div>
+          )}
+          <div>
+            <div className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Result</div>
+            <pre className="whitespace-pre-wrap text-xs text-foreground/80 max-h-40 overflow-y-auto font-mono leading-relaxed">
+              {step.output}
+            </pre>
+          </div>
         </div>
       )}
     </div>
@@ -272,6 +286,8 @@ export default function AgentPage() {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [activeBrowserSessionId, setActiveBrowserSessionId] = useState<string | null>(null);
+  const [closingBrowser, setClosingBrowser] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try { return !localStorage.getItem("agent_onboarded"); } catch { return true; }
   });
@@ -329,7 +345,11 @@ export default function AgentPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ task, history: getHistory() }),
+        body: JSON.stringify({
+          task,
+          history: getHistory(),
+          ...(activeBrowserSessionId ? { sessionId: activeBrowserSessionId } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -340,6 +360,9 @@ export default function AgentPage() {
           error: data.error || "Something went wrong. Please try again.",
         }]);
         return;
+      }
+      if (data.browserSessionActive && data.sessionId) {
+        setActiveBrowserSessionId(data.sessionId);
       }
       setMessages((prev) => [...prev, {
         id: assistantMsgId,
@@ -414,6 +437,20 @@ export default function AgentPage() {
     ));
   };
 
+  const closeBrowserSession = async () => {
+    if (!activeBrowserSessionId || closingBrowser) return;
+    setClosingBrowser(true);
+    try {
+      await fetch(`/api/agent/session/${encodeURIComponent(activeBrowserSessionId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    } catch { /* ignore */ } finally {
+      setActiveBrowserSessionId(null);
+      setClosingBrowser(false);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="flex flex-col h-full max-w-3xl mx-auto">
@@ -432,6 +469,22 @@ export default function AgentPage() {
                 Got it
               </Button>
             </div>
+          </div>
+        )}
+
+        {activeBrowserSessionId && (
+          <div className="mx-4 mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-xs text-amber-800">
+            <Globe className="w-3.5 h-3.5 shrink-0 text-amber-600 animate-pulse" />
+            <span className="flex-1 font-medium">Browser session active — you can continue to interact with the open page</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-amber-700 hover:bg-amber-100 hover:text-amber-900"
+              onClick={closeBrowserSession}
+              disabled={closingBrowser}
+            >
+              {closingBrowser ? "Closing…" : "Close"}
+            </Button>
           </div>
         )}
 

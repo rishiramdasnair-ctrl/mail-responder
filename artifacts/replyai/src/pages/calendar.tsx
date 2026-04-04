@@ -736,9 +736,20 @@ export default function CalendarPage() {
 
         {/* ── Not-connected banner ────────────────────────────────────────── */}
         {(notConnected || permDenied) && (
-          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-muted/60 border-b text-xs text-muted-foreground shrink-0">
-            <span>{notConnected ? "Connect Google Calendar in Settings to see your events." : "Calendar access not granted — reconnect in Settings."}</span>
-            <a href="/settings" className="text-foreground font-medium underline underline-offset-2 whitespace-nowrap hover:opacity-70 transition-opacity">Settings</a>
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-muted/50 border-b shrink-0">
+            <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+            <p className="text-xs text-muted-foreground flex-1 min-w-0">
+              {notConnected
+                ? "Connect your Google account to see real events on this calendar."
+                : "Calendar access was not granted. Reconnect your Google account to enable it."}
+            </p>
+            <Button
+              size="sm"
+              className="h-7 text-xs shrink-0"
+              onClick={() => { window.location.href = "/api/auth/google/start"; }}
+            >
+              {notConnected ? "Connect Google" : "Reconnect"}
+            </Button>
           </div>
         )}
 

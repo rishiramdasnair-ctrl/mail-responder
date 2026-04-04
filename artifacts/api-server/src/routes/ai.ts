@@ -98,7 +98,6 @@ ${body.emailBody}`;
     const lastMsg = parsed.suggestions?.[0];
     if (lastMsg) {
       await db.insert(replyHistoryTable).values({
-        id: crypto.randomUUID(),
         userId,
         threadId: body.threadId,
         emailSubject: body.emailSubject,

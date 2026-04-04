@@ -88,17 +88,14 @@ router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
 
   const q = (req.query.q as string || "").trim();
   if (!q || q.length < 2) {
-    res.json({ connected: true, results: [] });
-    return;
-  }
-
-  const people = await getContactsClient(userId);
-  if (!people) {
-    res.json({ connected: false, results: [] });
+    res.json({ results: [] });
     return;
   }
 
   try {
+    const authClient = await getGmailClientForUser(userId);
+    const people = google.people({ version: "v1", auth: authClient });
+
     const searchRes = await people.people.searchContacts({
       query: q,
       readMask: "names,emailAddresses,organizations,photos",
@@ -123,11 +120,15 @@ router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
       })
       .filter((r) => r.email);
 
-    res.json({ connected: true, results });
+    res.json({ results });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Search failed";
+    const errMsg = err instanceof Error ? err.message : "";
+    if (errMsg.includes("insufficient") || errMsg.includes("403") || errMsg.includes("scope")) {
+      res.json({ results: [] });
+      return;
+    }
     console.error("[contacts/search] error:", err);
-    res.status(500).json({ error: message });
+    res.json({ results: [] });
   }
 });
 

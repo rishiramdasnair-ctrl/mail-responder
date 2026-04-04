@@ -175,8 +175,8 @@ function ContactAutocomplete({
       try {
         const res = await fetch(`/api/contacts/search?q=${encodeURIComponent(v)}`, { credentials: "include" });
         if (!res.ok) return;
-        const data = await res.json() as { connected: boolean; results: ContactSuggestion[] };
-        if (data.connected && data.results.length > 0) {
+        const data = await res.json() as { results: ContactSuggestion[] };
+        if (data.results && data.results.length > 0) {
           setResults(data.results);
           setOpen(true);
         } else {

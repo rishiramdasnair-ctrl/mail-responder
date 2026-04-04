@@ -1,10 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { useClerk } from "@clerk/react";
-import { Clock, Settings, CreditCard, LogOut, Menu, Bot, Mail, Star, Send, FileText, AlertTriangle, Trash2, Plug } from "lucide-react";
+import { Clock, Settings, CreditCard, LogOut, Bot, Mail, Star, Send, FileText, AlertTriangle, Trash2, Plug, PenSquare, History } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { Button } from "@/components/ui/button";
 import { useGetMe, useGetSubscription, useGetGmailStatus } from "@workspace/api-client-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useMailFolder, FolderId } from "@/contexts/mail-folder";
 
 const FOLDERS = [
@@ -100,6 +98,42 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     </>
   );
 
+  // Bottom tab bar items (mobile only)
+  const handleCompose = () => {
+    if (location !== "/dashboard") setLocation("/dashboard");
+    // Fire after navigation has a chance to render
+    setTimeout(() => window.dispatchEvent(new CustomEvent("replyai:compose")), 50);
+  };
+
+  const bottomTabs = [
+    {
+      label: "Inbox",
+      icon: Mail,
+      active: isOnDashboard && (activeLabel === "INBOX" || activeLabel === "STARRED"),
+      action: () => handleFolderClick("INBOX"),
+    },
+    {
+      label: "Agent",
+      icon: Bot,
+      active: location === "/agent",
+      action: () => setLocation("/agent"),
+    },
+    // Compose FAB placeholder (rendered separately)
+    null,
+    {
+      label: "History",
+      icon: History,
+      active: location === "/history",
+      action: () => setLocation("/history"),
+    },
+    {
+      label: "Settings",
+      icon: Settings,
+      active: location === "/settings",
+      action: () => setLocation("/settings"),
+    },
+  ];
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
       {showTrialBanner && (
@@ -148,36 +182,57 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           )}
         </aside>
 
-        {/* Mobile Header & Content */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <header className="md:hidden flex items-center justify-between p-4 border-b bg-background">
-            <div className="flex items-center gap-2">
-              <Logo size={40} className="text-primary" />
-              <span className="font-bold">ReplyAI</span>
-            </div>
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="-mr-2">
-                  <Menu className="w-5 h-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-56 p-3 flex flex-col bg-sidebar border-r-0">
-                <div className="flex items-center gap-2 mb-6 px-2 pt-1">
-                  <Logo size={44} className="text-primary" />
-                  <span className="font-bold text-base tracking-tight">ReplyAI</span>
-                </div>
-                <nav className="flex flex-col flex-1 gap-0.5">
-                  <NavItems />
-                </nav>
-              </SheetContent>
-            </Sheet>
-          </header>
-          
+        {/* Content area */}
+        <div className="flex-1 flex flex-col min-w-0 pb-[env(safe-area-inset-bottom)] md:pb-0">
           <main className="flex-1 overflow-hidden relative">
             {children}
           </main>
         </div>
       </div>
+
+      {/* ── Mobile Bottom Tab Bar ─────────────────────────────────────────── */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-background/95 backdrop-blur-md border-t border-border"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="flex items-center justify-around h-16 px-2 relative">
+          {bottomTabs.map((tab, i) => {
+            if (tab === null) {
+              // Compose FAB in the center
+              return (
+                <button
+                  key="compose"
+                  onClick={handleCompose}
+                  className="flex flex-col items-center justify-center -mt-5"
+                  aria-label="Compose"
+                >
+                  <span className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-lg shadow-black/20 active:scale-95 transition-transform">
+                    <PenSquare className="w-5 h-5" />
+                  </span>
+                </button>
+              );
+            }
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.label}
+                onClick={tab.action}
+                className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 min-w-0"
+              >
+                <Icon
+                  className={`w-5 h-5 transition-colors ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
+                  strokeWidth={tab.active ? 2.5 : 1.75}
+                />
+                <span
+                  className={`text-[10px] font-medium leading-none transition-colors ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
+                >
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

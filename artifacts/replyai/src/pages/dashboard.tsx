@@ -1055,6 +1055,13 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Listen for compose events fired from the mobile bottom tab bar
+  useEffect(() => {
+    const handler = () => setShowCompose(true);
+    window.addEventListener("replyai:compose", handler);
+    return () => window.removeEventListener("replyai:compose", handler);
+  }, []);
+
   const { data: inboxData, isLoading: isLoadingInbox, isError: isInboxError, refetch: refetchInbox } = useQuery({
     queryKey: ["inbox", activeLabel, debouncedSearch, isUnifiedInbox ? "__unified__" : activeAccount],
     queryFn: async ({ signal }) => {
@@ -1376,7 +1383,7 @@ export default function Dashboard() {
               <Button
                 onClick={() => setShowCompose(true)}
                 size="sm"
-                className="h-8 gap-1.5 text-xs font-medium shrink-0"
+                className="hidden md:flex h-8 gap-1.5 text-xs font-medium shrink-0"
               >
                 <PenSquare className="w-3.5 h-3.5" />
                 Compose
@@ -1408,7 +1415,7 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 pb-16 md:pb-0">
             {isLoadingInbox ? (
               <div className="p-4 space-y-4">
                 {[1,2,3,4,5].map(i => (
@@ -1625,7 +1632,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <ScrollArea className="flex-1">
+              <ScrollArea className="flex-1 pb-16 md:pb-0">
                 {/* Thread messages */}
                 <div className="px-4 md:px-6 py-5 space-y-3">
                   <ThreadMessageView messages={threadData.messages} />

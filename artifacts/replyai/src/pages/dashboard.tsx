@@ -79,12 +79,12 @@ function EmailBodyRenderer({ body }: { body: string }) {
 
   const html = useMemo(() => {
     const inject = `<base target="_blank" /><style>
-      html,body{margin:0;padding:12px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;background:#fff;word-wrap:break-word;word-break:break-word;overflow-wrap:break-word;-webkit-text-size-adjust:100%;}
+      html,body{margin:0;padding:12px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;background:#fff;overflow-wrap:break-word;word-wrap:break-word;-webkit-text-size-adjust:100%;}
       img{max-width:100%;height:auto;}
-      a{color:#0969da;word-break:break-all;}
+      a{color:#0969da;overflow-wrap:break-word;}
       blockquote{margin:8px 0 8px 12px;padding-left:12px;border-left:3px solid #d0d7de;color:#57606a;}
-      pre,code{font-family:ui-monospace,monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px;white-space:pre-wrap;word-break:break-all;}
-      *{box-sizing:border-box;max-width:100%;}
+      pre,code{font-family:ui-monospace,monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px;white-space:pre-wrap;overflow-wrap:break-word;}
+      *{box-sizing:border-box;}
     </style>`;
     if (/<\/head>/i.test(body)) {
       return body.replace(/<\/head>/i, `${inject}</head>`);

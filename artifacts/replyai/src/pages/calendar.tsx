@@ -649,8 +649,9 @@ export default function CalendarPage() {
   const [addEventTime, setAddEventTime]   = useState<{ day: Date; hour: number } | null>(null);
 
   // Swipe-to-navigate
-  const swipeRef  = useRef<HTMLDivElement>(null);
+  const swipeRef    = useRef<HTMLDivElement>(null);
   const touchOrigin = useRef<{ x: number; y: number } | null>(null);
+  const swipeIntent = useRef<"horizontal" | "vertical" | null>(null);
 
   // Compute fetch range based on view
   const { rangeStart, rangeEnd } = useMemo(() => {
@@ -691,27 +692,46 @@ export default function CalendarPage() {
     });
   }, [view]);
 
-  // Attach swipe listeners to the calendar body
+  // Attach swipe listeners to the calendar body.
+  // We lock in the gesture direction early (after the first 10px of movement)
+  // so that accumulated vertical scroll in the time grid can't retroactively
+  // invalidate a horizontal swipe.
   useEffect(() => {
     const el = swipeRef.current;
     if (!el) return;
+
     const onStart = (e: TouchEvent) => {
       touchOrigin.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      swipeIntent.current = null;
     };
+
+    const onMove = (e: TouchEvent) => {
+      if (!touchOrigin.current || swipeIntent.current !== null) return;
+      const dx = e.touches[0].clientX - touchOrigin.current.x;
+      const dy = e.touches[0].clientY - touchOrigin.current.y;
+      // Wait until at least 10px of movement before deciding intent
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      swipeIntent.current = Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
+    };
+
     const onEnd = (e: TouchEvent) => {
       if (!touchOrigin.current) return;
       const dx = e.changedTouches[0].clientX - touchOrigin.current.x;
-      const dy = e.changedTouches[0].clientY - touchOrigin.current.y;
+      const intent = swipeIntent.current;
       touchOrigin.current = null;
-      // Only treat as horizontal swipe if clearly more horizontal than vertical
-      if (Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx) * 0.8) return;
+      swipeIntent.current = null;
+      // Only navigate if we locked in a horizontal intent and moved far enough
+      if (intent !== "horizontal" || Math.abs(dx) < 50) return;
       navigate(dx < 0 ? 1 : -1);
     };
+
     el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchmove",  onMove,  { passive: true });
+    el.addEventListener("touchend",   onEnd,   { passive: true });
     return () => {
       el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchmove",  onMove);
+      el.removeEventListener("touchend",   onEnd);
     };
   }, [navigate]);
 

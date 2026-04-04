@@ -63,14 +63,15 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
 
     const accounts = await getConnectedGmailAccounts(userId);
     const q = req.query.q as string | undefined;
+    const pageTokensRaw = req.query.pageToken as string | undefined;
+    const pageTokens: Record<string, string> = pageTokensRaw ? JSON.parse(pageTokensRaw) : {};
 
     if (accounts.length === 0) {
       res.status(400).json({ error: "Gmail not connected", notConnected: true });
       return;
     }
 
-    // Fetch from each account in parallel (up to 20 threads each)
-    const perAccount = accounts.length === 1 ? 40 : Math.max(20, Math.ceil(60 / accounts.length));
+    const perAccount = 100;
 
     const accountResults = await Promise.allSettled(
       accounts.map(async (account) => {
@@ -80,21 +81,33 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
           labelIds: ["INBOX"],
           maxResults: perAccount,
           ...(q ? { q } : {}),
+          ...(pageTokens[account.email] ? { pageToken: pageTokens[account.email] } : {}),
         });
         const threads = listRes.data.threads || [];
         const emails = await Promise.allSettled(
           threads.map((t: any) => fetchThreadMeta(gmail, t.id!, account.email))
         );
-        return emails
-          .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value !== null)
-          .map(r => r.value);
+        return {
+          emails: emails
+            .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value !== null)
+            .map(r => r.value),
+          nextPageToken: listRes.data.nextPageToken,
+          email: account.email,
+        };
       })
     );
 
-    const allEmails = accountResults
-      .filter((r): r is PromiseFulfilledResult<any[]> => r.status === "fulfilled")
-      .flatMap(r => r.value)
-      .filter(Boolean);
+    const allEmails: any[] = [];
+    const nextPageTokenMap: Record<string, string> = {};
+
+    for (const result of accountResults) {
+      if (result.status === "fulfilled") {
+        allEmails.push(...result.value.emails);
+        if (result.value.nextPageToken) {
+          nextPageTokenMap[result.value.email] = result.value.nextPageToken;
+        }
+      }
+    }
 
     // Sort: unread first, then by date descending
     allEmails.sort((a, b) => {
@@ -105,7 +118,10 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
       return (isNaN(dB) ? 0 : dB) - (isNaN(dA) ? 0 : dA);
     });
 
-    res.json({ threads: allEmails.slice(0, 50) });
+    res.json({
+      threads: allEmails,
+      nextPageToken: Object.keys(nextPageTokenMap).length > 0 ? JSON.stringify(nextPageTokenMap) : undefined,
+    });
   } catch (err: any) {
     const msg = err?.message || "";
     if (msg.includes("not connected") || msg.includes("Gmail not connected")) {

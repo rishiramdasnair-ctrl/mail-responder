@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { 
   Search, 
   RefreshCw, 
@@ -1062,13 +1062,22 @@ export default function Dashboard() {
     return () => window.removeEventListener("replyai:compose", handler);
   }, []);
 
-  const { data: inboxData, isLoading: isLoadingInbox, isError: isInboxError, refetch: refetchInbox } = useQuery({
+  const {
+    data: inboxData,
+    isLoading: isLoadingInbox,
+    isError: isInboxError,
+    refetch: refetchInbox,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["inbox", activeLabel, debouncedSearch, isUnifiedInbox ? "__unified__" : activeAccount],
-    queryFn: async ({ signal }) => {
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ signal, pageParam }) => {
       if (isUnifiedInbox) {
-        // Unified priority inbox: all connected accounts merged by priority
         const params = new URLSearchParams();
         if (debouncedSearch) params.set("q", debouncedSearch);
+        if (pageParam) params.set("pageToken", pageParam);
         const url = `/api/gmail/priority-inbox${params.toString() ? `?${params}` : ""}`;
         const res = await fetch(url, { credentials: "include", signal });
         if (!res.ok) {
@@ -1077,12 +1086,13 @@ export default function Dashboard() {
           if (data.notConnected) err.notConnected = true;
           throw err;
         }
-        return res.json() as Promise<{ threads: any[] }>;
+        return res.json() as Promise<{ threads: any[]; nextPageToken?: string }>;
       }
       // Single-account inbox
-      const params = new URLSearchParams({ maxResults: "30", label: activeLabel });
+      const params = new URLSearchParams({ maxResults: "100", label: activeLabel });
       if (debouncedSearch) params.set("q", debouncedSearch);
       if (activeAccount) params.set("account", activeAccount);
+      if (pageParam) params.set("pageToken", pageParam);
       const res = await fetch(`/api/gmail/inbox?${params}`, { credentials: "include", signal });
       if (!res.ok) {
         const err: any = new Error("Failed to fetch inbox");
@@ -1092,8 +1102,25 @@ export default function Dashboard() {
       }
       return res.json() as Promise<{ threads: any[]; nextPageToken?: string }>;
     },
+    getNextPageParam: (lastPage) => lastPage.nextPageToken ?? undefined,
     retry: 1,
   });
+
+  // Flatten all pages into a single thread list
+  const allThreads = inboxData?.pages.flatMap(p => p.threads) ?? [];
+
+  // Sentinel ref for infinite scroll
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage(); },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const modifyThread = useMutation({
     mutationFn: async ({ threadId, addLabelIds = [], removeLabelIds = [] }: { threadId: string; addLabelIds?: string[]; removeLabelIds?: string[] }) => {
@@ -1265,23 +1292,23 @@ export default function Dashboard() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (!inboxData?.threads.length) return;
-      const currentIndex = inboxData.threads.findIndex(t => t.threadId === selectedThreadId);
+      if (!allThreads.length) return;
+      const currentIndex = allThreads.findIndex(t => t.threadId === selectedThreadId);
       if (e.key === "j") {
-        const nextIndex = currentIndex < inboxData.threads.length - 1 ? currentIndex + 1 : 0;
-        const next = inboxData.threads[nextIndex];
+        const nextIndex = currentIndex < allThreads.length - 1 ? currentIndex + 1 : 0;
+        const next = allThreads[nextIndex];
         setSelectedThreadId(next.threadId);
         setSelectedThreadAccount(next.accountEmail ?? null);
       } else if (e.key === "k") {
-        const prevIndex = currentIndex > 0 ? currentIndex - 1 : inboxData.threads.length - 1;
-        const prev = inboxData.threads[prevIndex];
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : allThreads.length - 1;
+        const prev = allThreads[prevIndex];
         setSelectedThreadId(prev.threadId);
         setSelectedThreadAccount(prev.accountEmail ?? null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [inboxData, selectedThreadId]);
+  }, [allThreads, selectedThreadId]);
 
   const lastMessage = threadData?.messages[threadData.messages.length - 1];
   const showMeetingButton = lastMessage && isMeetingEmail(lastMessage.subject || "", lastMessage.body || lastMessage.snippet || "");
@@ -1446,7 +1473,7 @@ export default function Dashboard() {
                   </Button>
                 </div>
               </div>
-            ) : inboxData?.threads.length === 0 ? (
+            ) : allThreads.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground flex flex-col items-center justify-center h-full">
                 <Mail className="w-8 h-8 mb-3 opacity-20" />
                 <p className="text-sm">{debouncedSearch ? `No results for "${debouncedSearch}"` : "No emails found"}</p>
@@ -1456,7 +1483,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="divide-y divide-border/50">
-                {inboxData?.threads.map((thread) => {
+                {allThreads.map((thread) => {
                   const isSentFolder = activeLabel === "SENT" || activeLabel === "DRAFTS";
                   const displayName = isSentFolder
                     ? (thread.to || "Unknown recipient")
@@ -1538,6 +1565,13 @@ export default function Dashboard() {
                     </div>
                   );
                 })}
+                {/* Infinite scroll sentinel */}
+                <div ref={sentinelRef} className="h-1" />
+                {isFetchingNextPage && (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
               </div>
             )}
           </ScrollArea>

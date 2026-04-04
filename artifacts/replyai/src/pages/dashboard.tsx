@@ -48,6 +48,15 @@ import {
   Building2,
   ExternalLink,
   UserPlus,
+  Minus,
+  Maximize2,
+  Bold,
+  Italic,
+  Underline,
+  Link2,
+  AlignLeft,
+  MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { format, isToday, isTomorrow, isThisWeek, parseISO, startOfDay, isSameDay } from "date-fns";
 
@@ -245,8 +254,13 @@ function ContactAutocomplete({
 function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
   const [to, setTo] = useState("");
+  const [cc, setCc] = useState("");
+  const [showCc, setShowCc] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [minimized, setMinimized] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const send = useMutation({
     mutationFn: async () => {
@@ -264,7 +278,7 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     },
     onSuccess: () => {
       toast({ title: "Email sent", description: `Sent to ${to}` });
-      setTo(""); setSubject(""); setBody("");
+      setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false); setMinimized(false); setMaximized(false);
       onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: ["inbox"] });
     },
@@ -273,43 +287,157 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     },
   });
 
+  const handleClose = () => {
+    setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false); setMinimized(false); setMaximized(false);
+    onOpenChange(false);
+  };
+
+  if (!open) return null;
+
+  const toolbarBtn = "p-1.5 rounded hover:bg-white/10 text-white/70 hover:text-white transition-colors";
+  const fieldRow = "flex items-start px-4 border-b border-[#e0e0e0] min-h-[40px]";
+  const fieldLabel = "text-[13px] text-[#444] w-7 pt-2.5 shrink-0 select-none";
+  const fieldInput = "flex-1 text-[13px] text-[#202124] bg-transparent border-none outline-none placeholder-[#757575] py-2 resize-none";
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <PenSquare className="w-4 h-4" />
-            New Message
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">To</label>
-            <ContactAutocomplete value={to} onChange={setTo} placeholder="Search contacts or type an email..." />
+    <div
+      className={`fixed z-50 shadow-[0_8px_40px_rgba(0,0,0,0.35)] rounded-t-xl overflow-hidden flex flex-col bg-white transition-all duration-150 ${
+        maximized
+          ? "inset-4 rounded-xl"
+          : minimized
+          ? "bottom-0 right-6 w-[320px]"
+          : "bottom-0 right-6 w-[500px]"
+      }`}
+      style={maximized ? {} : minimized ? { height: "auto" } : { height: 480 }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 py-2.5 bg-[#404040] rounded-t-xl cursor-pointer select-none"
+        onClick={() => minimized && setMinimized(false)}
+      >
+        <span className="text-[14px] font-medium text-white">New Message</span>
+        <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+          <button
+            className={toolbarBtn}
+            onClick={() => setMinimized(m => !m)}
+            title="Minimize"
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            className={toolbarBtn}
+            onClick={() => { setMaximized(m => !m); setMinimized(false); }}
+            title={maximized ? "Restore" : "Full screen"}
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            className={toolbarBtn}
+            onClick={handleClose}
+            title="Close"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {!minimized && (
+        <>
+          {/* To field */}
+          <div className={fieldRow}>
+            <span className={fieldLabel}>To</span>
+            <div className="flex-1 py-0.5">
+              <ContactAutocomplete
+                value={to}
+                onChange={setTo}
+                placeholder="Recipients"
+              />
+            </div>
+            {!showCc && (
+              <button
+                className="text-[12px] text-[#444] hover:text-[#202124] pt-2.5 pl-2 shrink-0"
+                onClick={() => { setShowCc(true); }}
+              >
+                Cc
+              </button>
+            )}
           </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Subject</label>
-            <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Message</label>
-            <textarea
-              className="w-full min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              placeholder="Write your message..."
+
+          {/* CC field */}
+          {showCc && (
+            <div className={fieldRow}>
+              <span className={fieldLabel}>Cc</span>
+              <input
+                className={fieldInput}
+                value={cc}
+                onChange={e => setCc(e.target.value)}
+                placeholder=""
+              />
+            </div>
+          )}
+
+          {/* Subject */}
+          <div className={fieldRow}>
+            <input
+              className={`${fieldInput} w-full`}
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              placeholder="Subject"
             />
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => send.mutate()} disabled={send.isPending || !to || !subject}>
-            {send.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-            Send
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          {/* Body */}
+          <div className="flex-1 min-h-0 px-4 pt-2 pb-1 overflow-y-auto">
+            <textarea
+              ref={bodyRef}
+              className="w-full h-full text-[13px] text-[#202124] bg-transparent border-none outline-none placeholder-[#757575] resize-none leading-relaxed"
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              placeholder="Write your message here..."
+              style={{ minHeight: maximized ? 300 : 180 }}
+            />
+          </div>
+
+          {/* Footer toolbar */}
+          <div className="flex items-center gap-1 px-3 py-2 border-t border-[#e0e0e0] bg-white">
+            {/* Send */}
+            <button
+              className="flex items-center gap-2 px-5 py-2 rounded-full bg-[#0b57d0] hover:bg-[#0842a0] text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed mr-1"
+              onClick={() => send.mutate()}
+              disabled={send.isPending || !to || !subject}
+            >
+              {send.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Send
+            </button>
+
+            {/* Formatting */}
+            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="Formatting options">
+              <AlignLeft className="w-4 h-4" />
+            </button>
+            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="Attach files">
+              <Paperclip className="w-4 h-4" />
+            </button>
+            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="Insert link">
+              <Link2 className="w-4 h-4" />
+            </button>
+            <button className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors" title="More options">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+
+            <div className="flex-1" />
+
+            {/* Trash */}
+            <button
+              className="p-2 rounded-full hover:bg-[#f1f3f4] text-[#444] transition-colors"
+              title="Discard draft"
+              onClick={handleClose}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

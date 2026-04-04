@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { AppLayout } from "@/components/layout";
 import { useMailFolder, FolderId as FolderIdFromCtx } from "@/contexts/mail-folder";
 import { 
@@ -72,6 +72,36 @@ function isHtmlBody(body: string): boolean {
   return /(<html[\s>]|<!doctype\s+html|<body[\s>]|<table[\s>]|<div\s+[^>]*style|<span\s+[^>]*style)/i.test(body);
 }
 
+const URL_REGEX = /https?:\/\/[^\s\)\]>,"]+/g;
+
+function renderWithLinks(text: string, keyPrefix: string) {
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  URL_REGEX.lastIndex = 0;
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    if (match.index > last) {
+      parts.push(text.slice(last, match.index));
+    }
+    const url = match[0];
+    parts.push(
+      <a
+        key={`${keyPrefix}-${match.index}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline break-all"
+        onClick={e => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    );
+    last = match.index + url.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 function EmailBodyRenderer({ body }: { body: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,30 +139,32 @@ function EmailBodyRenderer({ body }: { body: string }) {
     const lines = body.split("\n");
     return (
       <div
-        className="font-sans text-sm leading-relaxed text-foreground/90 space-y-0.5 overflow-x-hidden"
-        style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+        className="font-sans text-sm leading-relaxed text-foreground/90 overflow-x-hidden"
+        style={{ overflowWrap: "break-word", wordBreak: "break-word" }}
       >
         {lines.map((line, i) => {
-          const match = line.match(/^(>{1,}\s*)/);
-          const quotePrefix = match ? match[0] : "";
+          const quoteMatch = line.match(/^(>{1,}\s*)/);
+          const quotePrefix = quoteMatch ? quoteMatch[0] : "";
           const text = line.slice(quotePrefix.length);
           if (quotePrefix.length > 0) {
             return (
               <div
                 key={i}
-                className="pl-3 border-l-2 border-border text-muted-foreground text-xs"
-                style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+                className="pl-3 border-l-2 border-border text-muted-foreground/70 text-xs my-0.5"
+                style={{ overflowWrap: "break-word", wordBreak: "break-word" }}
               >
-                {text || "\u00a0"}
+                {renderWithLinks(text, `q${i}`) || "\u00a0"}
               </div>
             );
           }
+          const isEmpty = line.trim() === "";
           return (
             <div
               key={i}
-              style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+              className={isEmpty ? "h-3" : "my-0.5"}
+              style={{ overflowWrap: "break-word", wordBreak: "break-word" }}
             >
-              {line || "\u00a0"}
+              {isEmpty ? null : renderWithLinks(line, `l${i}`)}
             </div>
           );
         })}

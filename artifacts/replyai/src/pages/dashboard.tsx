@@ -1125,6 +1125,7 @@ export default function Dashboard() {
   const [showAddToCalendar, setShowAddToCalendar] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const [selectedThreadAccount, setSelectedThreadAccount] = useState<string | null>(null);
 
   const { data: gmailAccountsData, refetch: refetchAccounts } = useQuery({
     queryKey: ["gmail-accounts"],
@@ -1135,7 +1136,13 @@ export default function Dashboard() {
     },
   });
   const gmailAccounts = gmailAccountsData?.accounts ?? [];
-  const activeAccount = selectedAccount ?? gmailAccounts.find(a => a.isPrimary)?.email ?? gmailAccounts[0]?.email ?? null;
+  // null selectedAccount = "All accounts" unified mode; a specific email = single-account mode
+  const primaryAccount = gmailAccounts.find(a => a.isPrimary)?.email ?? gmailAccounts[0]?.email ?? null;
+  const activeAccount = selectedAccount ?? primaryAccount;
+  // For thread-level operations (star/archive/reply), use the thread's own account
+  const threadAccount = selectedThreadAccount ?? activeAccount;
+  // In INBOX with no specific account selected → unified priority inbox
+  const isUnifiedInbox = activeLabel === "INBOX" && selectedAccount === null;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
@@ -1144,6 +1151,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setSelectedThreadId(null);
+    setSelectedThreadAccount(null);
     setSearchQuery("");
   }, [activeLabel]);
 
@@ -1164,8 +1172,23 @@ export default function Dashboard() {
   }, []);
 
   const { data: inboxData, isLoading: isLoadingInbox, isError: isInboxError, refetch: refetchInbox } = useQuery({
-    queryKey: ["inbox", activeLabel, debouncedSearch, activeAccount],
+    queryKey: ["inbox", activeLabel, debouncedSearch, isUnifiedInbox ? "__unified__" : activeAccount],
     queryFn: async ({ signal }) => {
+      if (isUnifiedInbox) {
+        // Unified priority inbox: all connected accounts merged by priority
+        const params = new URLSearchParams();
+        if (debouncedSearch) params.set("q", debouncedSearch);
+        const url = `/api/gmail/priority-inbox${params.toString() ? `?${params}` : ""}`;
+        const res = await fetch(url, { credentials: "include", signal });
+        if (!res.ok) {
+          const err: any = new Error("Failed to fetch inbox");
+          const data = await res.json().catch(() => ({}));
+          if (data.notConnected) err.notConnected = true;
+          throw err;
+        }
+        return res.json() as Promise<{ threads: any[] }>;
+      }
+      // Single-account inbox
       const params = new URLSearchParams({ maxResults: "30", label: activeLabel });
       if (debouncedSearch) params.set("q", debouncedSearch);
       if (activeAccount) params.set("account", activeAccount);
@@ -1187,7 +1210,7 @@ export default function Dashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ addLabelIds, removeLabelIds, account: activeAccount }),
+        body: JSON.stringify({ addLabelIds, removeLabelIds, account: threadAccount }),
       });
       if (!res.ok) throw new Error("Failed to modify thread");
     },
@@ -1229,10 +1252,10 @@ export default function Dashboard() {
   };
 
   const { data: threadData, isLoading: isLoadingThread } = useQuery({
-    queryKey: ["thread", selectedThreadId, activeAccount],
+    queryKey: ["thread", selectedThreadId, threadAccount],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
-      if (activeAccount) params.set("account", activeAccount);
+      if (threadAccount) params.set("account", threadAccount);
       const qs = params.toString() ? `?${params}` : "";
       const res = await fetch(`/api/gmail/threads/${selectedThreadId}${qs}`, { credentials: "include", signal });
       if (!res.ok) throw new Error("Failed to fetch thread");
@@ -1333,7 +1356,7 @@ export default function Dashboard() {
         subject: lastMessage.subject.startsWith("Re:") ? lastMessage.subject : `Re: ${lastMessage.subject}`,
         body: content,
         inReplyTo: lastMessage.id,
-        account: activeAccount,
+        account: threadAccount,
       },
       {
         onSuccess: () => {
@@ -1355,10 +1378,14 @@ export default function Dashboard() {
       const currentIndex = inboxData.threads.findIndex(t => t.threadId === selectedThreadId);
       if (e.key === "j") {
         const nextIndex = currentIndex < inboxData.threads.length - 1 ? currentIndex + 1 : 0;
-        setSelectedThreadId(inboxData.threads[nextIndex].threadId);
+        const next = inboxData.threads[nextIndex];
+        setSelectedThreadId(next.threadId);
+        setSelectedThreadAccount(next.accountEmail ?? null);
       } else if (e.key === "k") {
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : inboxData.threads.length - 1;
-        setSelectedThreadId(inboxData.threads[prevIndex].threadId);
+        const prev = inboxData.threads[prevIndex];
+        setSelectedThreadId(prev.threadId);
+        setSelectedThreadAccount(prev.accountEmail ?? null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1382,15 +1409,38 @@ export default function Dashboard() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5">
-                        <span className="truncate max-w-[140px]">{activeAccount ?? "Select account"}</span>
+                        <span className="truncate max-w-[160px]">
+                          {selectedAccount === null
+                            ? (gmailAccounts.length > 1 ? "All inboxes" : (primaryAccount ?? "Select account"))
+                            : selectedAccount}
+                        </span>
                         <ChevronDown className="w-3 h-3 shrink-0" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-64">
+                      {/* "All inboxes" option — only shown when multiple accounts connected */}
+                      {gmailAccounts.length > 1 && (
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => { setSelectedAccount(null); setSelectedThreadId(null); setSelectedThreadAccount(null); }}
+                            className="flex items-center gap-2 cursor-pointer"
+                          >
+                            <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center shrink-0 text-xs font-semibold">
+                              ✦
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm truncate">All inboxes</p>
+                              <p className="text-xs text-muted-foreground">Priority emails from all accounts</p>
+                            </div>
+                            {selectedAccount === null && <Check className="w-3.5 h-3.5 shrink-0 text-foreground" />}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
                       {gmailAccounts.map(account => (
                         <DropdownMenuItem
                           key={account.email}
-                          onClick={() => { setSelectedAccount(account.email); setSelectedThreadId(null); }}
+                          onClick={() => { setSelectedAccount(account.email); setSelectedThreadId(null); setSelectedThreadAccount(null); }}
                           className="flex items-center gap-2 cursor-pointer"
                         >
                           <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center shrink-0 text-xs font-semibold">
@@ -1400,7 +1450,7 @@ export default function Dashboard() {
                             <p className="text-sm truncate">{account.email}</p>
                             {account.isPrimary && <p className="text-xs text-muted-foreground">Primary</p>}
                           </div>
-                          {(activeAccount === account.email) && <Check className="w-3.5 h-3.5 shrink-0 text-foreground" />}
+                          {selectedAccount === account.email && <Check className="w-3.5 h-3.5 shrink-0 text-foreground" />}
                         </DropdownMenuItem>
                       ))}
                       <DropdownMenuSeparator />
@@ -1411,11 +1461,12 @@ export default function Dashboard() {
                         <Plus className="w-4 h-4" />
                         Add Gmail account
                       </DropdownMenuItem>
-                      {activeAccount && gmailAccounts.length > 1 && (
+                      {selectedAccount && gmailAccounts.length > 1 && (
                         <DropdownMenuItem
                           onClick={async () => {
-                            await fetch(`/api/gmail/accounts/${encodeURIComponent(activeAccount)}`, { method: "DELETE", credentials: "include" });
+                            await fetch(`/api/gmail/accounts/${encodeURIComponent(selectedAccount)}`, { method: "DELETE", credentials: "include" });
                             setSelectedAccount(null);
+                            setSelectedThreadAccount(null);
                             await refetchAccounts();
                             queryClient.invalidateQueries({ queryKey: ["inbox"] });
                           }}
@@ -1528,7 +1579,10 @@ export default function Dashboard() {
                       }`}
                     >
                       <button
-                        onClick={() => setSelectedThreadId(thread.threadId)}
+                        onClick={() => {
+                          setSelectedThreadId(thread.threadId);
+                          setSelectedThreadAccount(thread.accountEmail ?? null);
+                        }}
                         className="w-full text-left p-4 flex flex-col gap-1 focus:outline-none"
                       >
                         <div className="flex justify-between items-center mb-0.5 w-full gap-2">
@@ -1543,6 +1597,14 @@ export default function Dashboard() {
                           <div className="flex items-center gap-1 shrink-0">
                             {thread.isStarred && (
                               <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                            )}
+                            {isUnifiedInbox && thread.accountEmail && gmailAccounts.length > 1 && (
+                              <span
+                                className="w-4 h-4 rounded-full bg-muted border border-border flex items-center justify-center text-[9px] font-bold text-muted-foreground shrink-0"
+                                title={thread.accountEmail}
+                              >
+                                {thread.accountEmail[0].toUpperCase()}
+                              </span>
                             )}
                             <span className="text-xs text-muted-foreground">{dateStr}</span>
                           </div>

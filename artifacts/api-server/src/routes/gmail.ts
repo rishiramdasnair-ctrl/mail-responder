@@ -8,6 +8,7 @@ import {
   getHeader,
   decodeBody,
   extractAttachments,
+  getConnectedGmailAccounts,
 } from "../lib/gmailClient";
 import { SendReplyBody } from "@workspace/api-zod";
 
@@ -16,6 +17,105 @@ const router = Router();
 function getAccount(req: any): string | undefined {
   return (req.query.account as string) || (req.body?.account as string) || undefined;
 }
+
+// Fetch one thread's metadata (for inbox list)
+async function fetchThreadMeta(gmail: any, threadId: string, accountEmail: string) {
+  const thread = await gmail.users.threads.get({
+    userId: "me",
+    id: threadId,
+    format: "metadata",
+    metadataHeaders: ["From", "To", "Subject", "Date"],
+  });
+  const firstMsg = thread.data.messages?.[0];
+  const lastMsg = thread.data.messages?.[thread.data.messages!.length - 1];
+  if (!firstMsg || !lastMsg) return null;
+  const headers = lastMsg.payload?.headers || [];
+  const fromRaw = getHeader(headers, "From");
+  const toRaw = getHeader(headers, "To");
+  const { name: fromName, email: fromEmail } = parseEmailAddress(fromRaw);
+  const subject = getHeader(firstMsg.payload?.headers || [], "Subject");
+  const date = getHeader(headers, "Date");
+  const isUnread = (lastMsg.labelIds || []).includes("UNREAD");
+  const isStarred = (lastMsg.labelIds || []).includes("STARRED");
+  return {
+    id: lastMsg.id,
+    threadId,
+    from: fromRaw,
+    fromName,
+    fromEmail,
+    to: toRaw,
+    subject,
+    snippet: thread.data.snippet || "",
+    body: "",
+    date,
+    isUnread,
+    isStarred,
+    labelIds: lastMsg.labelIds || [],
+    accountEmail,
+  };
+}
+
+// Priority inbox: fetch from ALL connected accounts, merge by priority
+router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const accounts = await getConnectedGmailAccounts(userId);
+    const q = req.query.q as string | undefined;
+
+    if (accounts.length === 0) {
+      res.status(400).json({ error: "Gmail not connected", notConnected: true });
+      return;
+    }
+
+    // Fetch from each account in parallel (up to 20 threads each)
+    const perAccount = accounts.length === 1 ? 40 : Math.max(20, Math.ceil(60 / accounts.length));
+
+    const accountResults = await Promise.allSettled(
+      accounts.map(async (account) => {
+        const gmail = await getGmailClientForUser(userId, account.email);
+        const listRes = await gmail.users.threads.list({
+          userId: "me",
+          labelIds: ["INBOX"],
+          maxResults: perAccount,
+          ...(q ? { q } : {}),
+        });
+        const threads = listRes.data.threads || [];
+        const emails = await Promise.allSettled(
+          threads.map((t: any) => fetchThreadMeta(gmail, t.id!, account.email))
+        );
+        return emails
+          .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value !== null)
+          .map(r => r.value);
+      })
+    );
+
+    const allEmails = accountResults
+      .filter((r): r is PromiseFulfilledResult<any[]> => r.status === "fulfilled")
+      .flatMap(r => r.value)
+      .filter(Boolean);
+
+    // Sort: unread first, then by date descending
+    allEmails.sort((a, b) => {
+      if (a.isUnread && !b.isUnread) return -1;
+      if (!a.isUnread && b.isUnread) return 1;
+      const dA = new Date(a.date).getTime();
+      const dB = new Date(b.date).getTime();
+      return (isNaN(dB) ? 0 : dB) - (isNaN(dA) ? 0 : dA);
+    });
+
+    res.json({ threads: allEmails.slice(0, 50) });
+  } catch (err: any) {
+    const msg = err?.message || "";
+    if (msg.includes("not connected") || msg.includes("Gmail not connected")) {
+      res.status(400).json({ error: "Gmail not connected", notConnected: true });
+      return;
+    }
+    req.log.error({ err }, "Error fetching priority inbox");
+    res.status(500).json({ error: "Failed to fetch priority inbox" });
+  }
+});
 
 router.get("/gmail/status", requireAuth, async (req, res) => {
   try {

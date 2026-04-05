@@ -1,0 +1,188 @@
+import React, { useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
+  Image,
+} from "react-native";
+import { useOAuth } from "@clerk/clerk-expo";
+import * as WebBrowser from "expo-web-browser";
+import { makeRedirectUri } from "expo-auth-session";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
+import { useColors } from "@/hooks/useColors";
+
+WebBrowser.maybeCompleteAuthSession();
+
+export default function SignInScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSignInWithGoogle = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const { createdSessionId, setActive } = await startOAuthFlow({
+        redirectUrl: makeRedirectUri({ scheme: "replyai-mobile", path: "oauth-callback" }),
+      });
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+      }
+    } catch (err: any) {
+      console.error("OAuth error", err);
+      setError("Sign-in failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [startOAuthFlow]);
+
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      paddingTop: topPad + 20,
+      paddingBottom: bottomPad + 20,
+      paddingHorizontal: 32,
+    },
+    logoSection: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    logoMark: {
+      width: 72,
+      height: 72,
+      borderRadius: 18,
+      backgroundColor: colors.foreground,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 20,
+    },
+    appName: {
+      fontSize: 32,
+      fontFamily: "Inter_700Bold",
+      color: colors.foreground,
+      letterSpacing: -0.5,
+      marginBottom: 8,
+    },
+    tagline: {
+      fontSize: 16,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_400Regular",
+      textAlign: "center",
+      lineHeight: 24,
+      maxWidth: 260,
+    },
+    bottomSection: {
+      gap: 12,
+    },
+    googleBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 16,
+      gap: 10,
+    },
+    googleBtnText: {
+      color: colors.primaryForeground,
+      fontSize: 15,
+      fontFamily: "Inter_600SemiBold",
+    },
+    errorText: {
+      fontSize: 13,
+      color: colors.destructive,
+      textAlign: "center",
+      fontFamily: "Inter_400Regular",
+    },
+    trialNote: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      fontFamily: "Inter_400Regular",
+    },
+    features: {
+      marginBottom: 32,
+    },
+    featureRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 16,
+    },
+    featureIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    featureText: {
+      fontSize: 14,
+      color: colors.foreground,
+      fontFamily: "Inter_400Regular",
+      flex: 1,
+    },
+  });
+
+  const FEATURES = [
+    { icon: "inbox", text: "Priority inbox across all Gmail accounts" },
+    { icon: "cpu", text: "AI-powered reply suggestions" },
+    { icon: "calendar", text: "Calendar-aware scheduling" },
+  ];
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.logoSection}>
+        <View style={styles.logoMark}>
+          <Feather name="send" size={32} color={colors.primaryForeground} />
+        </View>
+        <Text style={styles.appName}>ReplyAI</Text>
+        <Text style={styles.tagline}>Your AI email assistant for Gmail</Text>
+      </View>
+
+      <View style={styles.features}>
+        {FEATURES.map((f) => (
+          <View key={f.icon} style={styles.featureRow}>
+            <View style={styles.featureIcon}>
+              <Feather name={f.icon as any} size={18} color={colors.foreground} />
+            </View>
+            <Text style={styles.featureText}>{f.text}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.bottomSection}>
+        <TouchableOpacity
+          style={[styles.googleBtn, isLoading && { opacity: 0.7 }]}
+          onPress={onSignInWithGoogle}
+          disabled={isLoading}
+          activeOpacity={0.8}
+          testID="google-sign-in-btn"
+        >
+          {isLoading ? (
+            <ActivityIndicator color={colors.primaryForeground} size="small" />
+          ) : (
+            <>
+              <Feather name="mail" size={18} color={colors.primaryForeground} />
+              <Text style={styles.googleBtnText}>Continue with Google</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        {error && <Text style={styles.errorText}>{error}</Text>}
+        <Text style={styles.trialNote}>14-day free trial · No credit card required</Text>
+      </View>
+    </View>
+  );
+}

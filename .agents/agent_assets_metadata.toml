@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "LM4aOsQnME0sPHVGh7ZO-"
+uri = "file://artifacts/replyai-mobile/assets/images/icon.png"
+type = "image"
+title = "replyai app icon paper airplane"

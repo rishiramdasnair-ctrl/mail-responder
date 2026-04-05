@@ -68,6 +68,7 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
 
   const displayName = email.fromName || email.fromEmail || email.from;
   const initials = getInitials(email.fromName, email.fromEmail);
+  const accountDomain = email.accountEmail ? email.accountEmail.split("@")[1] : null;
 
   const styles = StyleSheet.create({
     row: {
@@ -75,7 +76,7 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
       alignItems: "flex-start",
       paddingHorizontal: 16,
       paddingVertical: 12,
-      backgroundColor: email.isUnread ? colors.background : colors.background,
+      backgroundColor: colors.background,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
@@ -140,6 +141,19 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
       marginLeft: 6,
       marginTop: 2,
     },
+    accountBadge: {
+      alignSelf: "flex-start",
+      backgroundColor: colors.muted,
+      borderRadius: 4,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      marginTop: 4,
+    },
+    accountBadgeText: {
+      fontSize: 10,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+    },
   });
 
   return (
@@ -166,6 +180,11 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
         <Text style={styles.snippet} numberOfLines={2}>
           {email.snippet}
         </Text>
+        {accountDomain && (
+          <View style={styles.accountBadge}>
+            <Text style={styles.accountBadgeText}>{accountDomain}</Text>
+          </View>
+        )}
       </View>
       {email.isStarred && (
         <View style={styles.starIcon}>

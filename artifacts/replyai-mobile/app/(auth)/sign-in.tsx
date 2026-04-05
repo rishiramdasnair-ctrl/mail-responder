@@ -12,8 +12,11 @@ import { useOAuth } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
 import { makeRedirectUri } from "expo-auth-session";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type ComponentProps } from "@expo/vector-icons";
+
 import { useColors } from "@/hooks/useColors";
+
+type FeatherName = ComponentProps<typeof Feather>["name"];
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -136,7 +139,7 @@ export default function SignInScreen() {
     },
   });
 
-  const FEATURES = [
+  const FEATURES: Array<{ icon: FeatherName; text: string }> = [
     { icon: "inbox", text: "Priority inbox across all Gmail accounts" },
     { icon: "cpu", text: "AI-powered reply suggestions" },
     { icon: "calendar", text: "Calendar-aware scheduling" },
@@ -156,7 +159,7 @@ export default function SignInScreen() {
         {FEATURES.map((f) => (
           <View key={f.icon} style={styles.featureRow}>
             <View style={styles.featureIcon}>
-              <Feather name={f.icon as any} size={18} color={colors.foreground} />
+              <Feather name={f.icon} size={18} color={colors.foreground} />
             </View>
             <Text style={styles.featureText}>{f.text}</Text>
           </View>

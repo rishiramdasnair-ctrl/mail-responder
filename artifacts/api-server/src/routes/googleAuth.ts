@@ -48,13 +48,18 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
     const auth = getAuth(req);
     const userId = auth.userId!;
     const addAccount = req.query.addAccount === "true";
+    const platform = req.query.platform === "mobile" ? "mobile" as const : undefined;
     const oAuth2Client = getOAuthClient();
 
     let state: string;
     try {
-      state = createOAuthState(userId, addAccount);
+      state = createOAuthState(userId, addAccount, platform);
     } catch {
-      res.redirect(`${frontendUrl}/settings?gmail_error=not_configured`);
+      if (platform === "mobile") {
+        res.redirect(`replyai://oauth-error?error=not_configured`);
+      } else {
+        res.redirect(`${frontendUrl}/settings?gmail_error=not_configured`);
+      }
       return;
     }
 
@@ -65,14 +70,16 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
       state,
     });
 
-    console.log("[google-start] redirect_uri:", getRedirectUri(), "addAccount:", addAccount);
+    console.log("[google-start] redirect_uri:", getRedirectUri(), "addAccount:", addAccount, "platform:", platform);
     res.redirect(url);
   } catch (err: unknown) {
+    const domain2 = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
+    const frontendUrl2 = `https://${domain2}`;
     const msg = err instanceof Error ? err.message : "";
     if (msg.includes("GOOGLE_CLIENT_ID")) {
-      res.redirect(`${frontendUrl}/settings?gmail_error=not_configured`);
+      res.redirect(`${frontendUrl2}/settings?gmail_error=not_configured`);
     } else {
-      res.redirect(`${frontendUrl}/settings?gmail_error=start_failed`);
+      res.redirect(`${frontendUrl2}/settings?gmail_error=start_failed`);
     }
   }
 });
@@ -101,7 +108,8 @@ router.get("/auth/google/callback", async (req, res) => {
       return;
     }
 
-    const { userId, addAccount } = statePayload;
+    const { userId, addAccount, platform } = statePayload;
+    const isMobile = platform === "mobile";
 
     let tokens;
     try {
@@ -110,12 +118,20 @@ router.get("/auth/google/callback", async (req, res) => {
     } catch (tokenErr: unknown) {
       const msg = tokenErr instanceof Error ? tokenErr.message : String(tokenErr);
       console.error("[google-callback] token exchange FAILED:", msg);
-      res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+      if (isMobile) {
+        res.redirect(`replyai://oauth-error?error=callback_failed`);
+      } else {
+        res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+      }
       return;
     }
 
     if (!tokens.access_token) {
-      res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+      if (isMobile) {
+        res.redirect(`replyai://oauth-error?error=callback_failed`);
+      } else {
+        res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+      }
       return;
     }
 
@@ -188,8 +204,13 @@ router.get("/auth/google/callback", async (req, res) => {
       await getOrCreateUser(userId);
     }
 
-    const redirectParam = addAccount ? "gmail_account_added=true" : "gmail_connected=true";
-    res.redirect(`${frontendUrl}/dashboard?${redirectParam}`);
+    if (isMobile) {
+      const event = addAccount ? "account_added" : "connected";
+      res.redirect(`replyai://oauth-success?event=${event}&email=${encodeURIComponent(googleEmail)}`);
+    } else {
+      const redirectParam = addAccount ? "gmail_account_added=true" : "gmail_connected=true";
+      res.redirect(`${frontendUrl}/dashboard?${redirectParam}`);
+    }
   } catch (err) {
     console.error("[google-callback] unexpected error:", err);
     res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);

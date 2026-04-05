@@ -13,10 +13,13 @@ import {
   Dimensions,
   Alert,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type ComponentProps } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+
+type FeatherName = ComponentProps<typeof Feather>["name"];
 
 interface ReplySuggestion {
   tone: "pro" | "casual" | "fast";
@@ -38,7 +41,7 @@ interface ReplySheetProps {
   onReplySent?: () => void;
 }
 
-const TONE_CONFIG: Record<string, { label: string; icon: string; desc: string }> = {
+const TONE_CONFIG: Record<string, { label: string; icon: FeatherName; desc: string }> = {
   pro: { label: "Professional", icon: "briefcase", desc: "Formal & polished" },
   casual: { label: "Casual", icon: "smile", desc: "Friendly & relaxed" },
   fast: { label: "Fast", icon: "zap", desc: "Short & direct" },
@@ -103,7 +106,7 @@ export function ReplySheet({
       if (data.repliesRemaining != null) {
         setRepliesRemaining(data.repliesRemaining);
       }
-    } catch (err: any) {
+    } catch {
       setError("Network error. Please try again.");
     } finally {
       setIsGenerating(false);
@@ -147,8 +150,8 @@ export function ReplySheet({
         }),
       });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        Alert.alert("Send failed", (d as any).error || "Could not send reply");
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        Alert.alert("Send failed", d.error || "Could not send reply");
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -388,11 +391,11 @@ export function ReplySheet({
                 </View>
               ) : (
                 suggestions.map((s) => {
-                  const cfg = TONE_CONFIG[s.tone] || { label: s.tone, icon: "message-circle", desc: "" };
+                  const cfg = TONE_CONFIG[s.tone] ?? { label: s.tone, icon: "message-circle" as FeatherName, desc: "" };
                   return (
                     <View key={s.tone} style={styles.toneCard}>
                       <View style={styles.toneHeader}>
-                        <Feather name={cfg.icon as any} size={14} color={colors.foreground} />
+                        <Feather name={cfg.icon} size={14} color={colors.foreground} />
                         <Text style={styles.toneLabel}>{cfg.label}</Text>
                         <Text style={styles.toneDesc}> · {cfg.desc}</Text>
                       </View>
@@ -438,7 +441,7 @@ export function ReplySheet({
                 {selectedTone && (
                   <View style={styles.toneChip}>
                     <Feather
-                      name={TONE_CONFIG[selectedTone]?.icon as any || "message-circle"}
+                      name={TONE_CONFIG[selectedTone]?.icon ?? "message-circle"}
                       size={12}
                       color={colors.mutedForeground}
                     />

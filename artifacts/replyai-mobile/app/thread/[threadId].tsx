@@ -179,8 +179,8 @@ export default function ThreadScreen() {
       const headers = await authHeaders();
       const res = await fetch(`${apiBaseUrl}/api/gmail/threads/${threadId}`, { headers });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as any).error || "Failed to load thread");
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error || "Failed to load thread");
       }
       return res.json();
     },
@@ -276,7 +276,7 @@ export default function ThreadScreen() {
           <View style={styles.errorContainer}>
             <Feather name="alert-circle" size={48} color={colors.border} />
             <Text style={styles.errorText}>
-              {(error as any)?.message || "Failed to load thread"}
+              {error?.message || "Failed to load thread"}
             </Text>
           </View>
         ) : thread ? (

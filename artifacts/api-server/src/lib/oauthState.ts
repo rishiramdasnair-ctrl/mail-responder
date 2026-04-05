@@ -5,6 +5,7 @@ interface OAuthStatePayload {
   nonce: string;
   exp: number;
   addAccount?: boolean;
+  platform?: "mobile";
 }
 
 function getSecret(): string {
@@ -13,19 +14,20 @@ function getSecret(): string {
   return s;
 }
 
-export function createOAuthState(userId: string, addAccount = false): string {
+export function createOAuthState(userId: string, addAccount = false, platform?: "mobile"): string {
   const payload: OAuthStatePayload = {
     userId,
     nonce: randomUUID(),
     exp: Date.now() + 10 * 60 * 1000,
     ...(addAccount ? { addAccount: true } : {}),
+    ...(platform ? { platform } : {}),
   };
   const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const mac = createHmac("sha256", getSecret()).update(data).digest("base64url");
   return `${data}.${mac}`;
 }
 
-export function verifyOAuthState(state: string): { userId: string; addAccount: boolean } | null {
+export function verifyOAuthState(state: string): { userId: string; addAccount: boolean; platform?: "mobile" } | null {
   try {
     const dotIdx = state.lastIndexOf(".");
     if (dotIdx < 0) return null;
@@ -38,7 +40,7 @@ export function verifyOAuthState(state: string): { userId: string; addAccount: b
     ) return null;
     const payload = JSON.parse(Buffer.from(data, "base64url").toString()) as OAuthStatePayload;
     if (payload.exp < Date.now()) return null;
-    return { userId: payload.userId, addAccount: payload.addAccount ?? false };
+    return { userId: payload.userId, addAccount: payload.addAccount ?? false, platform: payload.platform };
   } catch {
     return null;
   }

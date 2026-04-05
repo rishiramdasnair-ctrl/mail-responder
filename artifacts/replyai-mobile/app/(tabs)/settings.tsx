@@ -9,14 +9,18 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Linking,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type ComponentProps } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Link } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useAuth } from "@/hooks/useAuth";
+
+type FeatherName = ComponentProps<typeof Feather>["name"];
 
 interface UserSettings {
   defaultTone: "pro" | "casual" | "fast";
@@ -38,11 +42,17 @@ interface UserProfile {
   repliesLimit: number;
 }
 
-const TONES = [
+interface GmailAccount {
+  id: number;
+  email: string;
+  isPrimary: boolean;
+}
+
+const TONES: Array<{ value: "pro" | "casual" | "fast"; label: string; desc: string; icon: FeatherName }> = [
   { value: "pro", label: "Professional", desc: "Formal & polished", icon: "briefcase" },
   { value: "casual", label: "Casual", desc: "Friendly & relaxed", icon: "smile" },
   { value: "fast", label: "Fast", desc: "Short & direct", icon: "zap" },
-] as const;
+];
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -65,6 +75,15 @@ export default function SettingsScreen() {
     queryFn: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${apiBaseUrl}/api/settings`, { headers });
+      return res.json();
+    },
+  });
+
+  const { data: accountsData, isLoading: accountsLoading } = useQuery<{ accounts: GmailAccount[] }>({
+    queryKey: ["gmail-accounts"],
+    queryFn: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
       return res.json();
     },
   });
@@ -95,6 +114,23 @@ export default function SettingsScreen() {
     },
   });
 
+  const disconnectMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/gmail/accounts/${encodeURIComponent(email)}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) throw new Error("Failed to disconnect");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["gmail-accounts"] });
+      qc.invalidateQueries({ queryKey: ["priority-inbox"] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+  });
+
   const handleToneChange = (t: "pro" | "casual" | "fast") => {
     setTone(t);
     updateMutation.mutate({ defaultTone: t });
@@ -106,15 +142,36 @@ export default function SettingsScreen() {
     updateMutation.mutate({ notifications: v });
   };
 
+  const handleDisconnectAccount = (email: string, isPrimary: boolean) => {
+    const accounts = accountsData?.accounts ?? [];
+    if (isPrimary && accounts.length === 1) {
+      Alert.alert(
+        "Disconnect Gmail",
+        "This is your only connected account. Disconnecting will remove all Gmail access.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Disconnect", style: "destructive", onPress: () => disconnectMutation.mutate(email) },
+        ]
+      );
+    } else {
+      Alert.alert("Disconnect", `Remove ${email}?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => disconnectMutation.mutate(email) },
+      ]);
+    }
+  };
+
   const handleSignOut = () => {
     Alert.alert("Sign out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign out",
-        style: "destructive",
-        onPress: () => signOut(),
-      },
+      { text: "Sign out", style: "destructive", onPress: () => signOut() },
     ]);
+  };
+
+  const handleManageBilling = () => {
+    const domain = process.env.EXPO_PUBLIC_DOMAIN;
+    const url = domain ? `https://${domain}/billing` : "https://replyai.app/billing";
+    Linking.openURL(url);
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -307,6 +364,53 @@ export default function SettingsScreen() {
       fontFamily: "Inter_400Regular",
       color: colors.foreground,
     },
+    rowSubLabel: {
+      fontSize: 12,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+      marginTop: 1,
+    },
+    accountRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 14,
+      gap: 12,
+    },
+    accountDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.foreground,
+    },
+    accountEmail: {
+      flex: 1,
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+    },
+    primaryBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      backgroundColor: colors.muted,
+      marginRight: 8,
+    },
+    primaryBadgeText: {
+      fontSize: 10,
+      fontFamily: "Inter_500Medium",
+      color: colors.mutedForeground,
+    },
+    addAccountBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 14,
+      gap: 10,
+    },
+    addAccountText: {
+      fontSize: 14,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+    },
     signOutBtn: {
       marginTop: 24,
       marginHorizontal: 16,
@@ -328,6 +432,9 @@ export default function SettingsScreen() {
       marginTop: 16,
       fontFamily: "Inter_400Regular",
     },
+    rowChevron: {
+      marginLeft: 4,
+    },
   });
 
   const isLoading = profileLoading || settingsLoading;
@@ -339,6 +446,8 @@ export default function SettingsScreen() {
         .toUpperCase()
         .slice(0, 2)
     : "?";
+
+  const accounts = accountsData?.accounts ?? [];
 
   return (
     <View style={styles.container}>
@@ -383,13 +492,56 @@ export default function SettingsScreen() {
                       </Text>
                     </View>
                     <View style={styles.usageBar}>
-                      <View
-                        style={[styles.usageFill, { width: `${usagePercent * 100}%` }]}
-                      />
+                      <View style={[styles.usageFill, { width: `${usagePercent * 100}%` }]} />
                     </View>
                   </View>
+
+                  <View style={styles.divider} />
+                  <TouchableOpacity style={styles.row} onPress={handleManageBilling} activeOpacity={0.7}>
+                    <View>
+                      <Text style={styles.rowLabel}>
+                        {profile.plan === "pro" ? "Manage subscription" : "Upgrade to Pro"}
+                      </Text>
+                      {profile.plan !== "pro" && (
+                        <Text style={styles.rowSubLabel}>$99/year · unlimited replies</Text>
+                      )}
+                    </View>
+                    <Feather name="external-link" size={16} color={colors.mutedForeground} />
+                  </TouchableOpacity>
                 </>
               )}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Connected Gmail accounts</Text>
+            <View style={styles.card}>
+              {accounts.map((acct, i) => (
+                <React.Fragment key={acct.email}>
+                  {i > 0 && <View style={styles.divider} />}
+                  <View style={styles.accountRow}>
+                    <View style={styles.accountDot} />
+                    <Text style={styles.accountEmail} numberOfLines={1}>{acct.email}</Text>
+                    {acct.isPrimary && (
+                      <View style={styles.primaryBadge}>
+                        <Text style={styles.primaryBadgeText}>Primary</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity onPress={() => handleDisconnectAccount(acct.email, acct.isPrimary)}>
+                      <Feather name="x" size={16} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  </View>
+                </React.Fragment>
+              ))}
+              {accounts.length > 0 && <View style={styles.divider} />}
+              <Link href="/(auth)/connect-gmail" asChild>
+                <TouchableOpacity style={styles.addAccountBtn} activeOpacity={0.7}>
+                  <Feather name="plus" size={16} color={colors.foreground} />
+                  <Text style={styles.addAccountText}>
+                    {accounts.length === 0 ? "Connect Gmail" : "Add another account"}
+                  </Text>
+                </TouchableOpacity>
+              </Link>
             </View>
           </View>
 
@@ -410,7 +562,7 @@ export default function SettingsScreen() {
                       activeOpacity={0.8}
                     >
                       <Feather
-                        name={t.icon as any}
+                        name={t.icon}
                         size={16}
                         color={isActive ? colors.primaryForeground : colors.foreground}
                       />

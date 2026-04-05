@@ -10,7 +10,7 @@ import {
   TextInput,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, Link } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -49,8 +49,8 @@ export default function InboxScreen() {
         headers,
       });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as any).error || "Failed to load inbox");
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error || "Failed to load inbox");
       }
       return res.json() as Promise<InboxPage>;
     },
@@ -241,19 +241,28 @@ export default function InboxScreen() {
   }
 
   if (isError && !data) {
+    const isNotConnected = error?.message?.includes("not connected") || error?.message?.includes("Gmail not connected");
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Inbox</Text>
         </View>
         <View style={styles.errorContainer}>
-          <Feather name="wifi-off" size={48} color={colors.border} />
+          <Feather name={isNotConnected ? "mail" : "wifi-off"} size={48} color={colors.border} />
           <Text style={[styles.errorText, { marginTop: 16 }]}>
-            {(error as any)?.message || "Failed to load inbox"}
+            {isNotConnected ? "Gmail not connected" : (error?.message || "Failed to load inbox")}
           </Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
-            <Text style={styles.retryText}>Try again</Text>
-          </TouchableOpacity>
+          {isNotConnected ? (
+            <Link href="/(auth)/connect-gmail" asChild>
+              <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.foreground, borderColor: colors.foreground }]}>
+                <Text style={[styles.retryText, { color: colors.primaryForeground }]}>Connect Gmail</Text>
+              </TouchableOpacity>
+            </Link>
+          ) : (
+            <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
+              <Text style={styles.retryText}>Try again</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );

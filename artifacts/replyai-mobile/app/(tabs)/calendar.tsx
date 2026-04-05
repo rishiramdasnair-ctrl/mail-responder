@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useMemo } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
+import { Link } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
@@ -86,8 +87,8 @@ export default function CalendarScreen() {
       const res = await fetch(`${apiBaseUrl}/api/calendar/events?${params}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        const err: any = new Error((d as any).error || "Failed");
-        err.code = (d as any).code;
+        const errData = d as { error?: string; code?: string };
+        const err = Object.assign(new Error(errData.error || "Failed"), { code: errData.code });
         throw err;
       }
       return res.json();
@@ -333,8 +334,8 @@ export default function CalendarScreen() {
   }
 
   if (isError) {
-    const err: any = error;
-    const isNotConnected = err?.code === "NOT_CONNECTED";
+    const errCode = (error as Error & { code?: string })?.code;
+    const isNotConnected = errCode === "NOT_CONNECTED" || errCode === "PERMISSION_DENIED" || error?.message?.includes("not connected");
     return (
       <View style={styles.container}>
         {renderHeader()}
@@ -345,10 +346,16 @@ export default function CalendarScreen() {
           </Text>
           <Text style={styles.emptySubtitle}>
             {isNotConnected
-              ? "Connect Google Calendar in the web app to see your events here."
-              : err?.message || "Something went wrong"}
+              ? "Connect Gmail to access your Google Calendar events."
+              : (error?.message || "Something went wrong")}
           </Text>
-          {!isNotConnected && (
+          {isNotConnected ? (
+            <Link href="/(auth)/connect-gmail" asChild>
+              <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.foreground, borderColor: colors.foreground }]}>
+                <Text style={[styles.retryText, { color: colors.primaryForeground }]}>Connect Gmail</Text>
+              </TouchableOpacity>
+            </Link>
+          ) : (
             <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
               <Text style={styles.retryText}>Try again</Text>
             </TouchableOpacity>

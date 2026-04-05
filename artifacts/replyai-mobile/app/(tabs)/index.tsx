@@ -77,7 +77,13 @@ export default function InboxScreen() {
   const allThreads = data?.pages.flatMap((p) => p.threads) ?? [];
 
   const onPressEmail = (email: EmailThread) => {
-    router.push({ pathname: "/thread/[threadId]", params: { threadId: email.threadId } });
+    router.push({
+      pathname: "/thread/[threadId]",
+      params: {
+        threadId: email.threadId,
+        ...(email.accountEmail ? { accountEmail: email.accountEmail } : {}),
+      },
+    });
   };
 
   const submitSearch = () => {

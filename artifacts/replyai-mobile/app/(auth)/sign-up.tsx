@@ -6,29 +6,25 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
-  Image,
 } from "react-native";
 import { useOAuth } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
 import { makeRedirectUri } from "expo-auth-session";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather, type ComponentProps } from "@expo/vector-icons";
-
+import { Feather } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 
-type FeatherName = ComponentProps<typeof Feather>["name"];
-
 WebBrowser.maybeCompleteAuthSession();
 
-export default function SignInScreen() {
+export default function SignUpScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onSignInWithGoogle = useCallback(async () => {
+  const onSignUpWithGoogle = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -40,7 +36,7 @@ export default function SignInScreen() {
       }
     } catch (err) {
       console.error("OAuth error", err);
-      setError("Sign-in failed. Please try again.");
+      setError("Sign-up failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -86,6 +82,18 @@ export default function SignInScreen() {
       lineHeight: 24,
       maxWidth: 260,
     },
+    trialBadge: {
+      marginTop: 16,
+      backgroundColor: colors.muted,
+      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+    },
+    trialText: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+      color: colors.foreground,
+    },
     bottomSection: {
       gap: 12,
     },
@@ -103,64 +111,36 @@ export default function SignInScreen() {
       fontSize: 15,
       fontFamily: "Inter_600SemiBold",
     },
+    termsText: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      fontFamily: "Inter_400Regular",
+      lineHeight: 18,
+    },
     errorText: {
       fontSize: 13,
       color: colors.destructive,
       textAlign: "center",
       fontFamily: "Inter_400Regular",
     },
-    trialNote: {
-      fontSize: 12,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      fontFamily: "Inter_400Regular",
-    },
-    signUpRow: {
+    signInRow: {
       flexDirection: "row",
       justifyContent: "center",
       gap: 4,
       marginTop: 4,
     },
-    signUpText: {
+    signInText: {
       fontSize: 13,
       color: colors.mutedForeground,
       fontFamily: "Inter_400Regular",
     },
-    signUpLink: {
+    signInLink: {
       fontSize: 13,
       color: colors.foreground,
       fontFamily: "Inter_500Medium",
     },
-    features: {
-      marginBottom: 32,
-    },
-    featureRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      marginBottom: 16,
-    },
-    featureIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: 10,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    featureText: {
-      fontSize: 14,
-      color: colors.foreground,
-      fontFamily: "Inter_400Regular",
-      flex: 1,
-    },
   });
-
-  const FEATURES: Array<{ icon: FeatherName; text: string }> = [
-    { icon: "inbox", text: "Priority inbox across all Gmail accounts" },
-    { icon: "cpu", text: "AI-powered reply suggestions" },
-    { icon: "calendar", text: "Calendar-aware scheduling" },
-  ];
 
   return (
     <View style={styles.container}>
@@ -168,28 +148,21 @@ export default function SignInScreen() {
         <View style={styles.logoMark}>
           <Feather name="send" size={32} color={colors.primaryForeground} />
         </View>
-        <Text style={styles.appName}>ReplyAI</Text>
-        <Text style={styles.tagline}>Your AI email assistant for Gmail</Text>
-      </View>
-
-      <View style={styles.features}>
-        {FEATURES.map((f) => (
-          <View key={f.icon} style={styles.featureRow}>
-            <View style={styles.featureIcon}>
-              <Feather name={f.icon} size={18} color={colors.foreground} />
-            </View>
-            <Text style={styles.featureText}>{f.text}</Text>
-          </View>
-        ))}
+        <Text style={styles.appName}>Create account</Text>
+        <Text style={styles.tagline}>Start your free 14-day trial of ReplyAI</Text>
+        <View style={styles.trialBadge}>
+          <Text style={styles.trialText}>Free trial · No credit card required</Text>
+        </View>
       </View>
 
       <View style={styles.bottomSection}>
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
         <TouchableOpacity
           style={[styles.googleBtn, isLoading && { opacity: 0.7 }]}
-          onPress={onSignInWithGoogle}
+          onPress={onSignUpWithGoogle}
           disabled={isLoading}
-          activeOpacity={0.8}
-          testID="google-sign-in-btn"
+          activeOpacity={0.85}
         >
           {isLoading ? (
             <ActivityIndicator color={colors.primaryForeground} size="small" />
@@ -200,13 +173,16 @@ export default function SignInScreen() {
             </>
           )}
         </TouchableOpacity>
-        {error && <Text style={styles.errorText}>{error}</Text>}
-        <Text style={styles.trialNote}>14-day free trial · No credit card required</Text>
-        <View style={styles.signUpRow}>
-          <Text style={styles.signUpText}>New here?</Text>
-          <Link href="/(auth)/sign-up" asChild>
+
+        <Text style={styles.termsText}>
+          By continuing, you agree to our Terms of Service and Privacy Policy.
+        </Text>
+
+        <View style={styles.signInRow}>
+          <Text style={styles.signInText}>Already have an account?</Text>
+          <Link href="/(auth)/sign-in" asChild>
             <TouchableOpacity>
-              <Text style={styles.signUpLink}>Create account</Text>
+              <Text style={styles.signInLink}>Sign in</Text>
             </TouchableOpacity>
           </Link>
         </View>

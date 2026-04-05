@@ -165,7 +165,7 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
 }
 
 export default function ThreadScreen() {
-  const { threadId } = useLocalSearchParams<{ threadId: string }>();
+  const { threadId, accountEmail } = useLocalSearchParams<{ threadId: string; accountEmail?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -174,10 +174,11 @@ export default function ThreadScreen() {
   const [showReplySheet, setShowReplySheet] = useState(false);
 
   const { data: thread, isLoading, isError, error } = useQuery<Thread>({
-    queryKey: ["thread", threadId],
+    queryKey: ["thread", threadId, accountEmail],
     queryFn: async () => {
       const headers = await authHeaders();
-      const res = await fetch(`${apiBaseUrl}/api/gmail/threads/${threadId}`, { headers });
+      const qs = accountEmail ? `?account=${encodeURIComponent(accountEmail)}` : "";
+      const res = await fetch(`${apiBaseUrl}/api/gmail/threads/${threadId}${qs}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(d.error || "Failed to load thread");
@@ -318,11 +319,12 @@ export default function ThreadScreen() {
                 emailSubject={thread.subject}
                 toEmail={lastMessage.fromEmail || lastMessage.from}
                 subject={thread.subject}
+                accountEmail={accountEmail}
                 apiBaseUrl={apiBaseUrl}
                 getToken={getToken}
                 onReplySent={() => {
                   qc.invalidateQueries({ queryKey: ["priority-inbox"] });
-                  qc.invalidateQueries({ queryKey: ["thread", threadId] });
+                  qc.invalidateQueries({ queryKey: ["thread", threadId, accountEmail] });
                   router.back();
                 }}
               />

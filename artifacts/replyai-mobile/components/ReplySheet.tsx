@@ -36,6 +36,7 @@ interface ReplySheetProps {
   emailSubject: string;
   toEmail: string;
   subject: string;
+  accountEmail?: string;
   apiBaseUrl: string;
   getToken: () => Promise<string | null>;
   onReplySent?: () => void;
@@ -58,6 +59,7 @@ export function ReplySheet({
   emailSubject,
   toEmail,
   subject,
+  accountEmail,
   apiBaseUrl,
   getToken,
   onReplySent,
@@ -91,6 +93,7 @@ export function ReplySheet({
           emailBody,
           emailFrom,
           emailSubject,
+          ...(accountEmail ? { account: accountEmail } : {}),
         }),
       });
       const data = await res.json();
@@ -111,7 +114,7 @@ export function ReplySheet({
     } finally {
       setIsGenerating(false);
     }
-  }, [threadId, emailBody, emailFrom, emailSubject, getToken, apiBaseUrl]);
+  }, [threadId, emailBody, emailFrom, emailSubject, accountEmail, getToken, apiBaseUrl]);
 
   React.useEffect(() => {
     if (visible) {
@@ -147,6 +150,7 @@ export function ReplySheet({
           to: toEmail,
           subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`,
           body: editedContent,
+          ...(accountEmail ? { account: accountEmail } : {}),
         }),
       });
       if (!res.ok) {

@@ -253,7 +253,7 @@ export default function InboxScreen() {
             {isNotConnected ? "Gmail not connected" : (error?.message || "Failed to load inbox")}
           </Text>
           {isNotConnected ? (
-            <Link href="/(auth)/connect-gmail" asChild>
+            <Link href="/connect-gmail" asChild>
               <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.foreground, borderColor: colors.foreground }]}>
                 <Text style={[styles.retryText, { color: colors.primaryForeground }]}>Connect Gmail</Text>
               </TouchableOpacity>

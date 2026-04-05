@@ -32,12 +32,12 @@ export default function SignInScreen() {
       setIsLoading(true);
       setError(null);
       const { createdSessionId, setActive } = await startOAuthFlow({
-        redirectUrl: makeRedirectUri({ scheme: "replyai-mobile", path: "oauth-callback" }),
+        redirectUrl: makeRedirectUri({ scheme: "replyai", path: "oauth-callback" }),
       });
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("OAuth error", err);
       setError("Sign-in failed. Please try again.");
     } finally {

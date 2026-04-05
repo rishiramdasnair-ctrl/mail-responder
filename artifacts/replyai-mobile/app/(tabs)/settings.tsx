@@ -534,7 +534,13 @@ export default function SettingsScreen() {
                 </React.Fragment>
               ))}
               {accounts.length > 0 && <View style={styles.divider} />}
-              <Link href="/(auth)/connect-gmail" asChild>
+              <Link
+                href={accounts.length === 0
+                  ? "/connect-gmail"
+                  : ({ pathname: "/connect-gmail", params: { addAccount: "true" } } as const)
+                }
+                asChild
+              >
                 <TouchableOpacity style={styles.addAccountBtn} activeOpacity={0.7}>
                   <Feather name="plus" size={16} color={colors.foreground} />
                   <Text style={styles.addAccountText}>

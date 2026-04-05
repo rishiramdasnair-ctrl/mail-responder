@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -6,22 +6,18 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
-  Linking,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type ComponentProps } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useQueryClient } from "@tanstack/react-query";
 
-WebBrowser.maybeCompleteAuthSession();
+type FeatherName = ComponentProps<typeof Feather>["name"];
 
-interface ConnectGmailProps {
-  addAccount?: boolean;
-  onDone?: () => void;
-}
+WebBrowser.maybeCompleteAuthSession();
 
 export default function ConnectGmailScreen() {
   const colors = useColors();
@@ -30,6 +26,9 @@ export default function ConnectGmailScreen() {
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
 
+  const params = useLocalSearchParams<{ addAccount?: string }>();
+  const isAddAccount = params.addAccount === "true";
+
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -37,24 +36,37 @@ export default function ConnectGmailScreen() {
     setStatus("loading");
     setErrorMsg("");
     try {
+      // Step 1: Fetch the OAuth URL with authentication headers
       const headers = await authHeaders();
-      const startUrl = `${apiBaseUrl}/api/auth/google/start?platform=mobile`;
+      const qs = isAddAccount ? "?addAccount=true" : "";
+      const mobileUrlRes = await fetch(`${apiBaseUrl}/api/auth/google/mobile-url${qs}`, { headers });
+      if (!mobileUrlRes.ok) {
+        const d = await mobileUrlRes.json().catch(() => ({})) as { error?: string };
+        setStatus("error");
+        setErrorMsg(d.error || "Failed to start Gmail authorization.");
+        return;
+      }
+      const { url: oauthUrl } = await mobileUrlRes.json() as { url: string };
 
-      const result = await WebBrowser.openAuthSessionAsync(startUrl, "replyai://oauth-success", {
+      // Step 2: Open the OAuth URL in browser — redirects back to replyai://oauth-success
+      const result = await WebBrowser.openAuthSessionAsync(oauthUrl, "replyai://oauth-success", {
         showInRecents: true,
         preferEphemeralSession: false,
       });
 
       if (result.type === "success") {
-        const url = result.url;
-        if (url.startsWith("replyai://oauth-success")) {
+        const resultUrl = result.url;
+        if (resultUrl.startsWith("replyai://oauth-success")) {
           setStatus("success");
           qc.invalidateQueries({ queryKey: ["gmail-accounts"] });
           qc.invalidateQueries({ queryKey: ["priority-inbox"] });
+          qc.invalidateQueries({ queryKey: ["auth-me"] });
           setTimeout(() => router.replace("/(tabs)/"), 1200);
-        } else if (url.startsWith("replyai://oauth-error")) {
+        } else if (resultUrl.startsWith("replyai://oauth-error")) {
           setStatus("error");
           setErrorMsg("Gmail connection failed. Please try again.");
+        } else {
+          setStatus("idle");
         }
       } else if (result.type === "cancel") {
         setStatus("idle");
@@ -62,11 +74,11 @@ export default function ConnectGmailScreen() {
         setStatus("error");
         setErrorMsg("Could not open Gmail authorization page.");
       }
-    } catch (err) {
+    } catch {
       setStatus("error");
       setErrorMsg("Something went wrong. Please try again.");
     }
-  }, [apiBaseUrl, authHeaders, qc, router]);
+  }, [apiBaseUrl, authHeaders, isAddAccount, qc, router]);
 
   const topPad = Platform.OS === "web" ? 20 : insets.top;
 
@@ -85,6 +97,7 @@ export default function ConnectGmailScreen() {
       alignItems: "center",
       justifyContent: "center",
       paddingHorizontal: 32,
+      paddingBottom: 48,
     },
     iconCircle: {
       width: 80,
@@ -167,10 +180,10 @@ export default function ConnectGmailScreen() {
     },
   });
 
-  const FEATURES = [
-    { icon: "inbox" as const, text: "View and manage your priority inbox" },
-    { icon: "zap" as const, text: "Get AI-generated replies in seconds" },
-    { icon: "calendar" as const, text: "Calendar-aware smart scheduling" },
+  const FEATURES: Array<{ icon: FeatherName; text: string }> = [
+    { icon: "inbox", text: "View and manage your priority inbox" },
+    { icon: "zap", text: "Get AI-generated replies in seconds" },
+    { icon: "calendar", text: "Calendar-aware smart scheduling" },
   ];
 
   if (status === "success") {
@@ -181,7 +194,9 @@ export default function ConnectGmailScreen() {
             <Feather name="check" size={36} color={colors.primaryForeground} />
           </View>
           <View style={styles.successContainer}>
-            <Text style={styles.successText}>Gmail connected!</Text>
+            <Text style={styles.successText}>
+              {isAddAccount ? "Account added!" : "Gmail connected!"}
+            </Text>
             <Text style={styles.successSub}>Taking you to your inbox…</Text>
           </View>
         </View>
@@ -200,19 +215,25 @@ export default function ConnectGmailScreen() {
           <Feather name="mail" size={36} color={colors.foreground} />
         </View>
 
-        <Text style={styles.title}>Connect Gmail</Text>
+        <Text style={styles.title}>
+          {isAddAccount ? "Add Gmail Account" : "Connect Gmail"}
+        </Text>
         <Text style={styles.subtitle}>
-          Authorize ReplyAI to access your Gmail so we can generate smart replies and manage your inbox.
+          {isAddAccount
+            ? "Add another Gmail account to your unified priority inbox."
+            : "Authorize ReplyAI to access your Gmail so we can generate smart replies and manage your inbox."}
         </Text>
 
-        <View style={styles.featureList}>
-          {FEATURES.map((f) => (
-            <View key={f.icon} style={styles.featureRow}>
-              <Feather name={f.icon} size={16} color={colors.mutedForeground} />
-              <Text style={styles.featureText}>{f.text}</Text>
-            </View>
-          ))}
-        </View>
+        {!isAddAccount && (
+          <View style={styles.featureList}>
+            {FEATURES.map((f) => (
+              <View key={f.icon} style={styles.featureRow}>
+                <Feather name={f.icon} size={16} color={colors.mutedForeground} />
+                <Text style={styles.featureText}>{f.text}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {status === "loading" ? (
           <ActivityIndicator size="large" color={colors.foreground} />
@@ -223,7 +244,9 @@ export default function ConnectGmailScreen() {
             activeOpacity={0.8}
           >
             <Feather name="mail" size={18} color={colors.primaryForeground} />
-            <Text style={styles.connectBtnText}>Continue with Gmail</Text>
+            <Text style={styles.connectBtnText}>
+              {isAddAccount ? "Add Gmail Account" : "Continue with Gmail"}
+            </Text>
           </TouchableOpacity>
         )}
 

@@ -40,6 +40,41 @@ const GMAIL_SCOPES = [
 
 const GSUITE_EXTENSION_CONNECTORS = ["google-drive", "google-contacts"];
 
+// Mobile-specific: returns the OAuth URL as JSON so mobile can fetch with auth headers
+// then open the URL in expo-web-browser
+router.get("/auth/google/mobile-url", requireAuth, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const addAccount = req.query.addAccount === "true";
+    const oAuth2Client = getOAuthClient();
+
+    let state: string;
+    try {
+      state = createOAuthState(userId, addAccount, "mobile");
+    } catch {
+      res.status(500).json({ error: "OAuth not configured" });
+      return;
+    }
+
+    const url = oAuth2Client.generateAuthUrl({
+      access_type: "offline",
+      scope: GMAIL_SCOPES,
+      prompt: "consent",
+      state,
+    });
+
+    res.json({ url });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("GOOGLE_CLIENT_ID")) {
+      res.status(500).json({ error: "OAuth not configured" });
+    } else {
+      res.status(500).json({ error: "Failed to generate OAuth URL" });
+    }
+  }
+});
+
 router.get("/auth/google/start", requireAuth, async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;

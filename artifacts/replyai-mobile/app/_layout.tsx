@@ -38,6 +38,9 @@ const tokenCache = {
   },
 };
 
+const SIGN_IN_ROUTE = "/(auth)/sign-in" as const;
+const TABS_ROUTE = "/(tabs)/" as const;
+
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
@@ -47,10 +50,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!isLoaded) return;
     const inAuthGroup = segments[0] === "(auth)";
     if (!isSignedIn && !inAuthGroup) {
-      router.replace("/(auth)/sign-in");
+      router.replace(SIGN_IN_ROUTE);
     } else if (isSignedIn && inAuthGroup) {
-      router.replace("/(tabs)");
+      router.replace(TABS_ROUTE);
     }
+    // connect-gmail and thread screens are not in (auth), so signed-in users can access them
   }, [isSignedIn, isLoaded, segments]);
 
   return <>{children}</>;
@@ -63,6 +67,7 @@ function RootLayoutNav() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="thread/[threadId]" options={{ presentation: "card" }} />
+        <Stack.Screen name="connect-gmail" options={{ presentation: "modal", headerShown: false }} />
       </Stack>
     </AuthGuard>
   );

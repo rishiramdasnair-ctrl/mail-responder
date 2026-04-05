@@ -9,7 +9,8 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Feather, type ComponentProps } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
@@ -61,7 +62,7 @@ export default function ConnectGmailScreen() {
           qc.invalidateQueries({ queryKey: ["gmail-accounts"] });
           qc.invalidateQueries({ queryKey: ["priority-inbox"] });
           qc.invalidateQueries({ queryKey: ["auth-me"] });
-          setTimeout(() => router.replace("/(tabs)/"), 1200);
+          setTimeout(() => router.replace("/"), 1200);
         } else if (resultUrl.startsWith("replyai://oauth-error")) {
           setStatus("error");
           setErrorMsg("Gmail connection failed. Please try again.");

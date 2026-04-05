@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useRouter, Link } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmailRow, EmailThread } from "@/components/EmailRow";
 import { useColors } from "@/hooks/useColors";
@@ -38,10 +38,11 @@ export default function InboxScreen() {
   const searchRef = useRef<TextInput>(null);
 
   const fetchInbox = useCallback(
-    async ({ pageParam }: { pageParam: string | undefined }) => {
+    async ({ pageParam }: { pageParam: unknown }) => {
+      const token = pageParam as string | undefined;
       const params = new URLSearchParams({
         maxResults: String(PAGE_SIZE),
-        ...(pageParam ? { pageToken: pageParam } : {}),
+        ...(token ? { pageToken: token } : {}),
         ...(activeQuery ? { q: activeQuery } : {}),
       });
       const headers = await authHeaders();
@@ -67,10 +68,10 @@ export default function InboxScreen() {
     error,
     refetch,
     isRefetching,
-  } = useInfiniteQuery<InboxPage, Error>({
-    queryKey: ["priority-inbox", activeQuery],
+  } = useInfiniteQuery<InboxPage, Error, InfiniteData<InboxPage>, readonly unknown[], unknown>({
+    queryKey: ["priority-inbox", activeQuery] as const,
     queryFn: fetchInbox,
-    initialPageParam: undefined,
+    initialPageParam: undefined as unknown,
     getNextPageParam: (last) => last.nextPageToken ?? undefined,
   });
 

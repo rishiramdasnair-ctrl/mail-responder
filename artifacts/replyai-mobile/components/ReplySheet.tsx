@@ -13,7 +13,8 @@ import {
   Dimensions,
   Alert,
 } from "react-native";
-import { Feather, type ComponentProps } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";

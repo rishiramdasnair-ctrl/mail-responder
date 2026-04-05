@@ -12,7 +12,8 @@ import { useOAuth } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
 import { makeRedirectUri } from "expo-auth-session";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather, type ComponentProps } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
 
 import { Link } from "expo-router";
 import { useColors } from "@/hooks/useColors";

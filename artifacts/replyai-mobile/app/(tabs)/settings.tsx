@@ -12,7 +12,8 @@ import {
   Linking,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Feather, type ComponentProps } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import { Link } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

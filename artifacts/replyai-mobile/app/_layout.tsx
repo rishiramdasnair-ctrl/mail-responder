@@ -39,7 +39,6 @@ const tokenCache = {
 };
 
 const SIGN_IN_ROUTE = "/(auth)/sign-in" as const;
-const TABS_ROUTE = "/(tabs)/" as const;
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useAuth();
@@ -52,7 +51,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!isSignedIn && !inAuthGroup) {
       router.replace(SIGN_IN_ROUTE);
     } else if (isSignedIn && inAuthGroup) {
-      router.replace(TABS_ROUTE);
+      router.replace("/");
     }
     // connect-gmail and thread screens are not in (auth), so signed-in users can access them
   }, [isSignedIn, isLoaded, segments]);

@@ -275,6 +275,25 @@ export default function InboxScreen() {
     );
   }
 
+  const fabStyles = StyleSheet.create({
+    fab: {
+      position: "absolute",
+      right: 20,
+      bottom: insets.bottom + 24,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: colors.foreground,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: "#000",
+      shadowOpacity: 0.18,
+      shadowOffset: { width: 0, height: 4 },
+      shadowRadius: 12,
+      elevation: 6,
+    },
+  });
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -354,6 +373,14 @@ export default function InboxScreen() {
         scrollEnabled={allThreads.length > 0}
         showsVerticalScrollIndicator={false}
       />
+
+      <TouchableOpacity
+        style={fabStyles.fab}
+        onPress={() => router.push("/compose")}
+        activeOpacity={0.85}
+      >
+        <Feather name="edit-2" size={22} color={colors.primaryForeground} />
+      </TouchableOpacity>
     </View>
   );
 }

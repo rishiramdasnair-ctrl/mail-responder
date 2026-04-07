@@ -67,6 +67,7 @@ function RootLayoutNav() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="thread/[threadId]" options={{ presentation: "card" }} />
         <Stack.Screen name="connect-gmail" options={{ presentation: "modal", headerShown: false }} />
+        <Stack.Screen name="compose" options={{ presentation: "modal", headerShown: false }} />
       </Stack>
     </AuthGuard>
   );

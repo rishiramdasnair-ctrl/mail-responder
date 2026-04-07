@@ -154,6 +154,8 @@ export function getConnectorLogoImage(connectorId: string): ConnectorLogoImage |
       return { source: require("../assets/images/teams.png"), resizeMode: "contain", backgroundColor: "transparent", padding: 2 };
     case "google-drive":
       return { source: require("../assets/images/googledrive.png"), resizeMode: "contain", backgroundColor: "transparent", padding: 2 };
+    case "fathom":
+      return { source: require("../assets/images/fathom.png"), resizeMode: "contain", backgroundColor: "transparent", padding: 2 };
     default:
       return null;
   }

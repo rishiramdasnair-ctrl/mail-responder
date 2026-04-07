@@ -55,7 +55,7 @@ export const ALL_CONNECTORS: ConnectorDef[] = [
     label: "Fathom",
     description: "Pull meeting summaries and transcripts to brief you before every call.",
     capabilities: ["Past meeting summaries", "Pre-meeting briefs", "Transcript search", "Action item history"],
-    color: "#7C3AED",
+    color: "#00BFFF",
     textColor: "#fff",
     initials: "Fa",
     oauthPath: "/api/auth/fathom/start",

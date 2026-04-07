@@ -427,7 +427,7 @@ export default function ThreadScreen() {
                 visible={showReplySheet}
                 onClose={() => setShowReplySheet(false)}
                 threadId={threadId!}
-                emailBody={lastMessage.body || lastMessage.snippet || ""}
+                emailBody={lastMessage.body || lastMessage.snippet || thread.snippet || ""}
                 emailFrom={lastMessage.from}
                 emailSubject={thread.subject}
                 toEmail={lastMessage.fromEmail || lastMessage.from}

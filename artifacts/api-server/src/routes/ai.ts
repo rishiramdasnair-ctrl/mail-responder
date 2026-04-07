@@ -152,16 +152,13 @@ router.post("/ai/actions", requireAuth, aiRateLimit, async (req, res) => {
       customInstruction?: string;
     };
 
-    if (!emailBody && !customInstruction) {
-      res.status(400).json({ error: "emailBody is required" });
-      return;
-    }
-
     const accountLine = reqAccountEmail ? `\nYour email account: ${reqAccountEmail}` : "";
+    const bodySection = emailBody
+      ? `Message:\n${emailBody.slice(0, 3000)}`
+      : "(No message body available — analyze based on subject and sender)";
     const emailCtx = `Email from: ${emailFrom || "unknown"}
 Subject: ${emailSubject || "(no subject)"}${accountLine}
-Message:
-${(emailBody || "").slice(0, 3000)}`;
+${bodySection}`;
 
     let systemPrompt: string;
     let userMessage: string;

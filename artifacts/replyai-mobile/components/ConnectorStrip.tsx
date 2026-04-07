@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   Image,
+  Alert,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
@@ -16,6 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { getConnectorLogo, getConnectorLogoImage } from "./ConnectorLogos";
+import { useToast } from "./ToastProvider";
 
 export interface ConnectorDef {
   id: string;
@@ -434,6 +436,7 @@ export function ConnectorStrip({ gmailConnected }: ConnectorStripProps) {
   const colors = useColors();
   const { apiBaseUrl, authHeaders } = useApiClient();
   const qc = useQueryClient();
+  const { showToast } = useToast();
 
   const [selectedDef, setSelectedDef] = useState<ConnectorDef | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -477,35 +480,61 @@ export function ConnectorStrip({ gmailConnected }: ConnectorStripProps) {
       setConnecting(true);
       try {
         const headers = await authHeaders();
-        // Fetch the OAuth URL from our authenticated server endpoint
         const mobileUrlPath = def.oauthPath.replace("/start", "/mobile-url");
         const urlRes = await fetch(`${apiBaseUrl}${mobileUrlPath}`, { headers });
+
         if (!urlRes.ok) {
-          // Connector not configured (missing secrets) — gracefully handle
-          console.warn(`Connector ${def.id} not configured:`, await urlRes.text());
+          const errBody = await urlRes.json().catch(() => ({})) as { error?: string };
+          const msg = errBody.error || `${def.label} is not configured yet.`;
+          if (Platform.OS === "web") {
+            alert(msg);
+          } else {
+            Alert.alert("Not available", msg);
+          }
           return;
         }
+
         const { url: oauthUrl } = await urlRes.json() as { url: string };
 
         if (Platform.OS === "web") {
-          (window as any).location.href = oauthUrl;
+          // Open in new tab so the user stays in the app
+          const popup = (window as any).open(oauthUrl, "_blank", "width=520,height=620");
+          if (!popup) {
+            // Popup blocked — fall back to same-tab navigation
+            (window as any).location.href = oauthUrl;
+          } else {
+            // Poll until the popup closes, then refresh connector status
+            const poll = setInterval(() => {
+              if (popup.closed) {
+                clearInterval(poll);
+                qc.invalidateQueries({ queryKey: ["connectors"] });
+                setConnecting(false);
+              }
+            }, 800);
+            return; // don't hit finally until poll fires
+          }
         } else {
           const result = await WebBrowser.openAuthSessionAsync(
             oauthUrl,
-            "replyai://oauth-success"
+            "replyai://oauth-success",
+            { showInRecents: true, preferEphemeralSession: false }
           );
           if (result.type === "success") {
             await qc.invalidateQueries({ queryKey: ["connectors"] });
             setSheetVisible(false);
+            showToast(`${def.label} connected`, "success");
+          } else if (result.type === "cancel" || result.type === "dismiss") {
+            // user cancelled — no toast needed
           }
         }
       } catch (e) {
         console.error("Connect error", e);
+        showToast("Connection failed. Please try again.", "error");
       } finally {
         setConnecting(false);
       }
     },
-    [apiBaseUrl, authHeaders, qc]
+    [apiBaseUrl, authHeaders, qc, showToast]
   );
 
   const handleDisconnect = useCallback(

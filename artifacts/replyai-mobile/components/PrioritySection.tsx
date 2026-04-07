@@ -30,17 +30,10 @@ export interface PriorityEmail {
   suggestedAction: string;
 }
 
-const QUICK_CHIPS = [
-  { label: "Sounds good", icon: "👍" },
-  { label: "On my way", icon: "🏃" },
-  { label: "Let me check", icon: "📅" },
-];
-
 interface PriorityCardProps {
   item: PriorityEmail;
   onPress: (threadId: string, accountEmail?: string) => void;
   onAction: (item: PriorityEmail) => void;
-  onQuickReply: (item: PriorityEmail, text: string) => void;
   colors: ReturnType<typeof useColors>;
 }
 
@@ -143,7 +136,7 @@ const cardStyles = StyleSheet.create({
   },
 });
 
-function PriorityCard({ item, onPress, onAction, onQuickReply, colors }: PriorityCardProps) {
+function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
   const initials = getInitials(item.fromName, item.fromEmail);
   const displayName = item.fromName || item.fromEmail;
   const isUrgent = item.suggestedAction?.toLowerCase().startsWith("urgent");
@@ -205,35 +198,6 @@ function PriorityCard({ item, onPress, onAction, onQuickReply, colors }: Priorit
               <Feather name="arrow-right" size={11} color={colors.foreground} />
             </TouchableOpacity>
           </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ flexDirection: "row", gap: 6, paddingTop: 6, paddingBottom: 2 }}
-            style={{ marginHorizontal: -4 }}
-          >
-            {QUICK_CHIPS.map((chip) => (
-              <TouchableOpacity
-                key={chip.label}
-                onPress={() => onQuickReply(item, chip.label)}
-                activeOpacity={0.7}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  borderRadius: 12,
-                  backgroundColor: colors.muted,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: colors.border,
-                }}
-              >
-                <Text style={{ fontSize: 11 }}>{chip.icon}</Text>
-                <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: colors.foreground }}>{chip.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
         </View>
       </View>
     </TouchableOpacity>
@@ -243,10 +207,9 @@ function PriorityCard({ item, onPress, onAction, onQuickReply, colors }: Priorit
 interface PrioritySectionProps {
   onPressEmail: (threadId: string, accountEmail?: string) => void;
   onPressAction: (item: PriorityEmail) => void;
-  onQuickReply: (item: PriorityEmail, text: string) => void;
 }
 
-export function PrioritySection({ onPressEmail, onPressAction, onQuickReply }: PrioritySectionProps) {
+export function PrioritySection({ onPressEmail, onPressAction }: PrioritySectionProps) {
   const colors = useColors();
   const { apiBaseUrl, authHeaders } = useApiClient();
 
@@ -347,7 +310,6 @@ export function PrioritySection({ onPressEmail, onPressAction, onQuickReply }: P
             item={item}
             onPress={onPressEmail}
             onAction={onPressAction}
-            onQuickReply={onQuickReply}
             colors={colors}
           />
         ))}

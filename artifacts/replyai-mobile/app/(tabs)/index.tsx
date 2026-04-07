@@ -673,7 +673,6 @@ export default function InboxScreen() {
             <PrioritySection
               onPressEmail={onPressPriority}
               onPressAction={onPressAction}
-              onQuickReply={onQuickReply}
             />
           ) : null
         }

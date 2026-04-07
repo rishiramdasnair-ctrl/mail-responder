@@ -207,13 +207,14 @@ function MessageBubble({
 }
 
 export default function ThreadScreen() {
-  const { threadId, accountEmail } = useLocalSearchParams<{ threadId: string; accountEmail?: string }>();
+  const { threadId, accountEmail, action } = useLocalSearchParams<{ threadId: string; accountEmail?: string; action?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders, getToken } = useApiClient();
   const [showReplySheet, setShowReplySheet] = useState(false);
+  const autoOpenedRef = React.useRef(false);
 
   const { data: thread, isLoading, isError, error } = useQuery<Thread>({
     queryKey: ["thread", threadId, accountEmail],
@@ -262,6 +263,15 @@ export default function ThreadScreen() {
       } catch {}
     })();
   }, [thread?.isUnread, threadId, accountEmail, apiBaseUrl, authHeaders, qc]);
+
+  // Auto-open the ActionSheet when navigated from a priority card with a specific action
+  React.useEffect(() => {
+    if (!action || !thread || autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+    // Small delay so the screen has time to mount and render before the sheet pops up
+    const t = setTimeout(() => setShowReplySheet(true), 400);
+    return () => clearTimeout(t);
+  }, [action, thread]);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -408,7 +418,7 @@ export default function ThreadScreen() {
                 testID="ai-actions-btn"
               >
                 <Feather name="zap" size={16} color={colors.primaryForeground} />
-                <Text style={styles.replyBtnText}>AI Actions</Text>
+                <Text style={styles.replyBtnText}>{action ? action : "AI Actions"}</Text>
               </TouchableOpacity>
             </View>
 

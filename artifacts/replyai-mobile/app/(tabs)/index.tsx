@@ -6,6 +6,7 @@ import {
   FlatList,
   ActivityIndicator,
   TouchableOpacity,
+  Pressable,
   RefreshControl,
   TextInput,
   Platform,
@@ -556,13 +557,14 @@ export default function InboxScreen() {
             const label = folder === "INBOX" ? "Inbox" : folder === "STARRED" ? "Starred" : "Trash";
             const isActive = activeFolder === folder;
             return (
-              <TouchableOpacity
+              <Pressable
                 key={folder}
                 style={[styles.folderTab, isActive && styles.folderTabActive]}
                 onPress={() => { setActiveFolder(folder); setActiveQuery(""); setSearchQuery(""); }}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
               >
                 <Text style={[styles.folderTabText, isActive && styles.folderTabTextActive]}>{label}</Text>
-              </TouchableOpacity>
+              </Pressable>
             );
           })}
         </View>

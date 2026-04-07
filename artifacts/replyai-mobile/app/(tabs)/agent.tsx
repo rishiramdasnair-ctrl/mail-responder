@@ -15,6 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { useUser } from "@clerk/clerk-expo";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { ConnectorStrip } from "@/components/ConnectorStrip";
@@ -263,10 +264,19 @@ function MessageBubble({
   );
 }
 
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function AgentScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { apiBaseUrl, authHeaders } = useApiClient();
+  const { user } = useUser();
+  const firstName = user?.firstName || user?.username || null;
 
   const { data: gmailAccountsData } = useQuery({
     queryKey: ["gmail-accounts-agent"],
@@ -500,9 +510,8 @@ export default function AgentScreen() {
     messageList: { flex: 1 },
     messageListContent: { paddingTop: 16, paddingBottom: 12 },
     emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
-    emptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center", marginBottom: 16 },
-    emptyTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold", color: colors.foreground, marginBottom: 6, textAlign: "center" },
-    emptySubtitle: { fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground, textAlign: "center", lineHeight: 20 },
+    emptyTitle: { fontSize: 24, fontFamily: "Inter_600SemiBold", color: colors.foreground, marginBottom: 8, textAlign: "center" },
+    emptySubtitle: { fontSize: 15, fontFamily: "Inter_400Regular", color: colors.mutedForeground, textAlign: "center", lineHeight: 22 },
     suggestionsScroll: { marginBottom: 10 },
     suggestionsRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingRight: 24 },
     chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background },
@@ -541,12 +550,11 @@ export default function AgentScreen() {
         {isEmpty ? (
           <View style={{ flex: 1 }}>
             <View style={styles.emptyContainer}>
-              <View style={styles.emptyIcon}>
-                <Feather name="zap" size={24} color={colors.foreground} />
-              </View>
-              <Text style={styles.emptyTitle}>What can I help with?</Text>
+              <Text style={styles.emptyTitle}>
+                {getGreeting()}{firstName ? `, ${firstName}` : ""}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                Ask me to reply to emails, schedule meetings, search your inbox, or anything else.
+                What can I help you with?
               </Text>
             </View>
           </View>

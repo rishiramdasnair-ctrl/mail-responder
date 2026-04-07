@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useUser } from "@clerk/react";
 import { AppLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -279,7 +280,16 @@ function SuggestionsGrid({ suggestions, onSelect, isLoading }: {
   );
 }
 
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function AgentPage() {
+  const { user } = useUser();
+  const firstName = user?.firstName || user?.username || null;
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -491,12 +501,11 @@ export default function AgentPage() {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
           {messages.length === 0 && !isLoading && (
             <div className="flex flex-col items-center justify-center py-12 text-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                <Bot className="w-7 h-7 text-primary" />
-              </div>
               <div>
-                <h2 className="font-semibold text-lg mb-1">What can I help you with?</h2>
-                <p className="text-muted-foreground text-sm">Suggested actions based on your inbox</p>
+                <h2 className="font-semibold text-2xl mb-1">
+                  {getGreeting()}{firstName ? `, ${firstName}` : ""}
+                </h2>
+                <p className="text-muted-foreground text-base">What can I help you with?</p>
               </div>
               <SuggestionsGrid
                 suggestions={suggestions}

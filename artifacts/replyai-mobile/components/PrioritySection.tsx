@@ -120,11 +120,6 @@ const cardStyles = StyleSheet.create({
     gap: 4,
     overflow: "hidden",
   },
-  actionBtnGradient: {
-    position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
-    borderRadius: 20,
-  },
   actionText: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
@@ -188,24 +183,13 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
 
           <View style={[cardStyles.actionRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
             {isUrgent && (
-              <LinearGradient
-                colors={gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[cardStyles.urgentDot]}
-              />
+              <View style={[cardStyles.urgentDot, { backgroundColor: "#FF2D55" }]} />
             )}
             <TouchableOpacity
-              style={cardStyles.actionBtn}
+              style={[cardStyles.actionBtn, { backgroundColor: isUrgent ? "#FF2D55" : "#AF52DE" }]}
               onPress={() => onAction(item)}
               activeOpacity={0.8}
             >
-              <LinearGradient
-                colors={gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={cardStyles.actionBtnGradient}
-              />
               <Text style={cardStyles.actionText}>{item.suggestedAction}</Text>
               <Feather name="arrow-right" size={11} color="#fff" />
             </TouchableOpacity>

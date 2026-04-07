@@ -371,15 +371,22 @@ function ConnectorDetailSheet({
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.topRow}>
-              <View style={[styles.avatar, getConnectorLogoImage(def.id) ? { overflow: "hidden", backgroundColor: getConnectorLogoImage(def.id)!.backgroundColor, padding: getConnectorLogoImage(def.id)!.padding, alignItems: "center", justifyContent: "center" } : {}]}>
-                {(() => {
-                  const imgCfg = getConnectorLogoImage(def.id);
-                  if (imgCfg) return <Image source={imgCfg.source} style={{ width: 52 - imgCfg.padding * 2, height: 52 - imgCfg.padding * 2 }} resizeMode={imgCfg.resizeMode} />;
-                  const Logo = getConnectorLogo(def.id);
-                  if (Logo) return <Logo size={28} color={def.textColor} />;
-                  return <Text style={styles.avatarText}>{def.initials}</Text>;
-                })()}
-              </View>
+              {(() => {
+                const imgCfg = getConnectorLogoImage(def.id);
+                if (imgCfg) {
+                  return (
+                    <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: imgCfg.backgroundColor, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
+                      <Image source={imgCfg.source} style={{ width: 52, height: 52 }} resizeMode="contain" />
+                    </View>
+                  );
+                }
+                const Logo = getConnectorLogo(def.id);
+                return (
+                  <View style={styles.avatar}>
+                    {Logo ? <Logo size={28} color={def.textColor} /> : <Text style={styles.avatarText}>{def.initials}</Text>}
+                  </View>
+                );
+              })()}
               <View>
                 <Text style={styles.label}>{def.label}</Text>
                 <View style={styles.statusRow}>

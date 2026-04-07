@@ -280,7 +280,6 @@ export function PrioritySection({ onPressEmail, onPressAction }: PrioritySection
     return (
       <View style={styles.container}>
         <View style={styles.headerRow}>
-          <Feather name="zap" size={12} color={colors.foreground} />
           <Text style={styles.headerLabel}>Priority</Text>
         </View>
         <View style={styles.loadingRow}>
@@ -296,7 +295,6 @@ export function PrioritySection({ onPressEmail, onPressAction }: PrioritySection
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Feather name="zap" size={12} color={colors.foreground} />
         <Text style={styles.headerLabel}>Priority</Text>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{items.length}</Text>

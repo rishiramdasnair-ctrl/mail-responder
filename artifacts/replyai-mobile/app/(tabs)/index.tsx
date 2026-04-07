@@ -476,7 +476,7 @@ export default function InboxScreen() {
         <View style={styles.headerRow}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text style={styles.title}>{activeFolder === "STARRED" ? "Starred" : activeFolder === "TRASH" ? "Trash" : "Inbox"}</Text>
-            {unreadCount > 0 && activeFolder === "INBOX" && (
+            {unreadCount > 0 && (
               <View style={styles.unreadBadge}>
                 <Text style={styles.unreadText}>{unreadCount}</Text>
               </View>

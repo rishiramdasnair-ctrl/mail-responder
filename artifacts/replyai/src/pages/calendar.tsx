@@ -116,6 +116,16 @@ function minutesFromMidnight(iso: string) {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+function isPastEvent(evt: CalendarEvent): boolean {
+  const end = toLocalDate(evt.end);
+  if (evt.isAllDay) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return end < today;
+  }
+  return end < new Date();
+}
+
 function eventsForDay(events: CalendarEvent[], day: Date): CalendarEvent[] {
   const dk = dateKey(day);
   return events.filter(evt => {
@@ -533,12 +543,18 @@ function TimeGrid({ days, eventsByDay, onEventClick, onSlotClick }: {
                   const left     = `calc(${(col / numCols) * 100}% + 1px)`;
                   const short    = height < 36;
 
+                  const past = isPastEvent(evt);
                   return (
                     <button
                       key={evt.id}
                       onClick={e => { e.stopPropagation(); onEventClick(evt); }}
                       className="absolute rounded-md text-left overflow-hidden group hover:brightness-95 transition-all z-10 shadow-sm"
-                      style={{ top, height, width, left, background: "hsl(var(--foreground))", color: "hsl(var(--background))" }}
+                      style={{
+                        top, height, width, left,
+                        background: past ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground))",
+                        color: "hsl(var(--background))",
+                        opacity: past ? 0.45 : 1,
+                      }}
                     >
                       <div className="px-1.5 py-0.5 h-full flex flex-col justify-start overflow-hidden">
                         <p className={`font-medium leading-tight truncate ${short ? "text-[9px]" : "text-[10px]"}`}>{evt.title}</p>
@@ -607,22 +623,28 @@ function MonthView({ anchor, events, onDayClick, onEventClick }: {
 
                 {/* Events */}
                 <div className="flex flex-col gap-0.5 px-1 pb-1 overflow-hidden">
-                  {dayEvts.slice(0, 3).map(evt => (
-                    <button key={evt.id}
-                      onClick={e => { e.stopPropagation(); onEventClick(evt); }}
-                      className={`w-full text-left truncate rounded text-[10px] leading-tight font-medium px-1.5 py-0.5 transition-opacity hover:opacity-80
-                        ${evt.isAllDay
-                          ? "bg-foreground text-background"
-                          : "bg-foreground/8 border border-border text-foreground"
-                        }`}
-                      title={evt.title}
-                    >
-                      {!evt.isAllDay && (
-                        <span className="text-muted-foreground mr-1">{formatTime(evt.start)}</span>
-                      )}
-                      {evt.title}
-                    </button>
-                  ))}
+                  {dayEvts.slice(0, 3).map(evt => {
+                    const past = isPastEvent(evt);
+                    return (
+                      <button key={evt.id}
+                        onClick={e => { e.stopPropagation(); onEventClick(evt); }}
+                        className={`w-full text-left truncate rounded text-[10px] leading-tight font-medium px-1.5 py-0.5 transition-opacity hover:opacity-80
+                          ${evt.isAllDay
+                            ? "bg-foreground text-background"
+                            : past
+                              ? "bg-muted-foreground/15 border border-border text-muted-foreground"
+                              : "bg-foreground/8 border border-border text-foreground"
+                          }`}
+                        style={past ? { opacity: 0.55 } : undefined}
+                        title={evt.title}
+                      >
+                        {!evt.isAllDay && (
+                          <span className={`mr-1 ${past ? "text-muted-foreground/70" : "text-muted-foreground"}`}>{formatTime(evt.start)}</span>
+                        )}
+                        {evt.title}
+                      </button>
+                    );
+                  })}
                   {overflow && (
                     <span className="text-[10px] text-muted-foreground pl-1.5">+{dayEvts.length - 3} more</span>
                   )}
@@ -912,18 +934,21 @@ export default function CalendarPage() {
                   );
                   return (
                     <div className="p-3 space-y-2">
-                      {todayEvts.map(evt => (
-                        <button key={evt.id} onClick={() => setSelectedEvent(evt)}
-                          className="w-full text-left rounded-xl border p-3 hover:bg-muted/40 transition-colors">
-                          <p className="text-xs font-medium leading-snug truncate">{evt.title}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {formatTimeRange(evt.start, evt.end, evt.isAllDay)}
-                          </p>
-                          {evt.location && (
-                            <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{evt.location}</p>
-                          )}
-                        </button>
-                      ))}
+                      {todayEvts.map(evt => {
+                        const past = isPastEvent(evt);
+                        return (
+                          <button key={evt.id} onClick={() => setSelectedEvent(evt)}
+                            className={`w-full text-left rounded-xl border p-3 transition-colors ${past ? "hover:bg-muted/20 opacity-50" : "hover:bg-muted/40"}`}>
+                            <p className={`text-xs font-medium leading-snug truncate ${past ? "text-muted-foreground" : ""}`}>{evt.title}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              {formatTimeRange(evt.start, evt.end, evt.isAllDay)}
+                            </p>
+                            {evt.location && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{evt.location}</p>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   );
                 })()}

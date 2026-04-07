@@ -36,6 +36,16 @@ function toLocalDate(iso: string): Date {
   return new Date(iso);
 }
 
+function isPastEvent(evt: CalendarEvent): boolean {
+  const end = toLocalDate(evt.end);
+  if (evt.isAllDay) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return end < today;
+  }
+  return end < new Date();
+}
+
 function formatEventTime(evt: CalendarEvent): string {
   if (evt.isAllDay) return "All day";
   const start = toLocalDate(evt.start);
@@ -287,9 +297,10 @@ export default function CalendarScreen() {
       );
     }
     const evt = item.event;
+    const past = isPastEvent(evt);
     return (
       <TouchableOpacity
-        style={styles.eventCard}
+        style={[styles.eventCard, past && { opacity: 0.45 }]}
         activeOpacity={0.75}
         onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id } })}
       >
@@ -299,10 +310,13 @@ export default function CalendarScreen() {
           </View>
         )}
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <Text style={[styles.eventTitle, { flex: 1, marginRight: 8 }]}>{evt.title}</Text>
+          <Text style={[styles.eventTitle, { flex: 1, marginRight: 8 }, past && { color: colors.mutedForeground }]}>{evt.title}</Text>
           <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginTop: 1 }} />
         </View>
         <Text style={styles.eventTime}>{formatEventTime(evt)}</Text>
+        {past && (
+          <Text style={{ fontSize: 10, fontFamily: "Inter_500Medium", color: colors.mutedForeground, marginTop: 2 }}>Past</Text>
+        )}
         {evt.location && (
           <View style={styles.eventMeta}>
             <Feather name="map-pin" size={12} color={colors.mutedForeground} />

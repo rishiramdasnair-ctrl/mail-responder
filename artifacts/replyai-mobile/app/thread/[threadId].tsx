@@ -218,6 +218,7 @@ export default function ThreadScreen() {
   const [showReplySheet, setShowReplySheet] = useState(false);
   const autoOpenedRef = React.useRef(false);
   const [threadSummary, setThreadSummary] = useState<string | null>(null);
+  const [threadTriage, setThreadTriage] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const summaryFetchedRef = React.useRef(false);
 
@@ -294,8 +295,9 @@ export default function ThreadScreen() {
           }),
         });
         if (res.ok) {
-          const data = await res.json() as { summary?: string };
+          const data = await res.json() as { summary?: string; triage?: string };
           if (data.summary) setThreadSummary(data.summary);
+          if (data.triage) setThreadTriage(data.triage);
         }
       } catch {}
       setSummaryLoading(false);
@@ -442,6 +444,22 @@ export default function ThreadScreen() {
                     <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.5 }}>
                       AI Summary
                     </Text>
+                    {threadTriage && !summaryLoading && (() => {
+                      const triageColors: Record<string, { bg: string; text: string }> = {
+                        "REPLY-NOW": { bg: "#FF2D5518", text: "#FF2D55" },
+                        "REPLY-TODAY": { bg: "#FF6B3518", text: "#FF6B35" },
+                        "DECISION": { bg: "#5856D618", text: "#5856D6" },
+                        "FYI": { bg: colors.border, text: colors.mutedForeground },
+                      };
+                      const tc = triageColors[threadTriage] || { bg: colors.border, text: colors.mutedForeground };
+                      return (
+                        <View style={{ marginLeft: "auto", backgroundColor: tc.bg, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                          <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: tc.text, letterSpacing: 0.3 }}>
+                            {threadTriage}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                   </View>
                   {summaryLoading ? (
                     <ActivityIndicator size="small" color={colors.mutedForeground} />

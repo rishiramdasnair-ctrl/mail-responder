@@ -51,11 +51,12 @@ router.post("/ai/generate", requireAuth, aiRateLimit, async (req, res) => {
       ? `\n\nCalendar context (next 7 days):\n${calendarContext}\n\nUse the calendar above to:\n- Suggest specific available times when scheduling is requested (times NOT listed as busy)\n- Avoid proposing times that conflict with existing events\n- Acknowledge busy days when relevant`
       : "";
 
-    const systemPrompt = `You are ReplyAI, an expert email assistant. Generate 3 distinct reply suggestions for the given email.
-For each reply, provide:
-1. A "pro" tone: Professional, formal, complete
-2. A "casual" tone: Friendly, conversational, warm
-3. A "fast" tone: Ultra-brief, 1-3 sentences max
+    const systemPrompt = `You are ReplyAI, an expert AI secretary and email assistant. Generate 3 distinct reply suggestions for the given email.
+
+Tone guidelines:
+1. "pro" — Use the BLUF (Bottom Line Up Front) military writing standard. Open with the key ask or decision in the very first sentence. Follow with brief bullet context if needed. 5 sentences max. No filler, no preamble.
+2. "casual" — Friendly and conversational. Natural, warm, like writing to a colleague you know well.
+3. "fast" — Ultra-brief. 1-2 sentences only. The fastest possible response that's still complete and clear.
 
 For each suggestion, also provide a 1-line "reasoning" explaining why this reply works.${calendarSection}
 
@@ -294,18 +295,38 @@ router.post("/ai/thread-summary", requireAuth, aiRateLimit, async (req, res) => 
 
     const completion = await openai.chat.completions.create({
       model: FAST_MODEL,
-      max_tokens: 300,
+      max_tokens: 400,
       messages: [
         {
           role: "system",
-          content: `You are ReplyAI. Summarize this email thread in 2-3 short, punchy bullet points. Focus on key decisions, action items, and outcomes. No intros. Use • bullets. Max 60 words total.`,
+          content: `You are ReplyAI, an AI secretary. Analyze this email thread and respond with valid JSON only.
+
+Output format:
+{
+  "triage": "REPLY-NOW" | "REPLY-TODAY" | "DECISION" | "FYI",
+  "summary": "2-3 bullet points as a single string using • character. Focus on decisions, action items, and outcomes. Max 60 words."
+}
+
+Triage definitions:
+- REPLY-NOW: someone is blocked waiting for you, time-sensitive (< 4h)
+- REPLY-TODAY: needs a reply today but not urgent
+- DECISION: you need to make a choice — don't draft a reply, summarize the options
+- FYI: informational, no reply needed — safe to archive`,
         },
         { role: "user", content: `Subject: ${subject}\n\n${truncated}` },
       ],
     });
 
-    const summary = completion.choices[0]?.message?.content?.trim() || "";
-    res.json({ summary });
+    let result: { triage?: string; summary?: string };
+    try {
+      const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      result = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+    } catch {
+      result = { summary: completion.choices[0]?.message?.content?.trim() || "" };
+    }
+
+    res.json({ summary: result.summary || "", triage: result.triage || null });
   } catch (err) {
     req.log.error({ err }, "Error generating thread summary");
     res.status(500).json({ error: "Failed to generate summary" });
@@ -336,18 +357,43 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
       `• "${t.subject}" from ${t.fromName}: ${t.snippet?.slice(0, 120) || ""}`
     ).join("\n");
 
+    const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
     const completion = await openai.chat.completions.create({
       model: AGENT_MODEL,
-      max_tokens: 600,
+      max_tokens: 700,
       messages: [
         {
           role: "system",
-          content: `You are ReplyAI, a sharp, friendly email assistant. Generate a brief "Catch Me Up" digest from the list of emails below.
-Format:
-1. Start with one sentence on overall inbox status (tone: calm, professional).
-2. List 3-5 most important items needing attention, each as a short bullet: action + context.
-3. End with one encouraging closing line.
-Keep it under 150 words. No fluff. Use plain text only (no markdown headers).`,
+          content: `You are ReplyAI, an AI secretary. Generate a structured Daily Briefing from the inbox snapshot below.
+
+Use this exact format (plain text, no markdown syntax like ** or ##):
+
+Daily Briefing — ${today}
+
+INBOX STATUS
+One calm, direct sentence on the overall inbox state.
+
+REPLY NOW  (blocking someone or time-sensitive)
+• [Sender] — [Subject]: one-line action needed
+(Omit this section if none)
+
+REPLY TODAY
+• [Sender] — [Subject]: one-line action needed
+(List 2-4 items max)
+
+FYI / ARCHIVE
+• [Sender] — [Subject]: why it can wait
+(List 1-3 items max)
+
+HEADS UP
+One sentence flagging any deadlines, travel, or prep needed based on the emails.
+
+Rules:
+- BLUF: bottom line up front in every bullet
+- Each bullet must be specific to an actual email, not generic
+- Max 180 words total
+- Plain text only — no asterisks, no pound signs, no markdown`,
         },
         { role: "user", content: `Inbox snapshot (${threads.length} threads, ${unread.length} unread):\n${allItems}` },
       ],

@@ -375,8 +375,8 @@ function ConnectorDetailSheet({
                 const imgCfg = getConnectorLogoImage(def.id);
                 if (imgCfg) {
                   return (
-                    <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: imgCfg.backgroundColor, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
-                      <Image source={imgCfg.source} style={{ width: 52, height: 52 }} resizeMode="contain" />
+                    <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: imgCfg.backgroundColor, alignItems: "center", justifyContent: "center" }}>
+                      <Image source={imgCfg.source} style={{ width: 40, height: 40 }} resizeMode="contain" />
                     </View>
                   );
                 }

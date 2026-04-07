@@ -147,9 +147,9 @@ export interface ConnectorLogoImage {
 export function getConnectorLogoImage(connectorId: string): ConnectorLogoImage | null {
   switch (connectorId) {
     case "slack":
-      return { source: require("../assets/images/slack.png"), resizeMode: "contain", backgroundColor: "#000", padding: 4 };
+      return { source: require("../assets/images/slack.png"), resizeMode: "contain", backgroundColor: "transparent", padding: 2 };
     case "hubspot":
-      return { source: require("../assets/images/hubspot.png"), resizeMode: "contain", backgroundColor: "#fff", padding: 4 };
+      return { source: require("../assets/images/hubspot.png"), resizeMode: "contain", backgroundColor: "#fff", padding: 6 };
     default:
       return null;
   }

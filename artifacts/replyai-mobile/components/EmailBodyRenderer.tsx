@@ -8,6 +8,7 @@ interface EmailBodyRendererProps {
   backgroundColor?: string;
   textColor?: string;
   mutedColor?: string;
+  borderColor?: string;
 }
 
 const INJECTED_JS = `
@@ -21,14 +22,10 @@ const INJECTED_JS = `
     );
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'height', height: h }));
   }
-  // Report immediately
   reportHeight();
-  // Re-report after images/fonts load
   window.addEventListener('load', reportHeight);
-  // Re-report on any DOM mutation (e.g. lazy images)
   var mo = new MutationObserver(reportHeight);
   mo.observe(document.body, { subtree: true, childList: true, attributes: true });
-  // Fallback poll for tricky templates
   setTimeout(reportHeight, 300);
   setTimeout(reportHeight, 800);
   setTimeout(reportHeight, 1500);
@@ -36,7 +33,7 @@ const INJECTED_JS = `
 true;
 `;
 
-function buildHtmlDoc(html: string, bg: string, text: string): string {
+function buildHtmlDoc(html: string, bg: string, text: string, muted: string, border: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -51,24 +48,34 @@ function buildHtmlDoc(html: string, bg: string, text: string): string {
       color: ${text};
       font-family: -apple-system, 'Inter', 'SF Pro Text', system-ui, sans-serif;
       font-size: 15px;
-      line-height: 1.6;
+      line-height: 1.65;
       word-wrap: break-word;
       overflow-wrap: break-word;
       overflow-x: hidden;
       -webkit-text-size-adjust: 100%;
     }
     body {
-      padding: 4px 2px 12px 2px;
+      padding: 16px 16px 20px 16px;
     }
-    /* Constrain email content to screen width */
     .email-content-wrapper {
       max-width: 100%;
       overflow-x: hidden;
+    }
+    /* Force all text nodes to use the theme color */
+    p, div, span, li, td, th, h1, h2, h3, h4, h5, h6 {
+      color: inherit !important;
+    }
+    /* Links visible in dark mode */
+    a {
+      color: ${text} !important;
+      text-decoration: underline;
+      word-break: break-all;
     }
     img {
       max-width: 100% !important;
       height: auto !important;
       display: block;
+      border-radius: 6px;
     }
     table {
       max-width: 100% !important;
@@ -78,26 +85,50 @@ function buildHtmlDoc(html: string, bg: string, text: string): string {
     td, th {
       word-break: break-word;
     }
-    a {
-      color: ${text};
-      word-break: break-all;
-    }
     pre, code {
       white-space: pre-wrap;
       word-break: break-word;
       font-size: 13px;
-      background: rgba(128,128,128,0.08);
+      background: rgba(128,128,128,0.15);
       border-radius: 4px;
       padding: 2px 4px;
+      color: ${text} !important;
     }
     pre {
-      padding: 10px;
+      padding: 12px;
     }
-    /* Force any fixed-width elements to be responsive */
+    blockquote {
+      margin: 8px 0;
+      padding: 4px 12px;
+      border-left: 3px solid ${border};
+      color: ${muted} !important;
+    }
+    blockquote p, blockquote div, blockquote span {
+      color: ${muted} !important;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid ${border};
+      margin: 12px 0;
+    }
+    /* Override any white backgrounds from marketing emails */
+    *[style*="background-color: white"],
+    *[style*="background-color: #fff"],
+    *[style*="background-color: #ffffff"],
+    *[style*="background: white"],
+    *[style*="background: #fff"],
+    *[style*="background: #ffffff"] {
+      background-color: ${bg} !important;
+    }
+    /* Ensure forced black text from email templates uses theme color */
+    *[style*="color: black"],
+    *[style*="color: #000"],
+    *[style*="color: #000000"],
+    *[style*="color: rgb(0,0,0)"],
+    *[style*="color: rgb(0, 0, 0)"] {
+      color: ${text} !important;
+    }
     *[width] {
-      max-width: 100% !important;
-    }
-    *[style*="width"] {
       max-width: 100% !important;
     }
   </style>
@@ -112,6 +143,7 @@ export function EmailBodyRenderer({
   backgroundColor = "#ffffff",
   textColor = "#0a0a0a",
   mutedColor = "#737373",
+  borderColor = "#e5e5e5",
 }: EmailBodyRendererProps) {
   const [webViewHeight, setWebViewHeight] = useState(200);
 
@@ -121,16 +153,14 @@ export function EmailBodyRenderer({
       if (data.type === "height" && data.height > 0) {
         setWebViewHeight(data.height);
       }
-    } catch {
-      // ignore parse errors
-    }
+    } catch {}
   }, []);
 
   if (bodyType === "html" && body.trim()) {
-    const htmlDoc = buildHtmlDoc(body, backgroundColor, textColor);
+    const htmlDoc = buildHtmlDoc(body, backgroundColor, textColor, mutedColor, borderColor);
 
     return (
-      <View style={{ height: webViewHeight }}>
+      <View style={{ height: webViewHeight, width: "100%" }}>
         <WebView
           source={{ html: htmlDoc }}
           style={{ flex: 1, backgroundColor: "transparent" }}
@@ -156,7 +186,7 @@ export function EmailBodyRenderer({
   // Plain text rendering
   const lines = (body || "").trim().split("\n");
   return (
-    <View style={styles.plainContainer}>
+    <View style={[styles.plainContainer, { backgroundColor }]}>
       {lines.map((line, i) => {
         const isQuote = line.startsWith(">");
         const isBlank = line.trim() === "";
@@ -169,7 +199,7 @@ export function EmailBodyRenderer({
             style={[
               styles.plainLine,
               { color: isQuote ? mutedColor : textColor },
-              isQuote && styles.quotedLine,
+              isQuote && [styles.quotedLine, { borderLeftColor: borderColor }],
             ]}
           >
             {isQuote ? line.replace(/^>+\s?/, "") : line}
@@ -183,20 +213,21 @@ export function EmailBodyRenderer({
 const styles = StyleSheet.create({
   plainContainer: {
     gap: 2,
-    paddingVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingBottom: 20,
   },
   plainLine: {
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
     fontFamily: Platform.select({ ios: "Inter_400Regular", android: "Inter_400Regular", default: "system-ui" }),
   },
   quotedLine: {
-    paddingLeft: 10,
-    borderLeftWidth: 2,
-    borderLeftColor: "#d4d4d4",
-    opacity: 0.7,
+    paddingLeft: 12,
+    borderLeftWidth: 3,
+    opacity: 0.6,
   },
   blankLine: {
-    height: 8,
+    height: 6,
   },
 });

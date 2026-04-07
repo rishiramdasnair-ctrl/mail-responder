@@ -72,33 +72,34 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
 
   const styles = StyleSheet.create({
     bubble: {
-      marginBottom: 16,
-      paddingHorizontal: 16,
+      marginBottom: 2,
     },
     senderRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      marginBottom: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
     },
     avatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.muted,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.foreground,
       alignItems: "center",
       justifyContent: "center",
+      flexShrink: 0,
     },
     avatarText: {
-      fontSize: 12,
+      fontSize: 13,
       fontFamily: "Inter_600SemiBold",
-      color: colors.mutedForeground,
+      color: colors.primaryForeground,
     },
     senderInfo: {
       flex: 1,
     },
     senderName: {
-      fontSize: 13,
+      fontSize: 14,
       fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
     },
@@ -106,33 +107,48 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
       fontSize: 12,
       color: colors.mutedForeground,
       fontFamily: "Inter_400Regular",
+      marginTop: 1,
     },
     collapseBtn: {
-      padding: 4,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
     },
     bodyContainer: {
-      borderRadius: 12,
       overflow: "hidden",
-      marginLeft: 46,
-      backgroundColor: colors.background,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     collapsedSnippet: {
-      marginLeft: 46,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      backgroundColor: colors.muted,
-      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
     },
     snippetText: {
       fontSize: 13,
       color: colors.mutedForeground,
       fontFamily: "Inter_400Regular",
     },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginTop: 4,
+    },
   });
 
   return (
     <View style={styles.bubble}>
-      <View style={styles.senderRow}>
+      <TouchableOpacity
+        style={styles.senderRow}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.7}
+      >
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
@@ -140,10 +156,10 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
           <Text style={styles.senderName}>{msg.fromName || msg.fromEmail}</Text>
           <Text style={styles.senderDate}>{formatDate(msg.date)}</Text>
         </View>
-        <TouchableOpacity style={styles.collapseBtn} onPress={() => setExpanded(!expanded)}>
-          <Feather name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
-        </TouchableOpacity>
-      </View>
+        <View style={styles.collapseBtn}>
+          <Feather name={expanded ? "chevron-up" : "chevron-down"} size={15} color={colors.mutedForeground} />
+        </View>
+      </TouchableOpacity>
 
       {expanded ? (
         <View style={styles.bodyContainer}>
@@ -153,13 +169,16 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
             backgroundColor={colors.background}
             textColor={colors.foreground}
             mutedColor={colors.mutedForeground}
+            borderColor={colors.border}
           />
         </View>
       ) : (
         <TouchableOpacity style={styles.collapsedSnippet} onPress={() => setExpanded(true)}>
-          <Text style={styles.snippetText} numberOfLines={1}>{msg.snippet}</Text>
+          <Text style={styles.snippetText} numberOfLines={2}>{msg.snippet}</Text>
         </TouchableOpacity>
       )}
+
+      <View style={styles.divider} />
     </View>
   );
 }
@@ -251,7 +270,7 @@ export default function ThreadScreen() {
       borderBottomColor: colors.border,
     },
     scrollContent: {
-      paddingTop: 16,
+      paddingTop: 0,
       paddingBottom: bottomPad + 100,
     },
     footer: {

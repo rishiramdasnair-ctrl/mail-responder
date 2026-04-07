@@ -190,6 +190,37 @@ export default function ThreadScreen() {
 
   const lastMessage = thread?.messages?.[thread.messages.length - 1];
 
+  // Silently mark thread as read when it loads and has unread messages
+  React.useEffect(() => {
+    if (!thread?.isUnread || !threadId) return;
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const qs = accountEmail ? `?account=${encodeURIComponent(accountEmail)}` : "";
+        await fetch(`${apiBaseUrl}/api/gmail/threads/${threadId}/modify${qs}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ removeLabelIds: ["UNREAD"], addLabelIds: [] }),
+        });
+        qc.setQueryData<Thread>(["thread", threadId, accountEmail], (old) =>
+          old ? { ...old, isUnread: false, messages: old.messages.map((m) => ({ ...m, isUnread: false })) } : old
+        );
+        qc.setQueriesData<any>({ queryKey: ["priority-inbox"] }, (old: any) => {
+          if (!old?.pages) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page: any) => ({
+              ...page,
+              threads: page.threads.map((t: any) =>
+                t.threadId === threadId ? { ...t, isUnread: false } : t
+              ),
+            })),
+          };
+        });
+      } catch {}
+    })();
+  }, [thread?.isUnread, threadId, accountEmail, apiBaseUrl, authHeaders, qc]);
+
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const styles = StyleSheet.create({

@@ -76,7 +76,7 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
       alignItems: "flex-start",
       paddingHorizontal: 16,
       paddingVertical: 12,
-      backgroundColor: colors.background,
+      backgroundColor: email.isUnread ? colors.background : colors.card,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
@@ -108,13 +108,13 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
     senderName: {
       fontSize: 14,
       fontFamily: email.isUnread ? "Inter_600SemiBold" : "Inter_400Regular",
-      color: colors.foreground,
+      color: email.isUnread ? colors.foreground : colors.mutedForeground,
       flex: 1,
       marginRight: 8,
     },
     dateText: {
       fontSize: 12,
-      color: colors.mutedForeground,
+      color: email.isUnread ? colors.mutedForeground : colors.border,
       fontFamily: "Inter_400Regular",
     },
     subject: {
@@ -125,7 +125,7 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
     },
     snippet: {
       fontSize: 12,
-      color: colors.mutedForeground,
+      color: email.isUnread ? colors.mutedForeground : colors.border,
       fontFamily: "Inter_400Regular",
       lineHeight: 17,
     },

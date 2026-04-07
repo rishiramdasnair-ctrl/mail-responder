@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.31",
+    "@react-native-community/datetimepicker": "8.4.4",
     "expo-auth-session": "^7.0.10",
     "expo-secure-store": "^15.0.8",
     "react-native-webview": "13.15.0"

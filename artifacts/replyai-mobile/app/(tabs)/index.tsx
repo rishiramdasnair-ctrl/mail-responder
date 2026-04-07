@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
   TextInput,
   Platform,
+  ScrollView,
 } from "react-native";
 import { useRouter, Link } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -17,6 +18,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmailRow, EmailThread } from "@/components/EmailRow";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+
+interface GmailAccount {
+  email: string;
+  isPrimary: boolean;
+}
 
 const PAGE_SIZE = 50;
 
@@ -36,6 +42,21 @@ export default function InboxScreen() {
   const [activeQuery, setActiveQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<TextInput>(null);
+  const [accounts, setAccounts] = useState<GmailAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<string>("all");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
+        if (res.ok) {
+          const data = (await res.json()) as { accounts: GmailAccount[] };
+          setAccounts(data.accounts);
+        }
+      } catch {}
+    })();
+  }, [apiBaseUrl, authHeaders]);
 
   const fetchInbox = useCallback(
     async ({ pageParam }: { pageParam: unknown }) => {
@@ -76,6 +97,9 @@ export default function InboxScreen() {
   });
 
   const allThreads = data?.pages.flatMap((p) => p.threads) ?? [];
+  const visibleThreads = selectedAccount === "all"
+    ? allThreads
+    : allThreads.filter((t) => t.accountEmail === selectedAccount);
 
   const onPressEmail = (email: EmailThread) => {
     router.push({
@@ -207,6 +231,34 @@ export default function InboxScreen() {
       color: colors.primaryForeground,
       fontSize: 11,
       fontFamily: "Inter_600SemiBold",
+    },
+    accountPillsScroll: {
+      marginTop: 10,
+    },
+    accountPillsRow: {
+      flexDirection: "row",
+      gap: 6,
+      paddingRight: 16,
+    },
+    accountPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    accountPillActive: {
+      backgroundColor: colors.foreground,
+      borderColor: colors.foreground,
+    },
+    accountPillText: {
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+    },
+    accountPillTextActive: {
+      color: colors.primaryForeground,
+      fontFamily: "Inter_500Medium",
     },
   });
 
@@ -349,10 +401,35 @@ export default function InboxScreen() {
             )}
           </View>
         )}
+
+        {accounts.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.accountPillsRow}
+            style={styles.accountPillsScroll}
+          >
+            {[{ email: "all", isPrimary: false }, ...accounts].map((acct) => {
+              const isActive = selectedAccount === acct.email;
+              const label = acct.email === "all" ? "All" : acct.email.split("@")[0];
+              return (
+                <TouchableOpacity
+                  key={acct.email}
+                  style={[styles.accountPill, isActive && styles.accountPillActive]}
+                  onPress={() => setSelectedAccount(acct.email)}
+                >
+                  <Text style={[styles.accountPillText, isActive && styles.accountPillTextActive]} numberOfLines={1}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
 
       <FlatList
-        data={allThreads}
+        data={visibleThreads}
         keyExtractor={(item) => item.threadId || item.id}
         renderItem={({ item }) => <EmailRow email={item} onPress={onPressEmail} />}
         ListEmptyComponent={renderEmpty}
@@ -370,7 +447,7 @@ export default function InboxScreen() {
             tintColor={colors.foreground}
           />
         }
-        scrollEnabled={allThreads.length > 0}
+        scrollEnabled={visibleThreads.length > 0}
         showsVerticalScrollIndicator={false}
       />
 

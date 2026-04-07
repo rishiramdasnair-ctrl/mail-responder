@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
@@ -70,6 +70,7 @@ type Section = { dateKey: string; label: string; events: CalendarEvent[] };
 export default function CalendarScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
 
@@ -142,6 +143,9 @@ export default function CalendarScreen() {
       backgroundColor: colors.background,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
     },
     title: {
       fontSize: 22,
@@ -320,8 +324,24 @@ export default function CalendarScreen() {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <Text style={styles.title}>Calendar</Text>
-      <Text style={styles.subtitle}>Next 30 days</Text>
+      <View>
+        <Text style={styles.title}>Calendar</Text>
+        <Text style={styles.subtitle}>Next 30 days</Text>
+      </View>
+      <TouchableOpacity
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: colors.foreground,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+        onPress={() => router.push("/create-event")}
+        activeOpacity={0.85}
+      >
+        <Feather name="plus" size={20} color={colors.primaryForeground} />
+      </TouchableOpacity>
     </View>
   );
 

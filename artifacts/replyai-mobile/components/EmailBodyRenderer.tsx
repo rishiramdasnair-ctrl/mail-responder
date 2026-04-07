@@ -29,6 +29,7 @@ const INJECTED_JS = `
   setTimeout(reportHeight, 300);
   setTimeout(reportHeight, 800);
   setTimeout(reportHeight, 1500);
+  setTimeout(reportHeight, 3000);
 })();
 true;
 `;
@@ -38,7 +39,7 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.5, user-scalable=yes" />
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -55,17 +56,15 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       -webkit-text-size-adjust: 100%;
     }
     body {
-      padding: 16px 16px 20px 16px;
+      padding: 12px 12px 20px 12px;
     }
     .email-content-wrapper {
       max-width: 100%;
       overflow-x: hidden;
     }
-    /* Force all text nodes to use the theme color */
     p, div, span, li, td, th, h1, h2, h3, h4, h5, h6 {
       color: inherit !important;
     }
-    /* Links visible in dark mode */
     a {
       color: ${text} !important;
       text-decoration: underline;
@@ -75,15 +74,22 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       max-width: 100% !important;
       height: auto !important;
       display: block;
-      border-radius: 6px;
+      border-radius: 4px;
     }
+    /* Make marketing email tables flow to mobile width */
     table {
       max-width: 100% !important;
-      table-layout: fixed;
+      width: 100% !important;
+      table-layout: auto !important;
       word-break: break-word;
     }
     td, th {
       word-break: break-word;
+      max-width: 100% !important;
+    }
+    /* Enforce a minimum readable font size — fine print boosted to 12px */
+    * {
+      -webkit-text-size-adjust: none !important;
     }
     pre, code {
       white-space: pre-wrap;
@@ -111,7 +117,7 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       border-top: 1px solid ${border};
       margin: 12px 0;
     }
-    /* Override any white backgrounds from marketing emails */
+    /* Override white/black backgrounds from marketing emails */
     *[style*="background-color: white"],
     *[style*="background-color: #fff"],
     *[style*="background-color: #ffffff"],
@@ -120,7 +126,6 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
     *[style*="background: #ffffff"] {
       background-color: ${bg} !important;
     }
-    /* Ensure forced black text from email templates uses theme color */
     *[style*="color: black"],
     *[style*="color: #000"],
     *[style*="color: #000000"],
@@ -132,6 +137,25 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       max-width: 100% !important;
     }
   </style>
+  <script>
+    // Boost any inline font-size styles smaller than 12px up to 12px
+    document.addEventListener('DOMContentLoaded', function() {
+      var all = document.querySelectorAll('[style]');
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        var style = el.getAttribute('style') || '';
+        var match = style.match(/font-size:\\s*(\\d+(?:\\.\\d+)?)(px|pt)/i);
+        if (match) {
+          var size = parseFloat(match[1]);
+          var unit = match[2].toLowerCase();
+          var px = unit === 'pt' ? size * 1.333 : size;
+          if (px < 12) {
+            el.style.fontSize = '12px';
+          }
+        }
+      }
+    });
+  </script>
 </head>
 <body><div class="email-content-wrapper">${html}</div></body>
 </html>`;
@@ -151,7 +175,7 @@ export function EmailBodyRenderer({
     try {
       const data = JSON.parse(e.nativeEvent.data) as { type: string; height: number };
       if (data.type === "height" && data.height > 0) {
-        setWebViewHeight(data.height);
+        setWebViewHeight(Math.max(data.height, 200));
       }
     } catch {}
   }, []);
@@ -174,6 +198,7 @@ export function EmailBodyRenderer({
           domStorageEnabled={false}
           allowsInlineMediaPlayback={false}
           mediaPlaybackRequiresUserAction
+          scalesPageToFit={false}
           onShouldStartLoadWithRequest={(req) => {
             if (req.navigationType === "click") return false;
             return req.url === "about:blank" || req.url.startsWith("data:");

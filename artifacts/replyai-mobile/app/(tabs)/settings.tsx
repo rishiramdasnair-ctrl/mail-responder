@@ -23,6 +23,8 @@ import { useUser } from "@clerk/clerk-expo";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/contexts/ThemeContext";
+import { THEMES, type ThemeId } from "@/constants/themes";
 
 type FeatherName = ComponentProps<typeof Feather>["name"];
 
@@ -69,6 +71,7 @@ const TONES: Array<{ value: "pro" | "casual" | "fast"; label: string; desc: stri
 
 export default function SettingsScreen() {
   const colors = useColors();
+  const { themeId, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
   const qc = useQueryClient();
@@ -881,6 +884,57 @@ export default function SettingsScreen() {
                       {isActive && (
                         <Feather name="check" size={16} color={colors.primaryForeground} />
                       )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Theme</Text>
+            <View style={[styles.card, { padding: 16 }]}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                {THEMES.map((theme) => {
+                  const isActive = themeId === theme.id;
+                  return (
+                    <TouchableOpacity
+                      key={theme.id}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setTheme(theme.id as ThemeId);
+                      }}
+                      activeOpacity={0.8}
+                      style={{ alignItems: "center", gap: 6 }}
+                    >
+                      <View
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 22,
+                          backgroundColor: theme.swatch,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderWidth: isActive ? 3 : 2,
+                          borderColor: isActive ? colors.foreground : colors.border,
+                          shadowColor: theme.swatch,
+                          shadowOpacity: isActive ? 0.35 : 0,
+                          shadowRadius: 8,
+                          shadowOffset: { width: 0, height: 2 },
+                          elevation: isActive ? 4 : 0,
+                        }}
+                      >
+                        {isActive && (
+                          <Feather
+                            name="check"
+                            size={18}
+                            color={theme.dark ? "#0a0a0a" : "#ffffff"}
+                          />
+                        )}
+                      </View>
+                      <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground }}>
+                        {theme.label}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}

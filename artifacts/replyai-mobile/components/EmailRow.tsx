@@ -1,15 +1,18 @@
-import React, { useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
+  Pressable,
+  Modal,
   TouchableOpacity,
+  ActionSheetIOS,
   Platform,
-  Animated,
+  TouchableWithoutFeedback,
 } from "react-native";
-import { Swipeable } from "react-native-gesture-handler";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
+import * as Haptics from "expo-haptics";
 
 export interface EmailThread {
   id: string;
@@ -34,6 +37,8 @@ interface EmailRowProps {
   onStar?: (email: EmailThread) => void;
   onTrash?: (email: EmailThread) => void;
   onRestore?: (email: EmailThread) => void;
+  onMarkRead?: (email: EmailThread) => void;
+  onReply?: (email: EmailThread) => void;
 }
 
 function formatDate(dateStr: string): string {
@@ -45,10 +50,7 @@ function formatDate(dateStr: string): string {
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
-      return date.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-      });
+      return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
     } else if (diffDays < 7) {
       return date.toLocaleDateString("en-US", { weekday: "short" });
     } else {
@@ -62,152 +64,196 @@ function formatDate(dateStr: string): string {
 function getInitials(name: string, email: string): string {
   const src = name || email || "";
   const parts = src.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return src.slice(0, 2).toUpperCase();
 }
 
-export function EmailRow({ email, onPress, onStar, onTrash, onRestore }: EmailRowProps) {
+interface ContextMenuProps {
+  visible: boolean;
+  email: EmailThread;
+  onClose: () => void;
+  onStar?: (email: EmailThread) => void;
+  onTrash?: (email: EmailThread) => void;
+  onRestore?: (email: EmailThread) => void;
+  onMarkRead?: (email: EmailThread) => void;
+  onReply?: (email: EmailThread) => void;
+}
+
+function ContextMenu({ visible, email, onClose, onStar, onTrash, onRestore, onMarkRead, onReply }: ContextMenuProps) {
   const colors = useColors();
-  const swipeableRef = useRef<Swipeable>(null);
+
+  const actions: { icon: string; label: string; color?: string; onPress: () => void }[] = [];
+
+  if (onReply) {
+    actions.push({ icon: "corner-up-left", label: "Reply", onPress: () => { onClose(); onReply(email); } });
+  }
+  if (onStar) {
+    actions.push({
+      icon: "star",
+      label: email.isStarred ? "Unstar" : "Star",
+      color: "#F59E0B",
+      onPress: () => { onClose(); onStar(email); },
+    });
+  }
+  if (onMarkRead) {
+    actions.push({
+      icon: email.isUnread ? "mail" : "mail-open",
+      label: email.isUnread ? "Mark as Read" : "Mark as Unread",
+      onPress: () => { onClose(); onMarkRead(email); },
+    });
+  }
+  if (onRestore) {
+    actions.push({ icon: "inbox", label: "Restore to Inbox", color: "#3B82F6", onPress: () => { onClose(); onRestore(email); } });
+  }
+  if (onTrash) {
+    actions.push({ icon: "trash-2", label: "Delete", color: "#EF4444", onPress: () => { onClose(); onTrash(email); } });
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={menuStyles.overlay}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[menuStyles.sheet, { backgroundColor: colors.background }]}>
+              <View style={[menuStyles.handle, { backgroundColor: colors.border }]} />
+              <Text style={[menuStyles.from, { color: colors.foreground }]} numberOfLines={1}>
+                {email.fromName || email.fromEmail}
+              </Text>
+              <Text style={[menuStyles.subject, { color: colors.mutedForeground }]} numberOfLines={1}>
+                {email.subject || "(no subject)"}
+              </Text>
+              <View style={[menuStyles.divider, { backgroundColor: colors.border }]} />
+              {actions.map((action) => (
+                <TouchableOpacity
+                  key={action.label}
+                  style={menuStyles.actionRow}
+                  onPress={action.onPress}
+                  activeOpacity={0.65}
+                >
+                  <View style={[menuStyles.actionIcon, { backgroundColor: (action.color ?? colors.foreground) + "15" }]}>
+                    <Feather name={action.icon as any} size={16} color={action.color ?? colors.foreground} />
+                  </View>
+                  <Text style={[menuStyles.actionLabel, { color: action.color ?? colors.foreground }]}>
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={[menuStyles.cancelBtn, { borderColor: colors.border }]} onPress={onClose} activeOpacity={0.7}>
+                <Text style={[menuStyles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+export function EmailRow({ email, onPress, onStar, onTrash, onRestore, onMarkRead, onReply }: EmailRowProps) {
+  const colors = useColors();
+  const [menuVisible, setMenuVisible] = useState(false);
 
   const displayName = email.fromName || email.fromEmail || email.from;
   const initials = getInitials(email.fromName, email.fromEmail);
   const accountDomain = email.accountEmail ? email.accountEmail.split("@")[1] : null;
 
-  const close = () => swipeableRef.current?.close();
-
-  const renderLeftActions = (
-    _progress: Animated.AnimatedInterpolation<number>,
-    dragX: Animated.AnimatedInterpolation<number>
-  ) => {
-    const scale = dragX.interpolate({
-      inputRange: [0, 72],
-      outputRange: [0.7, 1],
-      extrapolate: "clamp",
-    });
-
-    if (onRestore) {
-      return (
-        <TouchableOpacity
-          style={[styles.actionBox, { backgroundColor: "#007AFF" }]}
-          onPress={() => { close(); onRestore(email); }}
-          activeOpacity={0.85}
-        >
-          <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
-            <Feather name="inbox" size={22} color="#fff" />
-            <Text style={styles.actionLabel}>Restore</Text>
-          </Animated.View>
-        </TouchableOpacity>
-      );
+  const handleLongPress = () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    if (!onStar) return null;
-    return (
-      <TouchableOpacity
-        style={[styles.actionBox, { backgroundColor: email.isStarred ? "#6B7280" : "#F59E0B" }]}
-        onPress={() => { close(); onStar(email); }}
-        activeOpacity={0.85}
-      >
-        <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
-          <Feather name="star" size={22} color="#fff" />
-          <Text style={styles.actionLabel}>{email.isStarred ? "Unstar" : "Star"}</Text>
-        </Animated.View>
-      </TouchableOpacity>
-    );
+    if (Platform.OS === "ios") {
+      const options: string[] = [];
+      const handlers: (() => void)[] = [];
+
+      if (onReply) { options.push("Reply"); handlers.push(() => onReply(email)); }
+      if (onStar) { options.push(email.isStarred ? "Unstar" : "Star"); handlers.push(() => onStar(email)); }
+      if (onMarkRead) { options.push(email.isUnread ? "Mark as Read" : "Mark as Unread"); handlers.push(() => onMarkRead(email)); }
+      if (onRestore) { options.push("Restore to Inbox"); handlers.push(() => onRestore(email)); }
+      if (onTrash) { options.push("Delete"); handlers.push(() => onTrash(email)); }
+      options.push("Cancel");
+
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          cancelButtonIndex: options.length - 1,
+          destructiveButtonIndex: onTrash ? options.indexOf("Delete") : undefined,
+          title: displayName,
+          message: email.subject || "(no subject)",
+        },
+        (idx) => {
+          if (idx < handlers.length) handlers[idx]();
+        }
+      );
+    } else {
+      setMenuVisible(true);
+    }
   };
-
-  const renderRightActions = (
-    _progress: Animated.AnimatedInterpolation<number>,
-    dragX: Animated.AnimatedInterpolation<number>
-  ) => {
-    if (!onTrash) return null;
-    const scale = dragX.interpolate({
-      inputRange: [-72, 0],
-      outputRange: [1, 0.7],
-      extrapolate: "clamp",
-    });
-    return (
-      <TouchableOpacity
-        style={[styles.actionBox, { backgroundColor: "#EF4444" }]}
-        onPress={() => { close(); onTrash(email); }}
-        activeOpacity={0.85}
-      >
-        <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
-          <Feather name="trash-2" size={22} color="#fff" />
-          <Text style={styles.actionLabel}>Delete</Text>
-        </Animated.View>
-      </TouchableOpacity>
-    );
-  };
-
-  const rowContent = (
-    <TouchableOpacity
-      style={[styles.row, { backgroundColor: email.isUnread ? colors.background : colors.card }]}
-      onPress={() => onPress(email)}
-      activeOpacity={0.7}
-      testID={`email-row-${email.threadId}`}
-    >
-      <View style={[styles.avatarContainer, { backgroundColor: email.isUnread ? colors.foreground : colors.muted }]}>
-        <Text style={[styles.avatarText, { color: email.isUnread ? colors.primaryForeground : colors.mutedForeground }]}>
-          {initials}
-        </Text>
-      </View>
-      <View style={styles.content}>
-        <View style={styles.topRow}>
-          <Text style={[styles.senderName, {
-            fontFamily: email.isUnread ? "Inter_600SemiBold" : "Inter_400Regular",
-            color: email.isUnread ? colors.foreground : colors.mutedForeground,
-          }]} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <Text style={[styles.dateText, { color: email.isUnread ? colors.mutedForeground : colors.border }]}>
-            {formatDate(email.date)}
-          </Text>
-          {email.isUnread && <View style={[styles.unreadDot, { backgroundColor: colors.foreground }]} />}
-        </View>
-        <Text style={[styles.subject, {
-          fontFamily: email.isUnread ? "Inter_500Medium" : "Inter_400Regular",
-          color: email.isUnread ? colors.foreground : colors.mutedForeground,
-        }]} numberOfLines={1}>
-          {email.subject || "(no subject)"}
-        </Text>
-        <Text style={[styles.snippet, { color: email.isUnread ? colors.mutedForeground : colors.border }]} numberOfLines={2}>
-          {email.snippet}
-        </Text>
-        {accountDomain && (
-          <View style={[styles.accountBadge, { backgroundColor: colors.muted }]}>
-            <Text style={[styles.accountBadgeText, { color: colors.mutedForeground }]}>{accountDomain}</Text>
-          </View>
-        )}
-      </View>
-      {email.isStarred && (
-        <View style={styles.starIcon}>
-          <Feather name="star" size={14} color="#F59E0B" />
-        </View>
-      )}
-    </TouchableOpacity>
-  );
-
-  if (Platform.OS === "web") {
-    return rowContent;
-  }
 
   return (
-    <Swipeable
-      ref={swipeableRef}
-      renderLeftActions={onStar || onRestore ? renderLeftActions : undefined}
-      renderRightActions={onTrash ? renderRightActions : undefined}
-      friction={1.5}
-      leftThreshold={50}
-      rightThreshold={50}
-      overshootLeft={false}
-      overshootRight={false}
-      useNativeAnimations
-    >
-      {rowContent}
-    </Swipeable>
+    <>
+      <Pressable
+        style={({ pressed }) => [
+          styles.row,
+          { backgroundColor: email.isUnread ? colors.background : colors.card },
+          pressed && { opacity: 0.75 },
+        ]}
+        onPress={() => onPress(email)}
+        onLongPress={handleLongPress}
+        delayLongPress={350}
+        testID={`email-row-${email.threadId}`}
+      >
+        <View style={[styles.avatarContainer, { backgroundColor: email.isUnread ? colors.foreground : colors.muted }]}>
+          <Text style={[styles.avatarText, { color: email.isUnread ? colors.primaryForeground : colors.mutedForeground }]}>
+            {initials}
+          </Text>
+        </View>
+        <View style={styles.content}>
+          <View style={styles.topRow}>
+            <Text style={[styles.senderName, {
+              fontFamily: email.isUnread ? "Inter_600SemiBold" : "Inter_400Regular",
+              color: email.isUnread ? colors.foreground : colors.mutedForeground,
+            }]} numberOfLines={1}>
+              {displayName}
+            </Text>
+            <Text style={[styles.dateText, { color: email.isUnread ? colors.mutedForeground : colors.border }]}>
+              {formatDate(email.date)}
+            </Text>
+            {email.isUnread && <View style={[styles.unreadDot, { backgroundColor: colors.foreground }]} />}
+          </View>
+          <Text style={[styles.subject, {
+            fontFamily: email.isUnread ? "Inter_500Medium" : "Inter_400Regular",
+            color: email.isUnread ? colors.foreground : colors.mutedForeground,
+          }]} numberOfLines={1}>
+            {email.subject || "(no subject)"}
+          </Text>
+          <Text style={[styles.snippet, { color: email.isUnread ? colors.mutedForeground : colors.border }]} numberOfLines={2}>
+            {email.snippet}
+          </Text>
+          {accountDomain && (
+            <View style={[styles.accountBadge, { backgroundColor: colors.muted }]}>
+              <Text style={[styles.accountBadgeText, { color: colors.mutedForeground }]}>{accountDomain}</Text>
+            </View>
+          )}
+        </View>
+        {email.isStarred && (
+          <View style={styles.starIcon}>
+            <Feather name="star" size={14} color="#F59E0B" />
+          </View>
+        )}
+      </Pressable>
+
+      <ContextMenu
+        visible={menuVisible}
+        email={email}
+        onClose={() => setMenuVisible(false)}
+        onStar={onStar}
+        onTrash={onTrash}
+        onRestore={onRestore}
+        onMarkRead={onMarkRead}
+        onReply={onReply}
+      />
+    </>
   );
 }
 
@@ -283,14 +329,68 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: "Inter_400Regular",
   },
-  actionBox: {
-    justifyContent: "center",
+});
+
+const menuStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  from: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 2,
+  },
+  subject: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 14,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginBottom: 12,
+  },
+  actionRow: {
+    flexDirection: "row",
     alignItems: "center",
-    width: 80,
+    gap: 14,
+    paddingVertical: 13,
+  },
+  actionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
   actionLabel: {
-    color: "#fff",
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+  },
+  cancelBtn: {
+    marginTop: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  cancelText: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
   },
 });

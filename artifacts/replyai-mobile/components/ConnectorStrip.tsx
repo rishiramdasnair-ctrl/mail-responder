@@ -80,6 +80,26 @@ export const ALL_CONNECTORS: ConnectorDef[] = [
     initials: "N",
     oauthPath: "/api/auth/notion/start",
   },
+  {
+    id: "zoom",
+    label: "Zoom",
+    description: "Schedule and manage Zoom meetings from your emails.",
+    capabilities: ["Create meetings", "Generate join links", "Schedule from email", "Meeting summaries"],
+    color: "#2D8CFF",
+    textColor: "#fff",
+    initials: "Zm",
+    oauthPath: "/api/auth/zoom/start",
+  },
+  {
+    id: "teams",
+    label: "Teams",
+    description: "Create Microsoft Teams meetings and send messages.",
+    capabilities: ["Create meetings", "Send messages", "Schedule calls", "Channel posts"],
+    color: "#6264A7",
+    textColor: "#fff",
+    initials: "MS",
+    oauthPath: "/api/auth/teams/start",
+  },
 ];
 
 interface ConnectedRecord {
@@ -166,19 +186,30 @@ function ConnectorAvatar({
           );
         })()}
         {connected && (
-          <View
-            style={{
-              position: "absolute",
-              bottom: -1,
-              right: -1,
-              width: 9,
-              height: 9,
-              borderRadius: 5,
-              backgroundColor: "#22c55e",
-              borderWidth: 1.5,
-              borderColor: colors.background,
-            }}
-          />
+          <>
+            <View
+              style={{
+                position: "absolute",
+                inset: -2,
+                borderRadius: size / 2 + 2,
+                borderWidth: 2,
+                borderColor: "#22c55e",
+              }}
+            />
+            <View
+              style={{
+                position: "absolute",
+                bottom: -1,
+                right: -1,
+                width: 9,
+                height: 9,
+                borderRadius: 5,
+                backgroundColor: "#22c55e",
+                borderWidth: 1.5,
+                borderColor: colors.background,
+              }}
+            />
+          </>
         )}
       </View>
     </TouchableOpacity>

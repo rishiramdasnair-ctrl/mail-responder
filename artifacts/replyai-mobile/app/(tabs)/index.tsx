@@ -11,6 +11,8 @@ import {
   TextInput,
   Platform,
   ScrollView,
+  Modal,
+  ActionSheetIOS,
 } from "react-native";
 import { useRouter, Link } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -47,6 +49,7 @@ export default function InboxScreen() {
   const [accounts, setAccounts] = useState<GmailAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
   const [activeFolder, setActiveFolder] = useState<"INBOX" | "STARRED" | "TRASH">("INBOX");
+  const [folderPickerVisible, setFolderPickerVisible] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -213,6 +216,42 @@ export default function InboxScreen() {
     });
   }, [qc, modifyThread, qKey]);
 
+  const onMarkRead = useCallback((email: EmailThread) => {
+    const removeLabels = email.isUnread ? ["UNREAD"] : [];
+    const addLabelIds = email.isUnread ? [] : ["UNREAD"];
+    qc.setQueriesData<InfiniteData<InboxPage>>(
+      { queryKey: qKey },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            threads: page.threads.map((t) =>
+              t.threadId === email.threadId ? { ...t, isUnread: !email.isUnread } : t
+            ),
+          })),
+        };
+      }
+    );
+    modifyThread(email.threadId, email.accountEmail, addLabelIds, removeLabels).catch(() => {
+      qc.invalidateQueries({ queryKey: qKey });
+    });
+  }, [qc, modifyThread, qKey]);
+
+  const onReply = useCallback((email: EmailThread) => {
+    router.push({
+      pathname: "/compose",
+      params: {
+        replyTo: email.fromEmail || email.from,
+        replyToName: email.fromName,
+        subject: email.subject?.startsWith("Re:") ? email.subject : `Re: ${email.subject}`,
+        threadId: email.threadId,
+        accountEmail: email.accountEmail,
+      },
+    });
+  }, [router]);
+
   const submitSearch = () => {
     setActiveQuery(searchQuery);
   };
@@ -362,30 +401,10 @@ export default function InboxScreen() {
       color: colors.primaryForeground,
       fontFamily: "Inter_500Medium",
     },
-    folderTabs: {
+    folderPickerBtn: {
       flexDirection: "row",
-      gap: 0,
-      marginTop: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    folderTab: {
-      paddingHorizontal: 4,
-      paddingBottom: 10,
-      marginRight: 20,
-    },
-    folderTabActive: {
-      borderBottomWidth: 2,
-      borderBottomColor: colors.foreground,
-    },
-    folderTabText: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-    },
-    folderTabTextActive: {
-      fontFamily: "Inter_600SemiBold",
-      color: colors.foreground,
+      alignItems: "center",
+      gap: 4,
     },
   });
 
@@ -475,14 +494,32 @@ export default function InboxScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Pressable
+            style={styles.folderPickerBtn}
+            onPress={() => {
+              if (Platform.OS === "ios") {
+                ActionSheetIOS.showActionSheetWithOptions(
+                  { options: ["Inbox", "Starred", "Trash", "Cancel"], cancelButtonIndex: 3 },
+                  (idx) => {
+                    if (idx === 0) { setActiveFolder("INBOX"); setActiveQuery(""); setSearchQuery(""); }
+                    if (idx === 1) { setActiveFolder("STARRED"); setActiveQuery(""); setSearchQuery(""); }
+                    if (idx === 2) { setActiveFolder("TRASH"); setActiveQuery(""); setSearchQuery(""); }
+                  }
+                );
+              } else {
+                setFolderPickerVisible(true);
+              }
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+          >
             <Text style={styles.title}>{activeFolder === "STARRED" ? "Starred" : activeFolder === "TRASH" ? "Trash" : "Inbox"}</Text>
+            <Feather name="chevron-down" size={18} color={colors.mutedForeground} style={{ marginTop: 2 }} />
             {unreadCount > 0 && (
               <View style={styles.unreadBadge}>
                 <Text style={styles.unreadText}>{unreadCount}</Text>
               </View>
             )}
-          </View>
+          </Pressable>
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.iconBtn}
@@ -551,24 +588,29 @@ export default function InboxScreen() {
             })}
           </ScrollView>
         )}
-
-        <View style={styles.folderTabs}>
-          {(["INBOX", "STARRED", "TRASH"] as const).map((folder) => {
-            const label = folder === "INBOX" ? "Inbox" : folder === "STARRED" ? "Starred" : "Trash";
-            const isActive = activeFolder === folder;
-            return (
-              <Pressable
-                key={folder}
-                style={[styles.folderTab, isActive && styles.folderTabActive]}
-                onPress={() => { setActiveFolder(folder); setActiveQuery(""); setSearchQuery(""); }}
-                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-              >
-                <Text style={[styles.folderTabText, isActive && styles.folderTabTextActive]}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
       </View>
+
+      {/* Android/Web folder picker modal */}
+      <Modal visible={folderPickerVisible} transparent animationType="fade" onRequestClose={() => setFolderPickerVisible(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setFolderPickerVisible(false)}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12, paddingBottom: 40, paddingHorizontal: 20 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: "center", marginBottom: 20 }} />
+            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>Switch Folder</Text>
+            {(["INBOX", "STARRED", "TRASH"] as const).map((folder) => {
+              const label = folder === "INBOX" ? "Inbox" : folder === "STARRED" ? "Starred" : "Trash";
+              const icon = folder === "INBOX" ? "inbox" : folder === "STARRED" ? "star" : "trash-2";
+              const isActive = activeFolder === folder;
+              return (
+                <TouchableOpacity key={folder} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 14, gap: 14 }} onPress={() => { setActiveFolder(folder); setActiveQuery(""); setSearchQuery(""); setFolderPickerVisible(false); }}>
+                  <Feather name={icon} size={18} color={isActive ? colors.foreground : colors.mutedForeground} />
+                  <Text style={{ fontSize: 16, fontFamily: isActive ? "Inter_600SemiBold" : "Inter_400Regular", color: isActive ? colors.foreground : colors.mutedForeground }}>{label}</Text>
+                  {isActive && <Feather name="check" size={16} color={colors.foreground} style={{ marginLeft: "auto" }} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <FlatList
         data={visibleThreads}
@@ -580,6 +622,8 @@ export default function InboxScreen() {
             onStar={activeFolder !== "TRASH" ? onStar : undefined}
             onTrash={activeFolder !== "TRASH" ? onTrash : undefined}
             onRestore={activeFolder === "TRASH" ? onRestore : undefined}
+            onMarkRead={onMarkRead}
+            onReply={onReply}
           />
         )}
         ListHeaderComponent={

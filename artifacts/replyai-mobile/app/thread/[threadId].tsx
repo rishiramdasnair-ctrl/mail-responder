@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  Linking,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +44,7 @@ interface Thread {
   messages: EmailMessage[];
   snippet: string;
   isUnread: boolean;
+  unsubscribeLink?: string;
 }
 
 function formatDate(dateStr: string): string {
@@ -215,6 +217,9 @@ export default function ThreadScreen() {
   const { apiBaseUrl, authHeaders } = useApiClient();
   const [showReplySheet, setShowReplySheet] = useState(false);
   const autoOpenedRef = React.useRef(false);
+  const [threadSummary, setThreadSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const summaryFetchedRef = React.useRef(false);
 
   const { data: thread, isLoading, isError, error } = useQuery<Thread>({
     queryKey: ["thread", threadId, accountEmail],
@@ -268,10 +273,34 @@ export default function ThreadScreen() {
   React.useEffect(() => {
     if (!action || !thread || autoOpenedRef.current) return;
     autoOpenedRef.current = true;
-    // Small delay so the screen has time to mount and render before the sheet pops up
     const t = setTimeout(() => setShowReplySheet(true), 400);
     return () => clearTimeout(t);
   }, [action, thread]);
+
+  // Fetch AI thread summary for multi-message threads
+  useEffect(() => {
+    if (!thread || thread.messages.length < 2 || summaryFetchedRef.current) return;
+    summaryFetchedRef.current = true;
+    (async () => {
+      setSummaryLoading(true);
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/ai/thread-summary`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subject: thread.subject,
+            messages: thread.messages.map((m) => ({ fromName: m.fromName, date: m.date, body: m.body || m.snippet })),
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json() as { summary?: string };
+          if (data.summary) setThreadSummary(data.summary);
+        }
+      } catch {}
+      setSummaryLoading(false);
+    })();
+  }, [thread, apiBaseUrl, authHeaders]);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -397,6 +426,67 @@ export default function ThreadScreen() {
                   {thread.messages.length} messages
                 </Text>
               )}
+
+              {(summaryLoading || threadSummary) && (
+                <View style={{
+                  marginHorizontal: 16,
+                  marginBottom: 12,
+                  backgroundColor: colors.muted,
+                  borderRadius: 12,
+                  padding: 12,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: colors.border,
+                }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                    <Feather name="zap" size={12} color={colors.mutedForeground} />
+                    <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      AI Summary
+                    </Text>
+                  </View>
+                  {summaryLoading ? (
+                    <ActivityIndicator size="small" color={colors.mutedForeground} />
+                  ) : (
+                    <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.foreground, lineHeight: 20 }}>
+                      {threadSummary}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {thread.unsubscribeLink ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    const link = thread.unsubscribeLink!;
+                    if (link.startsWith("mailto:")) {
+                      Linking.openURL(link);
+                    } else {
+                      Linking.openURL(link);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    marginHorizontal: 16,
+                    marginBottom: 12,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: "#EF4444",
+                    backgroundColor: "#EF444415",
+                  }}
+                >
+                  <Feather name="mail" size={13} color="#EF4444" />
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_500Medium", color: "#EF4444", flex: 1 }}>
+                    Unsubscribe from this sender
+                  </Text>
+                  <Feather name="external-link" size={12} color="#EF4444" />
+                </TouchableOpacity>
+              ) : null}
+
               {thread.messages.map((msg) => (
                 <MessageBubble
                   key={msg.id}

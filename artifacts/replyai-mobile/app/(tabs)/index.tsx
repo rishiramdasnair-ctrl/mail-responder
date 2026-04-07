@@ -252,6 +252,47 @@ export default function InboxScreen() {
     });
   }, [router]);
 
+  const onSnooze = useCallback(async (email: EmailThread, until: Date) => {
+    qc.setQueriesData<InfiniteData<InboxPage>>(
+      { queryKey: qKey },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            threads: page.threads.filter((t) => t.threadId !== email.threadId),
+          })),
+        };
+      }
+    );
+    try {
+      const headers = await authHeaders();
+      const qs = email.accountEmail ? `?account=${encodeURIComponent(email.accountEmail)}` : "";
+      await fetch(`${apiBaseUrl}/api/gmail/threads/${email.threadId}/snooze${qs}`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ snoozeUntil: until.toISOString() }),
+      });
+    } catch {
+      qc.invalidateQueries({ queryKey: qKey });
+    }
+  }, [qc, qKey, apiBaseUrl, authHeaders]);
+
+  const onQuickReply = useCallback((item: PriorityEmail, text: string) => {
+    router.push({
+      pathname: "/compose",
+      params: {
+        replyTo: item.fromEmail,
+        replyToName: item.fromName,
+        subject: item.subject?.startsWith("Re:") ? item.subject : `Re: ${item.subject}`,
+        threadId: item.threadId,
+        accountEmail: item.accountEmail,
+        prefill: text,
+      },
+    });
+  }, [router]);
+
   const submitSearch = () => {
     setActiveQuery(searchQuery);
   };
@@ -624,6 +665,7 @@ export default function InboxScreen() {
             onRestore={activeFolder === "TRASH" ? onRestore : undefined}
             onMarkRead={onMarkRead}
             onReply={onReply}
+            onSnooze={activeFolder === "INBOX" ? onSnooze : undefined}
           />
         )}
         ListHeaderComponent={
@@ -631,6 +673,7 @@ export default function InboxScreen() {
             <PrioritySection
               onPressEmail={onPressPriority}
               onPressAction={onPressAction}
+              onQuickReply={onQuickReply}
             />
           ) : null
         }

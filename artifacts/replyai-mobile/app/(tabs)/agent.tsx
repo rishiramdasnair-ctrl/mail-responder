@@ -299,6 +299,7 @@ export default function AgentScreen() {
   const [isActing, setIsActing] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
+  const [digestLoading, setDigestLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadingMsgIdRef = useRef<string | null>(null);
@@ -338,6 +339,38 @@ export default function AgentScreen() {
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
   }, []);
+
+  const handleCatchMeUp = useCallback(async () => {
+    if (digestLoading || isSending) return;
+    setDigestLoading(true);
+    const loadingId = uuid();
+    const loadingMsg: ChatMessage = { id: loadingId, role: "loading", content: "" };
+    setMessages([loadingMsg]);
+    try {
+      const headers = await authHeaders();
+      const inboxRes = await fetch(`${apiBaseUrl}/api/gmail/inbox?maxResults=30`, { headers });
+      const inboxData = inboxRes.ok ? (await inboxRes.json() as { threads?: Array<{ subject?: string; fromName?: string; snippet?: string; isUnread?: boolean }> }) : { threads: [] };
+      const threads = (inboxData.threads || []).map((t) => ({
+        subject: t.subject || "",
+        fromName: t.fromName || "",
+        snippet: t.snippet || "",
+        isUnread: t.isUnread ?? false,
+      }));
+      const res = await fetch(`${apiBaseUrl}/api/ai/digest`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ threads }),
+      });
+      const data = res.ok ? (await res.json() as { digest?: string }) : {};
+      const digestText = data.digest || "No digest available right now.";
+      const assistantMsg: ChatMessage = { id: uuid(), role: "assistant", content: digestText };
+      setMessages([assistantMsg]);
+    } catch {
+      const errMsg: ChatMessage = { id: uuid(), role: "assistant", content: "Failed to generate your digest. Please try again." };
+      setMessages([errMsg]);
+    }
+    setDigestLoading(false);
+  }, [digestLoading, isSending, apiBaseUrl, authHeaders]);
 
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -560,6 +593,30 @@ export default function AgentScreen() {
                 <Text style={styles.emptySubtitle}>
                   What can I help you with?
                 </Text>
+                <TouchableOpacity
+                  onPress={handleCatchMeUp}
+                  disabled={digestLoading}
+                  activeOpacity={0.8}
+                  style={{
+                    marginTop: 20,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingHorizontal: 20,
+                    paddingVertical: 12,
+                    borderRadius: 24,
+                    backgroundColor: colors.foreground,
+                  }}
+                >
+                  {digestLoading ? (
+                    <ActivityIndicator size="small" color={colors.primaryForeground} />
+                  ) : (
+                    <Feather name="zap" size={16} color={colors.primaryForeground} />
+                  )}
+                  <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: colors.primaryForeground }}>
+                    Catch me up
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
           </TouchableWithoutFeedback>

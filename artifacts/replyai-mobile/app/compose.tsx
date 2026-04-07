@@ -13,7 +13,7 @@ import {
   FlatList,
   BackHandler,
 } from "react-native";
-import { useRouter, useFocusEffect, useNavigation } from "expo-router";
+import { useRouter, useFocusEffect, useNavigation, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -89,14 +89,24 @@ export default function ComposeScreen() {
   const navigation = useNavigation();
   const { apiBaseUrl, authHeaders } = useApiClient();
   const { showToast } = useToast();
+  const params = useLocalSearchParams<{
+    replyTo?: string;
+    replyToName?: string;
+    subject?: string;
+    threadId?: string;
+    accountEmail?: string;
+    prefill?: string;
+  }>();
 
   const [toInput, setToInput] = useState("");
-  const [toRecipients, setToRecipients] = useState<Recipient[]>([]);
+  const [toRecipients, setToRecipients] = useState<Recipient[]>(() =>
+    params.replyTo ? [{ email: params.replyTo, name: params.replyToName ?? null }] : []
+  );
   const [ccInput, setCcInput] = useState("");
   const [ccRecipients, setCcRecipients] = useState<Recipient[]>([]);
   const [ccExpanded, setCcExpanded] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [subject, setSubject] = useState(() => params.subject ?? "");
+  const [body, setBody] = useState(() => params.prefill ?? "");
 
   const [toSuggestions, setToSuggestions] = useState<ContactResult[]>([]);
   const [ccSuggestions, setCcSuggestions] = useState<ContactResult[]>([]);

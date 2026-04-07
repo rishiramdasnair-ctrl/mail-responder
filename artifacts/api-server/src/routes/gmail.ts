@@ -11,6 +11,9 @@ import {
   getConnectedGmailAccounts,
 } from "../lib/gmailClient";
 import { SendReplyBody } from "@workspace/api-zod";
+import { db } from "@workspace/db";
+import { emailSnoozesTable } from "@workspace/db/schema";
+import { eq, and, gt } from "drizzle-orm";
 
 const router = Router();
 
@@ -375,6 +378,13 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
       const isUnread = (msg.labelIds || []).includes("UNREAD");
       const attachments = extractAttachments(msg.payload);
 
+      const listUnsubscribe = getHeader(headers, "List-Unsubscribe") ||
+        getHeader(headers, "list-unsubscribe") || "";
+      const unsubscribeLink = listUnsubscribe.match(/<(https?:[^>]+)>/)?.[1]
+        || listUnsubscribe.match(/(https?:\S+)/)?.[1]
+        || (listUnsubscribe.includes("mailto:") ? listUnsubscribe.match(/<?(mailto:[^>,\s]+)>?/)?.[1] || "" : "")
+        || "";
+
       return {
         id: msg.id,
         threadId,
@@ -390,14 +400,16 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
         isUnread,
         labelIds: msg.labelIds || [],
         attachments,
+        unsubscribeLink,
       };
     });
 
     const firstMsg = messages[0];
     const subject = firstMsg?.subject || "";
     const isUnread = messages.some((m) => m.isUnread);
+    const unsubscribeLink = messages[0]?.unsubscribeLink || "";
 
-    res.json({ id: threadId, subject, messages, snippet: thread.data.snippet, isUnread });
+    res.json({ id: threadId, subject, messages, snippet: thread.data.snippet, isUnread, unsubscribeLink });
   } catch (err) {
     req.log.error({ err }, "Error fetching thread");
     res.status(500).json({ error: "Failed to fetch thread" });
@@ -558,6 +570,80 @@ router.get("/gmail/messages/:messageId/attachments/:attachmentId", requireAuth, 
   } catch (err) {
     req.log.error({ err }, "Error downloading attachment");
     res.status(500).json({ error: "Failed to download attachment" });
+  }
+});
+
+router.post("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { threadId } = req.params;
+    const snoozeUntilRaw = req.body?.snoozeUntil;
+    const account = getAccount(req) ?? "";
+
+    if (!snoozeUntilRaw) {
+      res.status(400).json({ error: "snoozeUntil is required" });
+      return;
+    }
+
+    const snoozeUntil = new Date(snoozeUntilRaw);
+    if (isNaN(snoozeUntil.getTime())) {
+      res.status(400).json({ error: "Invalid snoozeUntil date" });
+      return;
+    }
+
+    await db.insert(emailSnoozesTable)
+      .values({ userId, threadId, accountEmail: account, snoozeUntil })
+      .onConflictDoUpdate({
+        target: [emailSnoozesTable.userId, emailSnoozesTable.threadId, emailSnoozesTable.accountEmail],
+        set: { snoozeUntil },
+      });
+
+    res.json({ success: true, snoozeUntil: snoozeUntil.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Error snoozing thread");
+    res.status(500).json({ error: "Failed to snooze thread" });
+  }
+});
+
+router.delete("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { threadId } = req.params;
+    const account = getAccount(req) ?? "";
+
+    await db.delete(emailSnoozesTable).where(
+      and(
+        eq(emailSnoozesTable.userId, userId),
+        eq(emailSnoozesTable.threadId, threadId),
+        eq(emailSnoozesTable.accountEmail, account)
+      )
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Error un-snoozing thread");
+    res.status(500).json({ error: "Failed to un-snooze thread" });
+  }
+});
+
+router.get("/gmail/snoozed", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const now = new Date();
+    const snoozed = await db.select()
+      .from(emailSnoozesTable)
+      .where(and(eq(emailSnoozesTable.userId, userId), gt(emailSnoozesTable.snoozeUntil, now)));
+
+    res.json({ snoozed: snoozed.map((s) => ({ threadId: s.threadId, snoozeUntil: s.snoozeUntil.toISOString(), accountEmail: s.accountEmail })) });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching snoozed threads");
+    res.status(500).json({ error: "Failed to fetch snoozed threads" });
   }
 });
 

@@ -623,6 +623,50 @@ export default function SettingsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {profile?.plan === "trial" && profile.trialEndsAt && (() => {
+            const daysLeft = Math.max(0, Math.ceil((new Date(profile.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+            const urgency = daysLeft <= 3;
+            return (
+              <TouchableOpacity
+                onPress={handleManageBilling}
+                activeOpacity={0.8}
+                style={{
+                  marginHorizontal: 16,
+                  marginTop: 16,
+                  marginBottom: 4,
+                  borderRadius: 14,
+                  padding: 16,
+                  backgroundColor: urgency ? "#EF444415" : colors.muted,
+                  borderWidth: 1,
+                  borderColor: urgency ? "#EF4444" : colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: urgency ? "#EF444425" : colors.background,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <Text style={{ fontSize: 22 }}>{urgency ? "⏰" : "🎯"}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: urgency ? "#EF4444" : colors.foreground }}>
+                    {daysLeft === 0 ? "Trial ends today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left in trial`}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 2 }}>
+                    Upgrade to Pro for unlimited replies
+                  </Text>
+                </View>
+                <Feather name="arrow-right" size={16} color={urgency ? "#EF4444" : colors.mutedForeground} />
+              </TouchableOpacity>
+            );
+          })()}
+
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Account</Text>
             <View style={styles.card}>

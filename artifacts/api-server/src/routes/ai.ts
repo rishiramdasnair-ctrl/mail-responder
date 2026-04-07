@@ -6,7 +6,7 @@ import { GenerateRepliesBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { usersTable, replyHistoryTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { openrouter as openai, FAST_MODEL } from "../lib/openrouter";
+import { openrouter as openai, FAST_MODEL, AGENT_MODEL } from "../lib/openrouter";
 import rateLimit from "express-rate-limit";
 
 const router = Router();
@@ -264,6 +264,100 @@ Respond ONLY with a valid JSON object in this exact format:
   } catch (err) {
     req.log.error({ err }, "Error generating AI actions");
     res.status(500).json({ error: "Failed to generate actions" });
+  }
+});
+
+router.post("/ai/thread-summary", requireAuth, aiRateLimit, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const user = await getOrCreateUser(userId);
+    const plan = getUserPlan(user);
+
+    if (plan === "expired") {
+      res.status(429).json({ error: "Trial expired. Please subscribe to continue.", code: "TRIAL_EXPIRED" });
+      return;
+    }
+
+    const messages: Array<{ fromName: string; date: string; body: string }> = req.body?.messages || [];
+    const subject: string = req.body?.subject || "";
+
+    if (!messages.length) {
+      res.status(400).json({ error: "messages array is required" });
+      return;
+    }
+
+    const truncated = messages.slice(-8).map((m) => {
+      const body = (m.body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 600);
+      return `[${m.fromName || "Unknown"} on ${m.date || ""}]: ${body}`;
+    }).join("\n\n");
+
+    const completion = await openai.chat.completions.create({
+      model: FAST_MODEL,
+      max_tokens: 300,
+      messages: [
+        {
+          role: "system",
+          content: `You are ReplyAI. Summarize this email thread in 2-3 short, punchy bullet points. Focus on key decisions, action items, and outcomes. No intros. Use • bullets. Max 60 words total.`,
+        },
+        { role: "user", content: `Subject: ${subject}\n\n${truncated}` },
+      ],
+    });
+
+    const summary = completion.choices[0]?.message?.content?.trim() || "";
+    res.json({ summary });
+  } catch (err) {
+    req.log.error({ err }, "Error generating thread summary");
+    res.status(500).json({ error: "Failed to generate summary" });
+  }
+});
+
+router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const user = await getOrCreateUser(userId);
+    const plan = getUserPlan(user);
+
+    if (plan === "expired") {
+      res.status(429).json({ error: "Trial expired. Please subscribe to continue.", code: "TRIAL_EXPIRED" });
+      return;
+    }
+
+    const threads: Array<{ subject: string; fromName: string; snippet: string; isUnread: boolean }> = req.body?.threads || [];
+
+    if (!threads.length) {
+      res.json({ digest: "Your inbox is empty — enjoy the silence! 🌿" });
+      return;
+    }
+
+    const unread = threads.filter((t) => t.isUnread).slice(0, 20);
+    const allItems = (unread.length ? unread : threads.slice(0, 20)).map((t) =>
+      `• "${t.subject}" from ${t.fromName}: ${t.snippet?.slice(0, 120) || ""}`
+    ).join("\n");
+
+    const completion = await openai.chat.completions.create({
+      model: AGENT_MODEL,
+      max_tokens: 600,
+      messages: [
+        {
+          role: "system",
+          content: `You are ReplyAI, a sharp, friendly email assistant. Generate a brief "Catch Me Up" digest from the list of emails below.
+Format:
+1. Start with one sentence on overall inbox status (tone: calm, professional).
+2. List 3-5 most important items needing attention, each as a short bullet: action + context.
+3. End with one encouraging closing line.
+Keep it under 150 words. No fluff. Use plain text only (no markdown headers).`,
+        },
+        { role: "user", content: `Inbox snapshot (${threads.length} threads, ${unread.length} unread):\n${allItems}` },
+      ],
+    });
+
+    const digest = completion.choices[0]?.message?.content?.trim() || "";
+    res.json({ digest });
+  } catch (err) {
+    req.log.error({ err }, "Error generating digest");
+    res.status(500).json({ error: "Failed to generate digest" });
   }
 });
 

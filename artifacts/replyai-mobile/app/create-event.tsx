@@ -47,6 +47,13 @@ function toIsoDateTime(date: Date, time: Date): string {
 }
 
 type PickerMode = "startDate" | "startTime" | "endDate" | "endTime" | null;
+type ConferenceType = "meet" | "zoom" | "teams" | null;
+
+const CONFERENCE_OPTIONS: Array<{ value: Exclude<ConferenceType, null>; label: string; icon: string }> = [
+  { value: "meet", label: "Meet", icon: "video" },
+  { value: "zoom", label: "Zoom", icon: "video" },
+  { value: "teams", label: "Teams", icon: "video" },
+];
 
 export default function CreateEventScreen() {
   const colors = useColors();
@@ -68,10 +75,12 @@ export default function CreateEventScreen() {
   const [attendeeInput, setAttendeeInput] = useState("");
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
+  const [conferenceType, setConferenceType] = useState<ConferenceType>(null);
+  const [conferenceUrl, setConferenceUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const allowBackRef = useRef(false);
 
-  const hasContent = title.trim().length > 0 || location.trim().length > 0 || attendees.length > 0;
+  const hasContent = title.trim().length > 0 || location.trim().length > 0 || attendees.length > 0 || conferenceType !== null;
 
   const confirmDiscard = useCallback(
     (onConfirm: () => void) => {
@@ -167,6 +176,13 @@ export default function CreateEventScreen() {
     setSaving(true);
     try {
       const headers = await authHeaders();
+      const needsUrl = conferenceType === "zoom" || conferenceType === "teams";
+      if (needsUrl && !conferenceUrl.trim()) {
+        Alert.alert("Missing link", `Please paste your ${conferenceType === "zoom" ? "Zoom" : "Teams"} meeting URL.`);
+        setSaving(false);
+        return;
+      }
+
       const res = await fetch(`${apiBaseUrl}/api/calendar/events`, {
         method: "POST",
         headers,
@@ -176,6 +192,8 @@ export default function CreateEventScreen() {
           end: toIsoDateTime(endDate, endDate),
           ...(location.trim() ? { location: location.trim() } : {}),
           ...(attendees.length > 0 ? { attendees: attendees.map((a) => a.email) } : {}),
+          ...(conferenceType ? { conferenceType } : {}),
+          ...(needsUrl && conferenceUrl.trim() ? { conferenceUrl: conferenceUrl.trim() } : {}),
         }),
       });
       const data = await res.json() as { error?: string; id?: string };
@@ -326,6 +344,53 @@ export default function CreateEventScreen() {
       backgroundColor: colors.foreground,
     },
     addBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: colors.primaryForeground },
+    confRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      gap: 8,
+    },
+    confOptions: {
+      flexDirection: "row",
+      gap: 8,
+      flex: 1,
+      flexWrap: "wrap",
+    },
+    confPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      gap: 5,
+    },
+    confPillActive: {
+      backgroundColor: colors.foreground,
+      borderColor: colors.foreground,
+    },
+    confPillInactive: {
+      backgroundColor: colors.background,
+      borderColor: colors.border,
+    },
+    confPillText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+    confUrlRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      gap: 8,
+    },
+    confUrlInput: {
+      flex: 1,
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+      paddingVertical: 0,
+    },
   });
 
   const pickerValue =
@@ -454,6 +519,60 @@ export default function CreateEventScreen() {
                 selectionColor={colors.foreground}
               />
             </View>
+          </View>
+
+          <Text style={styles.sectionTitle}>Video Conference</Text>
+          <View style={styles.section}>
+            <View style={[styles.confRow, (conferenceType !== null) && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
+              <Feather name="video" size={16} color={colors.mutedForeground} style={styles.fieldIcon} />
+              <View style={styles.confOptions}>
+                {CONFERENCE_OPTIONS.map((opt) => {
+                  const isActive = conferenceType === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.confPill, isActive ? styles.confPillActive : styles.confPillInactive]}
+                      onPress={() => {
+                        setConferenceType(isActive ? null : opt.value);
+                        if (isActive) setConferenceUrl("");
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {isActive && (
+                        <Feather name="check" size={12} color={colors.primaryForeground} />
+                      )}
+                      <Text style={[styles.confPillText, { color: isActive ? colors.primaryForeground : colors.foreground }]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            {(conferenceType === "zoom" || conferenceType === "teams") && (
+              <View style={styles.confUrlRow}>
+                <Feather name="link" size={14} color={colors.mutedForeground} />
+                <TextInput
+                  style={styles.confUrlInput}
+                  value={conferenceUrl}
+                  onChangeText={setConferenceUrl}
+                  placeholder={`Paste ${conferenceType === "zoom" ? "Zoom" : "Teams"} meeting link`}
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  selectionColor={colors.foreground}
+                />
+              </View>
+            )}
+            {conferenceType === "meet" && (
+              <View style={styles.confUrlRow}>
+                <Feather name="check-circle" size={14} color={colors.mutedForeground} />
+                <Text style={[styles.confUrlInput, { color: colors.mutedForeground }]}>
+                  A Google Meet link will be created automatically
+                </Text>
+              </View>
+            )}
           </View>
 
           <Text style={styles.sectionTitle}>Attendees</Text>

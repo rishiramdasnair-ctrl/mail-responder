@@ -81,7 +81,12 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
   try {
     const auth = getAuth(req);
     const userId = auth.userId!;
-    const { title, start, end, description, attendees, location } = req.body;
+    const { title, start, end, description, attendees, location, conferenceType, conferenceUrl } = req.body as {
+      title: string; start: string; end: string; description?: string;
+      attendees?: string[]; location?: string;
+      conferenceType?: "meet" | "zoom" | "teams" | null;
+      conferenceUrl?: string;
+    };
 
     if (!title || !start || !end) {
       res.status(400).json({ error: "title, start, and end are required" });
@@ -92,17 +97,41 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
 
     const isDateOnly = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+    // Build description with external conference URL if provided
+    let finalDescription = description || undefined;
+    if (conferenceType === "zoom" && conferenceUrl) {
+      finalDescription = [finalDescription, `Zoom Meeting: ${conferenceUrl}`].filter(Boolean).join("\n\n");
+    } else if (conferenceType === "teams" && conferenceUrl) {
+      finalDescription = [finalDescription, `Teams Meeting: ${conferenceUrl}`].filter(Boolean).join("\n\n");
+    }
+
+    const isMeet = conferenceType === "meet";
+    const requestId = `replyai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     const event = await calendar.events.insert({
       calendarId: "primary",
+      ...(isMeet ? { conferenceDataVersion: 1 } : {}),
       requestBody: {
         summary: title,
-        description: description || undefined,
+        description: finalDescription,
         location: location || undefined,
         start: isDateOnly(start) ? { date: start } : { dateTime: start },
         end: isDateOnly(end) ? { date: end } : { dateTime: end },
         attendees: attendees?.map((email: string) => ({ email })),
+        ...(isMeet ? {
+          conferenceData: {
+            createRequest: {
+              requestId,
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+            },
+          },
+        } : {}),
       },
     });
+
+    const meetLink = event.data.conferenceData?.entryPoints?.find(
+      (ep: any) => ep.entryPointType === "video"
+    )?.uri ?? null;
 
     res.json({
       id: event.data.id,
@@ -110,6 +139,9 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
       start: event.data.start?.dateTime || event.data.start?.date,
       end: event.data.end?.dateTime || event.data.end?.date,
       htmlLink: event.data.htmlLink,
+      ...(meetLink ? { meetLink } : {}),
+      ...(conferenceType === "zoom" && conferenceUrl ? { conferenceUrl } : {}),
+      ...(conferenceType === "teams" && conferenceUrl ? { conferenceUrl } : {}),
     });
   } catch (err: any) {
     if (err.message?.includes("not connected") || err.message?.includes("Not connected")) {

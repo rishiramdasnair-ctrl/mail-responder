@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   Linking,
+  TextInput,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
@@ -17,6 +18,7 @@ import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import { Link } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useUser } from "@clerk/clerk-expo";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -61,6 +63,13 @@ export default function SettingsScreen() {
   const { signOut } = useAuth();
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
+  const { user } = useUser();
+
+  const [editingName, setEditingName] = useState(false);
+  const [editFirst, setEditFirst] = useState("");
+  const [editLast, setEditLast] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const lastInputRef = useRef<TextInput>(null);
 
   const { data: profile, isLoading: profileLoading } = useQuery<UserProfile>({
     queryKey: ["auth-me"],
@@ -160,6 +169,34 @@ export default function SettingsScreen() {
         { text: "Remove", style: "destructive", onPress: () => disconnectMutation.mutate(email) },
       ]);
     }
+  };
+
+  const handleStartEditName = () => {
+    setEditFirst(profile?.firstName ?? user?.firstName ?? "");
+    setEditLast(profile?.lastName ?? user?.lastName ?? "");
+    setEditingName(true);
+  };
+
+  const handleSaveName = async () => {
+    const first = editFirst.trim();
+    const last = editLast.trim();
+    if (!first) return;
+    const capitalized = first.charAt(0).toUpperCase() + first.slice(1);
+    setSavingName(true);
+    try {
+      await user?.update({ firstName: capitalized, lastName: last || undefined });
+      await qc.invalidateQueries({ queryKey: ["auth-me"] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setEditingName(false);
+    } catch {
+      Alert.alert("Error", "Could not update name. Please try again.");
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleCancelEditName = () => {
+    setEditingName(false);
   };
 
   const handleSignOut = () => {
@@ -436,6 +473,48 @@ export default function SettingsScreen() {
     rowChevron: {
       marginLeft: 4,
     },
+    nameEditContainer: {
+      padding: 14,
+      gap: 10,
+    },
+    nameInputRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    nameInput: {
+      flex: 1,
+      height: 40,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      paddingHorizontal: 12,
+      fontSize: 14,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+    },
+    nameActionRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 8,
+    },
+    nameCancelBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    nameSaveBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.foreground,
+    },
+    nameBtnText: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+    },
   });
 
   const isLoading = profileLoading || settingsLoading;
@@ -469,18 +548,60 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Account</Text>
             <View style={styles.card}>
-              <View style={styles.profileRow}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initials}</Text>
+              {editingName ? (
+                <View style={styles.nameEditContainer}>
+                  <View style={styles.nameInputRow}>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={editFirst}
+                      onChangeText={setEditFirst}
+                      placeholder="First name"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoFocus
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                      onSubmitEditing={() => lastInputRef.current?.focus()}
+                    />
+                    <TextInput
+                      ref={lastInputRef}
+                      style={styles.nameInput}
+                      value={editLast}
+                      onChangeText={setEditLast}
+                      placeholder="Last name"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="words"
+                      returnKeyType="done"
+                      onSubmitEditing={handleSaveName}
+                    />
+                  </View>
+                  <View style={styles.nameActionRow}>
+                    <TouchableOpacity style={styles.nameCancelBtn} onPress={handleCancelEditName} disabled={savingName}>
+                      <Text style={[styles.nameBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.nameSaveBtn} onPress={handleSaveName} disabled={savingName}>
+                      {savingName ? (
+                        <ActivityIndicator size="small" color={colors.primaryForeground} />
+                      ) : (
+                        <Text style={[styles.nameBtnText, { color: colors.primaryForeground }]}>Save</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>{displayName}</Text>
-                  <Text style={styles.profileEmail}>{profile?.email}</Text>
-                </View>
-                <View style={styles.planChip}>
-                  <Text style={styles.planChipText}>{planLabel}</Text>
-                </View>
-              </View>
+              ) : (
+                <TouchableOpacity style={styles.profileRow} onPress={handleStartEditName} activeOpacity={0.7}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{initials}</Text>
+                  </View>
+                  <View style={styles.profileInfo}>
+                    <Text style={styles.profileName}>{displayName}</Text>
+                    <Text style={styles.profileEmail}>{profile?.email}</Text>
+                  </View>
+                  <Feather name="edit-2" size={14} color={colors.mutedForeground} style={{ marginRight: 8 }} />
+                  <View style={styles.planChip}>
+                    <Text style={styles.planChipText}>{planLabel}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {profile && (
                 <>

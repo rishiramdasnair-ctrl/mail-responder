@@ -289,7 +289,8 @@ function getGreeting() {
 
 export default function AgentPage() {
   const { user } = useUser();
-  const firstName = user?.firstName || user?.username || null;
+  const rawFirst = user?.firstName || user?.username || null;
+  const firstName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1) : null;
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);

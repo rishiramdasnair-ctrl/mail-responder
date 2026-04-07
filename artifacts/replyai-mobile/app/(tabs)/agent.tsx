@@ -276,7 +276,8 @@ export default function AgentScreen() {
   const insets = useSafeAreaInsets();
   const { apiBaseUrl, authHeaders } = useApiClient();
   const { user } = useUser();
-  const firstName = user?.firstName || user?.username || null;
+  const rawFirst = user?.firstName || user?.username || null;
+  const firstName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1) : null;
 
   const { data: gmailAccountsData } = useQuery({
     queryKey: ["gmail-accounts-agent"],

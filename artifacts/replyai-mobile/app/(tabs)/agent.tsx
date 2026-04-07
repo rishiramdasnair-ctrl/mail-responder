@@ -14,8 +14,10 @@ import {
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+import { ConnectorStrip } from "@/components/ConnectorStrip";
 
 type FeatherName = ComponentProps<typeof Feather>["name"];
 
@@ -266,6 +268,18 @@ export default function AgentScreen() {
   const insets = useSafeAreaInsets();
   const { apiBaseUrl, authHeaders } = useApiClient();
 
+  const { data: gmailAccountsData } = useQuery({
+    queryKey: ["gmail-accounts-agent"],
+    queryFn: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
+      if (!res.ok) return { accounts: [] };
+      return res.json() as Promise<{ accounts: { email: string }[] }>;
+    },
+    staleTime: 30_000,
+  });
+  const gmailConnected = (gmailAccountsData?.accounts?.length ?? 0) > 0;
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -494,7 +508,6 @@ export default function AgentScreen() {
     chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background },
     chipText: { fontSize: 13, fontFamily: "Inter_400Regular", color: colors.foreground },
     inputArea: {
-      borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
       backgroundColor: colors.background,
       paddingTop: 10, paddingBottom: botPad + 10, paddingHorizontal: 16,
     },
@@ -558,6 +571,8 @@ export default function AgentScreen() {
             onContentSizeChange={scrollToBottom}
           />
         )}
+
+        <ConnectorStrip gmailConnected={gmailConnected} />
 
         <View style={styles.inputArea}>
           {isEmpty && suggestions.length > 0 && (

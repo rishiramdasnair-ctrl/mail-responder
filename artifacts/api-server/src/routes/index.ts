@@ -15,6 +15,8 @@ import googleExtendRouter from "./googleExtend";
 import hubspotRouter from "./hubspot";
 import driveRouter from "./drive";
 import contactsRouter from "./contacts";
+import githubAuthRouter from "./githubAuth";
+import linearAuthRouter from "./linearAuth";
 
 const router: IRouter = Router();
 
@@ -34,5 +36,7 @@ router.use(connectorsRouter);
 router.use(hubspotRouter);
 router.use(driveRouter);
 router.use(contactsRouter);
+router.use(githubAuthRouter);
+router.use(linearAuthRouter);
 
 export default router;

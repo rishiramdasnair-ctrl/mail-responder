@@ -45,6 +45,7 @@ export default function InboxScreen() {
   const searchRef = useRef<TextInput>(null);
   const [accounts, setAccounts] = useState<GmailAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
+  const [activeFolder, setActiveFolder] = useState<"INBOX" | "STARRED" | "TRASH">("INBOX");
 
   useEffect(() => {
     (async () => {
@@ -64,6 +65,7 @@ export default function InboxScreen() {
       const token = pageParam as string | undefined;
       const params = new URLSearchParams({
         maxResults: String(PAGE_SIZE),
+        label: activeFolder,
         ...(token ? { pageToken: token } : {}),
         ...(activeQuery ? { q: activeQuery } : {}),
       });
@@ -77,7 +79,7 @@ export default function InboxScreen() {
       }
       return res.json() as Promise<InboxPage>;
     },
-    [apiBaseUrl, activeQuery, authHeaders]
+    [apiBaseUrl, activeQuery, activeFolder, authHeaders]
   );
 
   const {
@@ -91,7 +93,7 @@ export default function InboxScreen() {
     refetch,
     isRefetching,
   } = useInfiniteQuery<InboxPage, Error, InfiniteData<InboxPage>, readonly unknown[], unknown>({
-    queryKey: ["priority-inbox", activeQuery] as const,
+    queryKey: ["priority-inbox", activeQuery, activeFolder] as const,
     queryFn: fetchInbox,
     initialPageParam: undefined as unknown,
     getNextPageParam: (last) => last.nextPageToken ?? undefined,
@@ -145,36 +147,36 @@ export default function InboxScreen() {
     });
   }, [apiBaseUrl, authHeaders]);
 
+  const qKey = ["priority-inbox", activeQuery, activeFolder] as const;
+
   const onStar = useCallback((email: EmailThread) => {
     const addLabels = email.isStarred ? [] : ["STARRED"];
     const removeLabels = email.isStarred ? ["STARRED"] : [];
-    // Optimistic update
     qc.setQueriesData<InfiniteData<InboxPage>>(
-      { queryKey: ["inbox"] },
+      { queryKey: qKey },
       (old) => {
         if (!old) return old;
         return {
           ...old,
           pages: old.pages.map((page) => ({
             ...page,
-            threads: page.threads.map((t) =>
-              t.threadId === email.threadId
-                ? { ...t, isStarred: !email.isStarred }
-                : t
-            ),
+            threads: activeFolder === "STARRED" && email.isStarred
+              ? page.threads.filter((t) => t.threadId !== email.threadId)
+              : page.threads.map((t) =>
+                  t.threadId === email.threadId ? { ...t, isStarred: !email.isStarred } : t
+                ),
           })),
         };
       }
     );
     modifyThread(email.threadId, email.accountEmail, addLabels, removeLabels).catch(() => {
-      qc.invalidateQueries({ queryKey: ["inbox"] });
+      qc.invalidateQueries({ queryKey: qKey });
     });
-  }, [qc, modifyThread]);
+  }, [qc, modifyThread, qKey, activeFolder]);
 
   const onTrash = useCallback((email: EmailThread) => {
-    // Optimistic: remove from inbox list immediately
     qc.setQueriesData<InfiniteData<InboxPage>>(
-      { queryKey: ["inbox"] },
+      { queryKey: qKey },
       (old) => {
         if (!old) return old;
         return {
@@ -187,9 +189,28 @@ export default function InboxScreen() {
       }
     );
     modifyThread(email.threadId, email.accountEmail, ["TRASH"], ["INBOX"]).catch(() => {
-      qc.invalidateQueries({ queryKey: ["inbox"] });
+      qc.invalidateQueries({ queryKey: qKey });
     });
-  }, [qc, modifyThread]);
+  }, [qc, modifyThread, qKey]);
+
+  const onRestore = useCallback((email: EmailThread) => {
+    qc.setQueriesData<InfiniteData<InboxPage>>(
+      { queryKey: qKey },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            threads: page.threads.filter((t) => t.threadId !== email.threadId),
+          })),
+        };
+      }
+    );
+    modifyThread(email.threadId, email.accountEmail, ["INBOX"], ["TRASH"]).catch(() => {
+      qc.invalidateQueries({ queryKey: qKey });
+    });
+  }, [qc, modifyThread, qKey]);
 
   const submitSearch = () => {
     setActiveQuery(searchQuery);
@@ -340,6 +361,31 @@ export default function InboxScreen() {
       color: colors.primaryForeground,
       fontFamily: "Inter_500Medium",
     },
+    folderTabs: {
+      flexDirection: "row",
+      gap: 0,
+      marginTop: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    folderTab: {
+      paddingHorizontal: 4,
+      paddingBottom: 10,
+      marginRight: 20,
+    },
+    folderTabActive: {
+      borderBottomWidth: 2,
+      borderBottomColor: colors.foreground,
+    },
+    folderTabText: {
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+    },
+    folderTabTextActive: {
+      fontFamily: "Inter_600SemiBold",
+      color: colors.foreground,
+    },
   });
 
   const unreadCount = allThreads.filter((t) => t.isUnread).length;
@@ -355,17 +401,14 @@ export default function InboxScreen() {
 
   const renderEmpty = () => {
     if (isLoading || isError) return null;
+    const folderIcon = activeFolder === "STARRED" ? "star" : activeFolder === "TRASH" ? "trash-2" : "inbox";
+    const emptyTitle = activeQuery ? "No results" : activeFolder === "STARRED" ? "No starred emails" : activeFolder === "TRASH" ? "Trash is empty" : "All caught up!";
+    const emptySubtitle = activeQuery ? `No emails matching "${activeQuery}"` : activeFolder === "STARRED" ? "Star emails to find them here." : activeFolder === "TRASH" ? "Deleted emails will appear here." : "Your inbox is empty. Well done.";
     return (
       <View style={styles.emptyContainer}>
-        <Feather name="inbox" size={48} color={colors.border} />
-        <Text style={styles.emptyTitle}>
-          {activeQuery ? "No results" : "All caught up!"}
-        </Text>
-        <Text style={styles.emptySubtitle}>
-          {activeQuery
-            ? `No emails matching "${activeQuery}"`
-            : "Your inbox is empty. Well done."}
-        </Text>
+        <Feather name={folderIcon} size={48} color={colors.border} />
+        <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+        <Text style={styles.emptySubtitle}>{emptySubtitle}</Text>
       </View>
     );
   };
@@ -432,8 +475,8 @@ export default function InboxScreen() {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={styles.title}>Inbox</Text>
-            {unreadCount > 0 && (
+            <Text style={styles.title}>{activeFolder === "STARRED" ? "Starred" : activeFolder === "TRASH" ? "Trash" : "Inbox"}</Text>
+            {unreadCount > 0 && activeFolder === "INBOX" && (
               <View style={styles.unreadBadge}>
                 <Text style={styles.unreadText}>{unreadCount}</Text>
               </View>
@@ -507,6 +550,22 @@ export default function InboxScreen() {
             })}
           </ScrollView>
         )}
+
+        <View style={styles.folderTabs}>
+          {(["INBOX", "STARRED", "TRASH"] as const).map((folder) => {
+            const label = folder === "INBOX" ? "Inbox" : folder === "STARRED" ? "Starred" : "Trash";
+            const isActive = activeFolder === folder;
+            return (
+              <TouchableOpacity
+                key={folder}
+                style={[styles.folderTab, isActive && styles.folderTabActive]}
+                onPress={() => { setActiveFolder(folder); setActiveQuery(""); setSearchQuery(""); }}
+              >
+                <Text style={[styles.folderTabText, isActive && styles.folderTabTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       <FlatList
@@ -516,12 +575,13 @@ export default function InboxScreen() {
           <EmailRow
             email={item}
             onPress={onPressEmail}
-            onStar={onStar}
-            onTrash={onTrash}
+            onStar={activeFolder !== "TRASH" ? onStar : undefined}
+            onTrash={activeFolder !== "TRASH" ? onTrash : undefined}
+            onRestore={activeFolder === "TRASH" ? onRestore : undefined}
           />
         )}
         ListHeaderComponent={
-          !activeQuery ? (
+          activeFolder === "INBOX" && !activeQuery ? (
             <PrioritySection
               onPressEmail={onPressPriority}
               onPressAction={onPressAction}
@@ -538,7 +598,7 @@ export default function InboxScreen() {
           <RefreshControl
             refreshing={isRefetching}
             onRefresh={() => {
-              qc.resetQueries({ queryKey: ["priority-inbox", activeQuery] });
+              qc.resetQueries({ queryKey: ["priority-inbox", activeQuery, activeFolder] });
             }}
             tintColor={colors.foreground}
           />

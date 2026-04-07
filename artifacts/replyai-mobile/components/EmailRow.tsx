@@ -33,6 +33,7 @@ interface EmailRowProps {
   onPress: (email: EmailThread) => void;
   onStar?: (email: EmailThread) => void;
   onTrash?: (email: EmailThread) => void;
+  onRestore?: (email: EmailThread) => void;
 }
 
 function formatDate(dateStr: string): string {
@@ -67,7 +68,7 @@ function getInitials(name: string, email: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
-export function EmailRow({ email, onPress, onStar, onTrash }: EmailRowProps) {
+export function EmailRow({ email, onPress, onStar, onTrash, onRestore }: EmailRowProps) {
   const colors = useColors();
   const swipeableRef = useRef<Swipeable>(null);
 
@@ -75,40 +76,43 @@ export function EmailRow({ email, onPress, onStar, onTrash }: EmailRowProps) {
   const initials = getInitials(email.fromName, email.fromEmail);
   const accountDomain = email.accountEmail ? email.accountEmail.split("@")[1] : null;
 
-  const handleStar = () => {
-    swipeableRef.current?.close();
-    onStar?.(email);
-  };
-
-  const handleTrash = () => {
-    swipeableRef.current?.close();
-    onTrash?.(email);
-  };
+  const close = () => swipeableRef.current?.close();
 
   const renderLeftActions = (
     _progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>
   ) => {
     const scale = dragX.interpolate({
-      inputRange: [0, 80],
-      outputRange: [0.6, 1],
+      inputRange: [0, 72],
+      outputRange: [0.7, 1],
       extrapolate: "clamp",
     });
+
+    if (onRestore) {
+      return (
+        <TouchableOpacity
+          style={[styles.actionBox, { backgroundColor: "#007AFF" }]}
+          onPress={() => { close(); onRestore(email); }}
+          activeOpacity={0.85}
+        >
+          <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
+            <Feather name="inbox" size={22} color="#fff" />
+            <Text style={styles.actionLabel}>Restore</Text>
+          </Animated.View>
+        </TouchableOpacity>
+      );
+    }
+
+    if (!onStar) return null;
     return (
       <TouchableOpacity
-        style={styles.starAction}
-        onPress={handleStar}
+        style={[styles.actionBox, { backgroundColor: email.isStarred ? "#6B7280" : "#F59E0B" }]}
+        onPress={() => { close(); onStar(email); }}
         activeOpacity={0.85}
       >
         <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
-          <Feather
-            name={email.isStarred ? "star" : "star"}
-            size={22}
-            color="#fff"
-          />
-          <Text style={styles.actionLabel}>
-            {email.isStarred ? "Unstar" : "Star"}
-          </Text>
+          <Feather name="star" size={22} color="#fff" />
+          <Text style={styles.actionLabel}>{email.isStarred ? "Unstar" : "Star"}</Text>
         </Animated.View>
       </TouchableOpacity>
     );
@@ -118,15 +122,16 @@ export function EmailRow({ email, onPress, onStar, onTrash }: EmailRowProps) {
     _progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>
   ) => {
+    if (!onTrash) return null;
     const scale = dragX.interpolate({
-      inputRange: [-80, 0],
-      outputRange: [1, 0.6],
+      inputRange: [-72, 0],
+      outputRange: [1, 0.7],
       extrapolate: "clamp",
     });
     return (
       <TouchableOpacity
-        style={styles.trashAction}
-        onPress={handleTrash}
+        style={[styles.actionBox, { backgroundColor: "#EF4444" }]}
+        onPress={() => { close(); onTrash(email); }}
         activeOpacity={0.85}
       >
         <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
@@ -137,136 +142,43 @@ export function EmailRow({ email, onPress, onStar, onTrash }: EmailRowProps) {
     );
   };
 
-  const styles = StyleSheet.create({
-    row: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: email.isUnread ? colors.background : colors.card,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    avatarContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: email.isUnread ? colors.foreground : colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 12,
-      marginTop: 2,
-    },
-    avatarText: {
-      color: email.isUnread ? colors.primaryForeground : colors.mutedForeground,
-      fontSize: 13,
-      fontFamily: "Inter_600SemiBold",
-    },
-    content: {
-      flex: 1,
-      minWidth: 0,
-    },
-    topRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 2,
-    },
-    senderName: {
-      fontSize: 14,
-      fontFamily: email.isUnread ? "Inter_600SemiBold" : "Inter_400Regular",
-      color: email.isUnread ? colors.foreground : colors.mutedForeground,
-      flex: 1,
-      marginRight: 8,
-    },
-    dateText: {
-      fontSize: 12,
-      color: email.isUnread ? colors.mutedForeground : colors.border,
-      fontFamily: "Inter_400Regular",
-    },
-    subject: {
-      fontSize: 13,
-      fontFamily: email.isUnread ? "Inter_500Medium" : "Inter_400Regular",
-      color: email.isUnread ? colors.foreground : colors.mutedForeground,
-      marginBottom: 2,
-    },
-    snippet: {
-      fontSize: 12,
-      color: email.isUnread ? colors.mutedForeground : colors.border,
-      fontFamily: "Inter_400Regular",
-      lineHeight: 17,
-    },
-    unreadDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 3.5,
-      backgroundColor: colors.foreground,
-      marginTop: 4,
-      marginLeft: 8,
-    },
-    starIcon: {
-      marginLeft: 6,
-      marginTop: 2,
-    },
-    accountBadge: {
-      alignSelf: "flex-start",
-      backgroundColor: colors.muted,
-      borderRadius: 4,
-      paddingHorizontal: 5,
-      paddingVertical: 1,
-      marginTop: 4,
-    },
-    accountBadgeText: {
-      fontSize: 10,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-    },
-    starAction: {
-      backgroundColor: "#F59E0B",
-      justifyContent: "center",
-      alignItems: "center",
-      width: 80,
-    },
-    trashAction: {
-      backgroundColor: "#EF4444",
-      justifyContent: "center",
-      alignItems: "center",
-      width: 80,
-    },
-    actionLabel: {
-      color: "#fff",
-      fontSize: 11,
-      fontFamily: "Inter_600SemiBold",
-    },
-  });
-
   const rowContent = (
     <TouchableOpacity
-      style={styles.row}
+      style={[styles.row, { backgroundColor: email.isUnread ? colors.background : colors.card }]}
       onPress={() => onPress(email)}
       activeOpacity={0.7}
       testID={`email-row-${email.threadId}`}
     >
-      <View style={styles.avatarContainer}>
-        <Text style={styles.avatarText}>{initials}</Text>
+      <View style={[styles.avatarContainer, { backgroundColor: email.isUnread ? colors.foreground : colors.muted }]}>
+        <Text style={[styles.avatarText, { color: email.isUnread ? colors.primaryForeground : colors.mutedForeground }]}>
+          {initials}
+        </Text>
       </View>
       <View style={styles.content}>
         <View style={styles.topRow}>
-          <Text style={styles.senderName} numberOfLines={1}>
+          <Text style={[styles.senderName, {
+            fontFamily: email.isUnread ? "Inter_600SemiBold" : "Inter_400Regular",
+            color: email.isUnread ? colors.foreground : colors.mutedForeground,
+          }]} numberOfLines={1}>
             {displayName}
           </Text>
-          <Text style={styles.dateText}>{formatDate(email.date)}</Text>
-          {email.isUnread && <View style={styles.unreadDot} />}
+          <Text style={[styles.dateText, { color: email.isUnread ? colors.mutedForeground : colors.border }]}>
+            {formatDate(email.date)}
+          </Text>
+          {email.isUnread && <View style={[styles.unreadDot, { backgroundColor: colors.foreground }]} />}
         </View>
-        <Text style={styles.subject} numberOfLines={1}>
+        <Text style={[styles.subject, {
+          fontFamily: email.isUnread ? "Inter_500Medium" : "Inter_400Regular",
+          color: email.isUnread ? colors.foreground : colors.mutedForeground,
+        }]} numberOfLines={1}>
           {email.subject || "(no subject)"}
         </Text>
-        <Text style={styles.snippet} numberOfLines={2}>
+        <Text style={[styles.snippet, { color: email.isUnread ? colors.mutedForeground : colors.border }]} numberOfLines={2}>
           {email.snippet}
         </Text>
         {accountDomain && (
-          <View style={styles.accountBadge}>
-            <Text style={styles.accountBadgeText}>{accountDomain}</Text>
+          <View style={[styles.accountBadge, { backgroundColor: colors.muted }]}>
+            <Text style={[styles.accountBadgeText, { color: colors.mutedForeground }]}>{accountDomain}</Text>
           </View>
         )}
       </View>
@@ -285,15 +197,100 @@ export function EmailRow({ email, onPress, onStar, onTrash }: EmailRowProps) {
   return (
     <Swipeable
       ref={swipeableRef}
-      renderLeftActions={onStar ? renderLeftActions : undefined}
+      renderLeftActions={onStar || onRestore ? renderLeftActions : undefined}
       renderRightActions={onTrash ? renderRightActions : undefined}
-      friction={2}
-      leftThreshold={60}
-      rightThreshold={60}
+      friction={1.5}
+      leftThreshold={50}
+      rightThreshold={50}
       overshootLeft={false}
       overshootRight={false}
+      useNativeAnimations
     >
       {rowContent}
     </Swipeable>
   );
 }
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.08)",
+  },
+  avatarContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    marginTop: 2,
+  },
+  avatarText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  content: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  senderName: {
+    fontSize: 14,
+    flex: 1,
+    marginRight: 8,
+  },
+  dateText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+  },
+  subject: {
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  snippet: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 17,
+  },
+  unreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginTop: 4,
+    marginLeft: 8,
+  },
+  starIcon: {
+    marginLeft: 6,
+    marginTop: 2,
+  },
+  accountBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginTop: 4,
+  },
+  accountBadgeText: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+  },
+  actionBox: {
+    justifyContent: "center",
+    alignItems: "center",
+    width: 80,
+  },
+  actionLabel: {
+    color: "#fff",
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+});

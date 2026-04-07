@@ -172,11 +172,34 @@ function findBodyByMime(part: any, mimeType: string): string {
   return "";
 }
 
+/**
+ * Strips potentially dangerous content from HTML email bodies.
+ * Removes <script> tags, inline event handlers, and javascript: URLs
+ * so the HTML can be safely rendered in a WebView for display purposes.
+ */
+function sanitizeEmailHtml(html: string): string {
+  return html
+    // Remove <script>...</script> blocks (including multiline)
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    // Remove self-closing <script ... />
+    .replace(/<script\b[^>]*\/>/gi, "")
+    // Remove inline event handler attributes (onclick, onload, onerror, etc.)
+    .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, "")
+    // Replace javascript: href URLs with a safe placeholder
+    .replace(/(href\s*=\s*["']?)javascript:[^"'\s>]*/gi, '$1#')
+    // Remove javascript: src attributes
+    .replace(/(src\s*=\s*["']?)javascript:[^"'\s>]*/gi, '$1')
+    // Replace vbscript: URLs
+    .replace(/(href\s*=\s*["']?)vbscript:[^"'\s>]*/gi, '$1#')
+    // Remove CSS expression() (IE attack vector)
+    .replace(/expression\s*\([^)]*\)/gi, "");
+}
+
 export function decodeBody(part: any): { body: string; bodyType: "html" | "plain" } {
   if (!part) return { body: "", bodyType: "plain" };
   // Always prefer HTML over plain text (mirrors what Gmail shows)
   const html = findBodyByMime(part, "text/html");
-  if (html) return { body: html, bodyType: "html" };
+  if (html) return { body: sanitizeEmailHtml(html), bodyType: "html" };
   const plain = findBodyByMime(part, "text/plain");
   if (plain) return { body: plain, bodyType: "plain" };
   // Fallback: top-level body with no mime type

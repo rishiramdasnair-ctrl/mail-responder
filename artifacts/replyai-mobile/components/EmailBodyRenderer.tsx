@@ -60,6 +60,11 @@ function buildHtmlDoc(html: string, bg: string, text: string): string {
     body {
       padding: 4px 2px 12px 2px;
     }
+    /* Constrain email content to screen width */
+    .email-content-wrapper {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
     img {
       max-width: 100% !important;
       height: auto !important;
@@ -97,7 +102,7 @@ function buildHtmlDoc(html: string, bg: string, text: string): string {
     }
   </style>
 </head>
-<body>${html}</body>
+<body><div class="email-content-wrapper">${html}</div></body>
 </html>`;
 }
 

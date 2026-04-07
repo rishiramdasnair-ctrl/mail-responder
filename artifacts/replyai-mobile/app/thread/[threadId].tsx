@@ -149,7 +149,7 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
         <View style={styles.bodyContainer}>
           <EmailBodyRenderer
             body={msg.body?.trim() || msg.snippet || ""}
-            bodyType={msg.bodyType ?? (msg.body?.includes("<") ? "html" : "plain")}
+            bodyType={msg.bodyType ?? "plain"}
             backgroundColor={colors.background}
             textColor={colors.foreground}
             mutedColor={colors.mutedForeground}

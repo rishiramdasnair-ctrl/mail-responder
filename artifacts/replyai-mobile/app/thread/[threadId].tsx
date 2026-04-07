@@ -15,7 +15,7 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
-import { ReplySheet } from "@/components/ReplySheet";
+import { ActionSheet } from "@/components/ActionSheet";
 import { EmailBodyRenderer } from "@/components/EmailBodyRenderer";
 
 interface EmailMessage {
@@ -333,15 +333,15 @@ export default function ThreadScreen() {
                   setShowReplySheet(true);
                 }}
                 activeOpacity={0.8}
-                testID="ai-reply-btn"
+                testID="ai-actions-btn"
               >
-                <Feather name="cpu" size={16} color={colors.primaryForeground} />
-                <Text style={styles.replyBtnText}>AI Reply</Text>
+                <Feather name="zap" size={16} color={colors.primaryForeground} />
+                <Text style={styles.replyBtnText}>AI Actions</Text>
               </TouchableOpacity>
             </View>
 
             {lastMessage && (
-              <ReplySheet
+              <ActionSheet
                 visible={showReplySheet}
                 onClose={() => setShowReplySheet(false)}
                 threadId={threadId!}
@@ -353,7 +353,7 @@ export default function ThreadScreen() {
                 accountEmail={accountEmail}
                 apiBaseUrl={apiBaseUrl}
                 getToken={getToken}
-                onReplySent={() => {
+                onActionDone={() => {
                   qc.invalidateQueries({ queryKey: ["priority-inbox"] });
                   qc.invalidateQueries({ queryKey: ["thread", threadId, accountEmail] });
                   router.back();

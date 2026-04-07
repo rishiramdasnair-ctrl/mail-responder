@@ -79,7 +79,7 @@ function MessageBubble({
   authHeaders: () => Promise<Record<string, string>>;
 }) {
   const colors = useColors();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const initials = getInitials(msg.fromName, msg.fromEmail);
 
   const styles = StyleSheet.create({

@@ -205,7 +205,6 @@ export function EmailRow({ email, onPress, onStar, onTrash, onRestore, onMarkRea
 
   const displayName = email.fromName || email.fromEmail || email.from;
   const initials = getInitials(email.fromName, email.fromEmail);
-  const accountDomain = email.accountEmail ? email.accountEmail.split("@")[1] : null;
 
   const showSnoozePicker = () => setSnoozePickerVisible(true);
 
@@ -283,11 +282,6 @@ export function EmailRow({ email, onPress, onStar, onTrash, onRestore, onMarkRea
           <Text style={[styles.snippet, { color: email.isUnread ? colors.mutedForeground : colors.border }]} numberOfLines={2}>
             {email.snippet}
           </Text>
-          {accountDomain && (
-            <View style={[styles.accountBadge, { backgroundColor: colors.muted }]}>
-              <Text style={[styles.accountBadgeText, { color: colors.mutedForeground }]}>{accountDomain}</Text>
-            </View>
-          )}
         </View>
         {email.isStarred && (
           <View style={styles.starIcon}>
@@ -378,17 +372,6 @@ const styles = StyleSheet.create({
   starIcon: {
     marginLeft: 6,
     marginTop: 2,
-  },
-  accountBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    marginTop: 4,
-  },
-  accountBadgeText: {
-    fontSize: 10,
-    fontFamily: "Inter_400Regular",
   },
 });
 

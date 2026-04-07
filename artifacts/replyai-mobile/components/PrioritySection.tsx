@@ -71,12 +71,6 @@ const cardStyles = StyleSheet.create({
     backgroundColor: "transparent",
     overflow: "hidden",
   },
-  cardBg: {
-    position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
-    borderRadius: 13,
-    opacity: 0.07,
-  },
   cardInner: {
     flex: 1,
     flexDirection: "row",
@@ -155,12 +149,6 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
       onPress={() => onPress(item.threadId, item.accountEmail)}
       activeOpacity={0.75}
     >
-      <LinearGradient
-        colors={gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={cardStyles.cardBg}
-      />
       <View style={cardStyles.cardInner}>
         <LinearGradient
           colors={gradient}

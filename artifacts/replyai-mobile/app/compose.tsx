@@ -112,6 +112,13 @@ export default function ComposeScreen() {
   const ccDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const allowBackRef = useRef(false);
 
+  useEffect(() => {
+    return () => {
+      if (toDebounceRef.current) clearTimeout(toDebounceRef.current);
+      if (ccDebounceRef.current) clearTimeout(ccDebounceRef.current);
+    };
+  }, []);
+
   const hasContent =
     toRecipients.length > 0 ||
     toInput.trim().length > 0 ||
@@ -123,6 +130,7 @@ export default function ComposeScreen() {
   const confirmDiscard = useCallback(
     (onConfirm: () => void) => {
       if (!hasContent) {
+        allowBackRef.current = true;
         onConfirm();
         return;
       }
@@ -131,7 +139,14 @@ export default function ComposeScreen() {
         "Are you sure you want to discard this email?",
         [
           { text: "Keep Editing", style: "cancel" },
-          { text: "Discard", style: "destructive", onPress: onConfirm },
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: () => {
+              allowBackRef.current = true;
+              onConfirm();
+            },
+          },
         ]
       );
     },

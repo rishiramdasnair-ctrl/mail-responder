@@ -138,12 +138,12 @@ export async function isGmailConnected(userId: string): Promise<{ connected: boo
   }
 }
 
-export async function getConnectedGmailAccounts(userId: string): Promise<Array<{ email: string; isPrimary: boolean }>> {
+export async function getConnectedGmailAccounts(userId: string): Promise<Array<{ email: string; isPrimary: boolean; signature?: string | null; signatureImageUrl?: string | null }>> {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (user) await ensureMigrated(userId, user);
   const accounts = await db.select().from(gmailAccountsTable)
     .where(eq(gmailAccountsTable.userId, userId));
-  return accounts.map(a => ({ email: a.email, isPrimary: a.isPrimary }));
+  return accounts.map(a => ({ email: a.email, isPrimary: a.isPrimary, signature: a.signature, signatureImageUrl: a.signatureImageUrl }));
 }
 
 export function parseEmailAddress(header: string): { name: string; email: string } {

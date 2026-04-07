@@ -11,7 +11,9 @@ import {
   Alert,
   Linking,
   TextInput,
+  Image,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
@@ -52,6 +54,8 @@ interface GmailAccount {
   id: number;
   email: string;
   isPrimary: boolean;
+  signature?: string | null;
+  signatureImageUrl?: string | null;
 }
 
 interface Connector {
@@ -139,12 +143,80 @@ export default function SettingsScreen() {
   const [tone, setTone] = useState<"pro" | "casual" | "fast">("pro");
   const [notifications, setNotifications] = useState(false);
 
+  const [expandedSig, setExpandedSig] = useState<string | null>(null);
+  const [sigTexts, setSigTexts] = useState<Record<string, string>>({});
+  const [sigImages, setSigImages] = useState<Record<string, string | null>>({});
+  const [savingSig, setSavingSig] = useState<string | null>(null);
+
   useEffect(() => {
     if (settings) {
       setTone(settings.defaultTone ?? "pro");
       setNotifications(settings.notifications ?? false);
     }
   }, [settings]);
+
+  useEffect(() => {
+    if (accountsData?.accounts) {
+      const texts: Record<string, string> = {};
+      const images: Record<string, string | null> = {};
+      for (const a of accountsData.accounts) {
+        texts[a.email] = a.signature ?? "";
+        images[a.email] = a.signatureImageUrl ?? null;
+      }
+      setSigTexts(prev => ({ ...prev, ...texts }));
+      setSigImages(prev => ({ ...prev, ...images }));
+    }
+  }, [accountsData]);
+
+  const handleToggleSig = (email: string) => {
+    setExpandedSig(prev => (prev === email ? null : email));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handlePickSigImage = async (email: string) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo library access to add a signature image.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: true,
+      quality: 0.5,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const dataUri = `data:image/jpeg;base64,${asset.base64}`;
+      setSigImages(prev => ({ ...prev, [email]: dataUri }));
+    }
+  };
+
+  const handleRemoveSigImage = (email: string) => {
+    setSigImages(prev => ({ ...prev, [email]: null }));
+  };
+
+  const handleSaveSig = async (email: string) => {
+    setSavingSig(email);
+    try {
+      const headers = await authHeaders();
+      await fetch(`${apiBaseUrl}/api/gmail/accounts/${encodeURIComponent(email)}/signature`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signature: sigTexts[email] || null,
+          signatureImageUrl: sigImages[email] || null,
+        }),
+      });
+      await qc.invalidateQueries({ queryKey: ["gmail-accounts"] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setExpandedSig(null);
+    } catch {
+      Alert.alert("Error", "Could not save signature. Please try again.");
+    } finally {
+      setSavingSig(null);
+    }
+  };
 
   const updateMutation = useMutation({
     mutationFn: async (body: Partial<UserSettings>) => {
@@ -590,6 +662,77 @@ export default function SettingsScreen() {
       fontSize: 13,
       fontFamily: "Inter_500Medium",
     },
+    sigRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 14,
+      gap: 12,
+    },
+    sigEditor: {
+      padding: 14,
+      gap: 10,
+    },
+    sigInput: {
+      minHeight: 80,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+      textAlignVertical: "top",
+    },
+    sigImagePreview: {
+      width: 80,
+      height: 40,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      resizeMode: "contain",
+      backgroundColor: colors.muted,
+    },
+    sigImageRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    sigImageBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    sigImageBtnText: {
+      fontSize: 12,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+    },
+    sigActionRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 8,
+    },
+    sigCancelBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sigSaveBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.foreground,
+    },
   });
 
   const isLoading = profileLoading || settingsLoading || connectorsLoading;
@@ -797,6 +940,105 @@ export default function SettingsScreen() {
               </Link>
             </View>
           </View>
+
+          {accounts.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Email Signatures</Text>
+              <View style={styles.card}>
+                {accounts.map((acct, i) => {
+                  const isExpanded = expandedSig === acct.email;
+                  const hasExistingSig = !!(acct.signature || acct.signatureImageUrl);
+                  return (
+                    <React.Fragment key={acct.email}>
+                      {i > 0 && <View style={styles.divider} />}
+                      <TouchableOpacity
+                        style={styles.sigRow}
+                        onPress={() => handleToggleSig(acct.email)}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="edit-3" size={15} color={colors.mutedForeground} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.rowLabel} numberOfLines={1}>{acct.email}</Text>
+                          {hasExistingSig && !isExpanded && (
+                            <Text style={styles.rowSubLabel} numberOfLines={1}>
+                              {acct.signature || "Image attached"}
+                            </Text>
+                          )}
+                        </View>
+                        <Feather
+                          name={isExpanded ? "chevron-up" : "chevron-down"}
+                          size={16}
+                          color={colors.mutedForeground}
+                        />
+                      </TouchableOpacity>
+                      {isExpanded && (
+                        <>
+                          <View style={styles.divider} />
+                          <View style={styles.sigEditor}>
+                            <TextInput
+                              style={styles.sigInput}
+                              value={sigTexts[acct.email] ?? ""}
+                              onChangeText={(t) => setSigTexts(prev => ({ ...prev, [acct.email]: t }))}
+                              placeholder="Add your signature here..."
+                              placeholderTextColor={colors.mutedForeground}
+                              multiline
+                              autoCapitalize="none"
+                              autoCorrect={false}
+                            />
+                            <View style={styles.sigImageRow}>
+                              {sigImages[acct.email] ? (
+                                <>
+                                  <Image
+                                    source={{ uri: sigImages[acct.email]! }}
+                                    style={styles.sigImagePreview}
+                                  />
+                                  <TouchableOpacity
+                                    style={styles.sigImageBtn}
+                                    onPress={() => handleRemoveSigImage(acct.email)}
+                                  >
+                                    <Feather name="trash-2" size={13} color={colors.destructive} />
+                                    <Text style={[styles.sigImageBtnText, { color: colors.destructive }]}>Remove</Text>
+                                  </TouchableOpacity>
+                                </>
+                              ) : (
+                                <TouchableOpacity
+                                  style={styles.sigImageBtn}
+                                  onPress={() => handlePickSigImage(acct.email)}
+                                >
+                                  <Feather name="image" size={13} color={colors.foreground} />
+                                  <Text style={styles.sigImageBtnText}>Add image</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                            <View style={styles.sigActionRow}>
+                              <TouchableOpacity
+                                style={styles.sigCancelBtn}
+                                onPress={() => setExpandedSig(null)}
+                                disabled={savingSig === acct.email}
+                              >
+                                <Text style={[styles.nameBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.sigSaveBtn}
+                                onPress={() => handleSaveSig(acct.email)}
+                                disabled={savingSig === acct.email}
+                              >
+                                {savingSig === acct.email ? (
+                                  <ActivityIndicator size="small" color={colors.primaryForeground} />
+                                ) : (
+                                  <Text style={[styles.nameBtnText, { color: colors.primaryForeground }]}>Save</Text>
+                                )}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </View>
+            </View>
+          )}
 
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Connectors</Text>

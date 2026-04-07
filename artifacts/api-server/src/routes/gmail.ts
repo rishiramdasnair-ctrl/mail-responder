@@ -12,8 +12,16 @@ import {
 } from "../lib/gmailClient";
 import { SendReplyBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { emailSnoozesTable } from "@workspace/db/schema";
+import { emailSnoozesTable, gmailAccountsTable } from "@workspace/db/schema";
 import { eq, and, gt } from "drizzle-orm";
+
+async function getAccountSignature(userId: string, email: string): Promise<string> {
+  const [row] = await db.select({ signature: gmailAccountsTable.signature })
+    .from(gmailAccountsTable)
+    .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)))
+    .limit(1);
+  return row?.signature?.trim() || "";
+}
 
 const router = Router();
 
@@ -478,6 +486,8 @@ router.post("/gmail/compose", requireAuth, async (req, res) => {
     const gmail = await getGmailClientForUser(userId, account);
     const profile = await gmail.users.getProfile({ userId: "me" });
     const fromEmail = account || profile.data.emailAddress || "";
+    const sig = await getAccountSignature(userId, fromEmail);
+    const fullBody = sig ? `${body}\n\n-- \n${sig}` : body;
 
     const emailLines = [
       `From: ${fromEmail}`,
@@ -487,7 +497,7 @@ router.post("/gmail/compose", requireAuth, async (req, res) => {
       `Subject: ${subject}`,
       `Content-Type: text/plain; charset=utf-8`,
       "",
-      body,
+      fullBody,
     ];
 
     const raw = Buffer.from(emailLines.join("\r\n")).toString("base64url");
@@ -514,6 +524,8 @@ router.post("/gmail/send", requireAuth, async (req, res) => {
 
     const profile = await gmail.users.getProfile({ userId: "me" });
     const fromEmail = account || profile.data.emailAddress || "";
+    const sig = await getAccountSignature(userId, fromEmail);
+    const fullBody = sig ? `${body.body}\n\n-- \n${sig}` : body.body;
 
     const emailLines = [
       `From: ${fromEmail}`,
@@ -525,7 +537,7 @@ router.post("/gmail/send", requireAuth, async (req, res) => {
     if (body.inReplyTo) emailLines.push(`In-Reply-To: ${body.inReplyTo}`);
     if (body.references) emailLines.push(`References: ${body.references}`);
 
-    emailLines.push("", body.body);
+    emailLines.push("", fullBody);
 
     const raw = Buffer.from(emailLines.join("\r\n")).toString("base64url");
 

@@ -9,6 +9,8 @@ export const gmailAccountsTable = pgTable("gmail_accounts", {
   refreshToken: text("refresh_token").notNull(),
   tokenExpiresAt: timestamp("token_expires_at"),
   isPrimary: boolean("is_primary").notNull().default(false),
+  signature: text("signature"),
+  signatureImageUrl: text("signature_image_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({

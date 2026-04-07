@@ -266,6 +266,24 @@ router.get("/gmail/accounts", requireAuth, async (req, res) => {
   }
 });
 
+// Update signature for a specific Gmail account
+router.put("/gmail/accounts/:email/signature", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const email = decodeURIComponent(req.params.email);
+    const signature = typeof req.body?.signature === "string" ? req.body.signature : null;
+    const signatureImageUrl = typeof req.body?.signatureImageUrl === "string" ? req.body.signatureImageUrl : null;
+    await db.update(gmailAccountsTable)
+      .set({ signature, signatureImageUrl, updatedAt: new Date() })
+      .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[signature] error:", err);
+    res.status(500).json({ error: "Failed to update signature" });
+  }
+});
+
 // Disconnect a specific Gmail account
 router.delete("/gmail/accounts/:email", requireAuth, async (req, res) => {
   try {

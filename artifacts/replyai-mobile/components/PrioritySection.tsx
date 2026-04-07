@@ -65,6 +65,7 @@ function formatShortDate(dateStr: string): string {
 const cardStyles = StyleSheet.create({
   card: {
     width: 240,
+    height: 220,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(175,82,222,0.3)",
@@ -83,7 +84,11 @@ const cardStyles = StyleSheet.create({
   cardInnerPadded: {
     flex: 1,
     padding: 14,
-    gap: 8,
+    justifyContent: "space-between",
+  },
+  cardContent: {
+    flex: 1,
+    gap: 6,
   },
   topRow: {
     flexDirection: "row",
@@ -152,34 +157,36 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
           style={cardStyles.accentBar}
         />
         <View style={cardStyles.cardInnerPadded}>
-          <View style={cardStyles.topRow}>
-            <View style={{
-              width: 28,
-              height: 28,
-              borderRadius: 14,
-              backgroundColor: item.isUnread ? colors.foreground : colors.muted,
-              alignItems: "center",
-              justifyContent: "center",
-            }}>
-              <Text style={{
-                fontSize: 10,
-                fontFamily: "Inter_600SemiBold",
-                color: item.isUnread ? colors.primaryForeground : colors.mutedForeground,
-              }}>{initials}</Text>
+          <View style={cardStyles.cardContent}>
+            <View style={cardStyles.topRow}>
+              <View style={{
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                backgroundColor: item.isUnread ? colors.foreground : colors.muted,
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <Text style={{
+                  fontSize: 10,
+                  fontFamily: "Inter_600SemiBold",
+                  color: item.isUnread ? colors.primaryForeground : colors.mutedForeground,
+                }}>{initials}</Text>
+              </View>
+              <Text style={[{ flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground }]} numberOfLines={1}>
+                {displayName}
+              </Text>
+              <Text style={[cardStyles.dateText, { color: colors.mutedForeground }]}>{formatShortDate(item.date)}</Text>
             </View>
-            <Text style={[{ flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground }]} numberOfLines={1}>
-              {displayName}
+
+            <Text style={[cardStyles.subject, { color: colors.foreground }]} numberOfLines={1}>
+              {item.subject || "(no subject)"}
             </Text>
-            <Text style={[cardStyles.dateText, { color: colors.mutedForeground }]}>{formatShortDate(item.date)}</Text>
+
+            <Text style={[cardStyles.summary, { color: colors.mutedForeground }]} numberOfLines={4}>
+              {item.summary}
+            </Text>
           </View>
-
-          <Text style={[cardStyles.subject, { color: colors.foreground }]} numberOfLines={1}>
-            {item.subject || "(no subject)"}
-          </Text>
-
-          <Text style={[cardStyles.summary, { color: colors.mutedForeground }]}>
-            {item.summary}
-          </Text>
 
           <View style={[cardStyles.actionRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
             <View style={[cardStyles.urgentDot, { backgroundColor: isUrgent ? "#FF2D55" : "transparent" }]} />

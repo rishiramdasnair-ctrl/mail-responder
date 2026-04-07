@@ -11,12 +11,18 @@ import {
   Platform,
   KeyboardAvoidingView,
   FlatList,
+  BackHandler,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect, useNavigation } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+
+interface GmailAccount {
+  email: string;
+  isPrimary: boolean;
+}
 
 interface ContactResult {
   name: string | null;
@@ -79,6 +85,7 @@ export default function ComposeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
   const { apiBaseUrl, authHeaders } = useApiClient();
 
   const [toInput, setToInput] = useState("");
@@ -94,7 +101,7 @@ export default function ComposeScreen() {
   const [searchingTo, setSearchingTo] = useState(false);
   const [searchingCc, setSearchingCc] = useState(false);
 
-  const [accounts, setAccounts] = useState<string[]>([]);
+  const [accounts, setAccounts] = useState<GmailAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
 
   const [sending, setSending] = useState(false);
@@ -110,15 +117,54 @@ export default function ComposeScreen() {
     subject.trim().length > 0 ||
     body.trim().length > 0;
 
+  const confirmDiscard = useCallback(
+    (onConfirm: () => void) => {
+      if (!hasContent) {
+        onConfirm();
+        return;
+      }
+      Alert.alert(
+        "Discard Email",
+        "Are you sure you want to discard this email?",
+        [
+          { text: "Keep Editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: onConfirm },
+        ]
+      );
+    },
+    [hasContent]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        confirmDiscard(() => router.back());
+        return true;
+      });
+      return () => sub.remove();
+    }, [confirmDiscard, router])
+  );
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e: { preventDefault: () => void; data: { action: { type: string } } }) => {
+      if (!hasContent) return;
+      e.preventDefault();
+      confirmDiscard(() => navigation.dispatch(e.data.action));
+    });
+    return unsubscribe;
+  }, [navigation, hasContent, confirmDiscard]);
+
   useEffect(() => {
     (async () => {
       try {
         const headers = await authHeaders();
         const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
         if (res.ok) {
-          const data = (await res.json()) as { accounts: string[] };
+          const data = (await res.json()) as { accounts: GmailAccount[] };
           setAccounts(data.accounts);
-          if (data.accounts.length > 0) setSelectedAccount(data.accounts[0]);
+          const primary = data.accounts.find((a) => a.isPrimary) ?? data.accounts[0];
+          if (primary) setSelectedAccount(primary.email);
         }
       } catch {}
     })();
@@ -207,22 +253,7 @@ export default function ComposeScreen() {
   };
 
   const handleCancel = () => {
-    if (hasContent) {
-      Alert.alert(
-        "Discard Email",
-        "Are you sure you want to discard this email?",
-        [
-          { text: "Keep Editing", style: "cancel" },
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => router.back(),
-          },
-        ]
-      );
-    } else {
-      router.back();
-    }
+    confirmDiscard(() => router.back());
   };
 
   const handleSend = async () => {
@@ -483,15 +514,15 @@ export default function ComposeScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountScroll}>
                 {accounts.map((acct) => (
                   <TouchableOpacity
-                    key={acct}
-                    style={[styles.accountPill, selectedAccount === acct && styles.accountPillActive]}
-                    onPress={() => setSelectedAccount(acct)}
+                    key={acct.email}
+                    style={[styles.accountPill, selectedAccount === acct.email && styles.accountPillActive]}
+                    onPress={() => setSelectedAccount(acct.email)}
                   >
                     <Text
-                      style={[styles.accountPillText, selectedAccount === acct && styles.accountPillTextActive]}
+                      style={[styles.accountPillText, selectedAccount === acct.email && styles.accountPillTextActive]}
                       numberOfLines={1}
                     >
-                      {acct}
+                      {acct.email}
                     </Text>
                   </TouchableOpacity>
                 ))}

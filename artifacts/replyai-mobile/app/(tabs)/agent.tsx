@@ -160,7 +160,7 @@ function MessageBubble({
   if (msg.role === "loading") {
     return (
       <View style={s.assistantRow}>
-        <View style={s.avatar}><Feather name="zap" size={13} color={colors.primaryForeground} /></View>
+        <View style={s.avatar}><Feather name="message-square" size={13} color={colors.primaryForeground} /></View>
         <View style={s.assistantBubble}>
           <ActivityIndicator color={colors.mutedForeground} size="small" />
           {msg.steps && msg.steps.length > 0 && (
@@ -183,7 +183,7 @@ function MessageBubble({
     const disabled = msg.resolved || isActing;
     return (
       <View style={s.assistantRow}>
-        <View style={s.avatar}><Feather name="zap" size={13} color={colors.primaryForeground} /></View>
+        <View style={s.avatar}><Feather name="message-square" size={13} color={colors.primaryForeground} /></View>
         <View style={s.card}>
           <Text style={s.cardTitle}>Email draft — ready to send</Text>
           <Text style={s.fieldLabel}>To</Text>
@@ -221,7 +221,7 @@ function MessageBubble({
     const disabled = msg.resolved || isActing;
     return (
       <View style={s.assistantRow}>
-        <View style={s.avatar}><Feather name="zap" size={13} color={colors.primaryForeground} /></View>
+        <View style={s.avatar}><Feather name="message-square" size={13} color={colors.primaryForeground} /></View>
         <View style={s.card}>
           <Text style={s.cardTitle}>Calendar event — confirm to create</Text>
           <Text style={s.fieldLabel}>Event</Text>
@@ -260,7 +260,7 @@ function MessageBubble({
 
   return (
     <View style={s.assistantRow}>
-      <View style={s.avatar}><Feather name="zap" size={13} color={colors.primaryForeground} /></View>
+      <View style={s.avatar}><Feather name="message-square" size={13} color={colors.primaryForeground} /></View>
       <View style={s.assistantBubble}><Text style={s.assistantText}>{msg.content}</Text></View>
     </View>
   );
@@ -573,7 +573,7 @@ export default function AgentScreen() {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.headerIcon}>
-            <Feather name="zap" size={18} color={colors.primaryForeground} />
+            <Feather name="message-square" size={18} color={colors.primaryForeground} />
           </View>
           <View>
             <Text style={styles.title}>Agent</Text>
@@ -611,7 +611,7 @@ export default function AgentScreen() {
                   {digestLoading ? (
                     <ActivityIndicator size="small" color={colors.primaryForeground} />
                   ) : (
-                    <Feather name="zap" size={16} color={colors.primaryForeground} />
+                    <Feather name="inbox" size={16} color={colors.primaryForeground} />
                   )}
                   <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: colors.primaryForeground }}>
                     Catch me up
@@ -652,7 +652,7 @@ export default function AgentScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionsRow} style={styles.suggestionsScroll}>
               {suggestions.map((sug, i) => (
                 <TouchableOpacity key={i} style={styles.chip} onPress={() => sendMessage(sug.prompt)} activeOpacity={0.7}>
-                  <Feather name={ICON_MAP[sug.icon] ?? "zap"} size={13} color={colors.mutedForeground} />
+                  <Feather name={ICON_MAP[sug.icon] ?? "message-circle"} size={13} color={colors.mutedForeground} />
                   <Text style={styles.chipText}>{sug.label}</Text>
                 </TouchableOpacity>
               ))}

@@ -631,7 +631,6 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
     <>
       <View style={styles.strip}>
         <View style={styles.leftSide}>
-          <Feather name="zap" size={12} color={colors.mutedForeground} />
           <Text style={styles.toolsText}>Tools</Text>
         </View>
         <View style={styles.divider} />

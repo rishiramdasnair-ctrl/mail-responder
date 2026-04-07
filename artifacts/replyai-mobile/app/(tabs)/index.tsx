@@ -407,11 +407,12 @@ export default function InboxScreen() {
     );
   }
 
+  const TAB_BAR_HEIGHT = Platform.select({ ios: 49, android: 56, web: 84 }) ?? 49;
   const fabStyles = StyleSheet.create({
     fab: {
       position: "absolute",
       right: 20,
-      bottom: insets.bottom + 24,
+      bottom: insets.bottom + TAB_BAR_HEIGHT + 16,
       width: 52,
       height: 52,
       borderRadius: 26,

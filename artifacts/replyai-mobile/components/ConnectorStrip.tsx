@@ -186,30 +186,19 @@ function ConnectorAvatar({
           );
         })()}
         {connected && (
-          <>
-            <View
-              style={{
-                position: "absolute",
-                inset: -2,
-                borderRadius: size / 2 + 2,
-                borderWidth: 2,
-                borderColor: "#22c55e",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                bottom: -1,
-                right: -1,
-                width: 9,
-                height: 9,
-                borderRadius: 5,
-                backgroundColor: "#22c55e",
-                borderWidth: 1.5,
-                borderColor: colors.background,
-              }}
-            />
-          </>
+          <View
+            style={{
+              position: "absolute",
+              bottom: -1,
+              right: -1,
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: colors.foreground,
+              borderWidth: 1.5,
+              borderColor: colors.background,
+            }}
+          />
         )}
       </View>
     </TouchableOpacity>
@@ -298,12 +287,12 @@ function ConnectorDetailSheet({
       width: 7,
       height: 7,
       borderRadius: 4,
-      backgroundColor: connected ? "#22c55e" : colors.border,
+      backgroundColor: connected ? colors.foreground : colors.border,
     },
     statusText: {
       fontSize: 12,
       fontFamily: "Inter_400Regular",
-      color: connected ? "#22c55e" : colors.mutedForeground,
+      color: connected ? colors.foreground : colors.mutedForeground,
     },
     description: {
       fontSize: 14,
@@ -408,7 +397,7 @@ function ConnectorDetailSheet({
               <Text style={styles.capTitle}>What the agent can do</Text>
               {def.capabilities.map((cap) => (
                 <View key={cap} style={styles.capRow}>
-                  <Feather name="check-circle" size={15} color={connected ? "#22c55e" : colors.border} />
+                  <Feather name="check-circle" size={15} color={connected ? colors.foreground : colors.border} />
                   <Text style={styles.capText}>{cap}</Text>
                 </View>
               ))}
@@ -461,9 +450,10 @@ function ConnectorDetailSheet({
 
 interface ConnectorStripProps {
   gmailConnected: boolean;
+  exclude?: string[];
 }
 
-export function ConnectorStrip({ gmailConnected }: ConnectorStripProps) {
+export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps) {
   const colors = useColors();
   const { apiBaseUrl, authHeaders } = useApiClient();
   const qc = useQueryClient();
@@ -643,7 +633,7 @@ export function ConnectorStrip({ gmailConnected }: ConnectorStripProps) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ flexDirection: "row", gap: 8, alignItems: "center" }}
         >
-          {ALL_CONNECTORS.map((def) => (
+          {ALL_CONNECTORS.filter((d) => !exclude?.includes(d.id)).map((def) => (
             <ConnectorAvatar
               key={def.id}
               def={def}
@@ -654,7 +644,7 @@ export function ConnectorStrip({ gmailConnected }: ConnectorStripProps) {
           <TouchableOpacity
             style={styles.addBtn}
             onPress={() => {
-              const firstUnconnected = ALL_CONNECTORS.find(
+              const firstUnconnected = ALL_CONNECTORS.filter((d) => !exclude?.includes(d.id)).find(
                 (d) => !isConnected(d.id) && d.oauthPath
               );
               if (firstUnconnected) handleOpen(firstUnconnected);

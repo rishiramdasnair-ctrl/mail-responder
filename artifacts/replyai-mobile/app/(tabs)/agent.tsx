@@ -645,7 +645,7 @@ export default function AgentScreen() {
           </TouchableWithoutFeedback>
         )}
 
-        <ConnectorStrip gmailConnected={gmailConnected} />
+        <ConnectorStrip gmailConnected={gmailConnected} exclude={["zoom", "teams"]} />
 
         <View style={styles.inputArea}>
           {isEmpty && suggestions.length > 0 && (

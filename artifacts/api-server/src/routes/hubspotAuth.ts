@@ -10,7 +10,6 @@ import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 const router = Router();
 
 const HUBSPOT_SCOPES = [
-  "contacts",
   "crm.objects.contacts.read",
   "crm.objects.contacts.write",
   "crm.objects.deals.read",

@@ -10,6 +10,7 @@ import { openrouter as openai, FAST_MODEL, AGENT_MODEL } from "../lib/openrouter
 import rateLimit from "express-rate-limit";
 import { getGmailClientForUser, getCalendarClientForUser, getHeader } from "../lib/gmailClient";
 import { getTeamsToken, teamsGet } from "../lib/teamsClient";
+import { getFathomToken } from "./fathom";
 import { google } from "googleapis";
 
 const router = Router();
@@ -374,7 +375,7 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
       }
     } catch { /* Gmail not connected */ }
 
-    // --- Google Calendar upcoming events ---
+    // --- Google Calendar upcoming events + Fathom pre-meeting briefs ---
     try {
       const calendar = await getCalendarClientForUser(userId);
       const gcal = google.calendar({ version: "v3", auth: calendar });
@@ -389,10 +390,68 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
         orderBy: "startTime",
       });
       const events = eventsRes.data.items || [];
+
+      // Try to enrich with Fathom past meeting summaries
+      const fathomToken = await getFathomToken(userId).catch(() => null);
+      const fathomCache = new Map<string, string>(); // email key → summary
+
+      if (fathomToken && events.length) {
+        try {
+          // Collect all attendee emails across upcoming events (excluding self / google calendar service accounts)
+          const allAttendeeEmails = new Set<string>();
+          for (const e of events) {
+            for (const att of e.attendees || []) {
+              if (att.email && !att.self && !att.email.endsWith("@group.calendar.google.com")) {
+                allAttendeeEmails.add(att.email.toLowerCase());
+              }
+            }
+          }
+
+          if (allAttendeeEmails.size > 0) {
+            // Fetch last 50 Fathom meetings and match by attendee email
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+            const fathomData = await fetch(
+              `https://api.fathom.ai/external/v1/meetings?limit=50&created_after=${thirtyDaysAgo}`,
+              { headers: { Authorization: `Bearer ${fathomToken}`, Accept: "application/json" } }
+            );
+            if (fathomData.ok) {
+              const fm = await fathomData.json() as { items?: Array<{
+                title?: string;
+                scheduled_start_time?: string;
+                calendar_invitees?: Array<{ email?: string; name?: string }>;
+                default_summary?: { content?: string } | null;
+                recordings?: Array<{ id: string }>;
+              }> };
+
+              for (const meeting of fm.items || []) {
+                const inviteeEmails = (meeting.calendar_invitees || [])
+                  .map(i => (i.email || "").toLowerCase())
+                  .filter(Boolean);
+                const overlap = inviteeEmails.filter(e => allAttendeeEmails.has(e));
+                if (overlap.length > 0 && meeting.default_summary?.content) {
+                  const key = overlap[0];
+                  if (!fathomCache.has(key)) {
+                    const summarySnippet = meeting.default_summary.content.slice(0, 300).replace(/\n+/g, " ");
+                    fathomCache.set(key, `Last meeting (${meeting.title || "Untitled"}): ${summarySnippet}`);
+                  }
+                }
+              }
+            }
+          }
+        } catch { /* Fathom enrichment non-fatal */ }
+      }
+
       if (events.length) {
         const items = events.map((e) => {
-          const start = e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "All day";
-          return `• ${start} — ${e.summary || "Untitled event"}${e.attendees?.length ? ` (${e.attendees.length} attendees)` : ""}`;
+          const start = e.start?.dateTime
+            ? new Date(e.start.dateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+            : "All day";
+          const attendeeEmails = (e.attendees || [])
+            .filter(a => !a.self && !a.email?.endsWith("@group.calendar.google.com"))
+            .map(a => (a.email || "").toLowerCase());
+          const fathomContext = attendeeEmails.map(em => fathomCache.get(em)).find(Boolean);
+          const base = `• ${start} — ${e.summary || "Untitled event"}${e.attendees?.length ? ` (${e.attendees.length} attendees)` : ""}`;
+          return fathomContext ? `${base}\n  [Fathom] ${fathomContext}` : base;
         });
         sections.push(`CALENDAR (next 48h)\n${items.join("\n")}`);
       } else {
@@ -481,7 +540,7 @@ EMAIL
 One or two sentences on inbox state and the most urgent email.
 
 CALENDAR
-One sentence on what's coming up.
+For each upcoming meeting that has a [Fathom] context attached, write one sentence summarizing what was discussed last time and what to be ready for. For meetings without Fathom context, just note the time and attendee count.
 
 COMMS
 One or two sentences covering Slack/Teams highlights if any.
@@ -493,9 +552,10 @@ ACTION ITEMS
 (Max 3 bullets. Omit section if nothing urgent.)
 
 Rules:
-- Be concise and direct — max 200 words total
+- Be concise and direct — max 220 words total
 - Only reference actual data from the snapshot
 - Omit any section header if that system is not in the snapshot
+- When [Fathom] context is present for a meeting, lead with the most relevant prep point from that summary
 - Plain text only — no asterisks, no pound signs, no markdown
 - Sound like a smart, calm chief of staff giving a morning briefing`,
         },

@@ -26,6 +26,8 @@ import calendlyRouter from "./calendly";
 import zoomAuthRouter from "./zoomAuth";
 import teamsAuthRouter from "./teamsAuth";
 import teamsActionsRouter from "./teamsActions";
+import fathomAuthRouter from "./fathomAuth";
+import fathomRouter from "./fathom";
 
 const router: IRouter = Router();
 
@@ -40,6 +42,8 @@ router.use(calendlyAuthRouter);
 router.use(zoomAuthRouter);
 router.use(teamsAuthRouter);
 router.use(teamsActionsRouter);
+router.use(fathomAuthRouter);
+router.use(fathomRouter);
 router.use(gmailRouter);
 router.use(calendarRouter);
 router.use(aiRouter);

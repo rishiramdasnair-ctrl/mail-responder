@@ -51,6 +51,16 @@ export const ALL_CONNECTORS: ConnectorDef[] = [
     initials: "C",
   },
   {
+    id: "fathom",
+    label: "Fathom",
+    description: "Pull meeting summaries and transcripts to brief you before every call.",
+    capabilities: ["Past meeting summaries", "Pre-meeting briefs", "Transcript search", "Action item history"],
+    color: "#7C3AED",
+    textColor: "#fff",
+    initials: "Fa",
+    oauthPath: "/api/auth/fathom/start",
+  },
+  {
     id: "google-drive",
     label: "Google Drive",
     description: "Search, read, and save files in Google Drive.",

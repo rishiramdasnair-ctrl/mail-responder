@@ -15,8 +15,9 @@ import {
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useRouter, useFocusEffect, useNavigation } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useToast } from "@/components/ToastProvider";
@@ -55,6 +56,13 @@ const CONFERENCE_OPTIONS: Array<{ value: Exclude<ConferenceType, null>; label: s
   { value: "teams", label: "Teams", icon: "video" },
 ];
 
+interface Connector {
+  id: string;
+  connectorId: string;
+  displayName: string;
+  status: string;
+}
+
 export default function CreateEventScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -63,6 +71,22 @@ export default function CreateEventScreen() {
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
   const { showToast } = useToast();
+
+  const { data: connectorsData } = useQuery<{ connectors: Connector[] }>({
+    queryKey: ["connectors"],
+    queryFn: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/connectors`, { headers });
+      return res.json();
+    },
+  });
+
+  const isZoomConnected = !!(connectorsData?.connectors ?? []).find(
+    (c) => c.connectorId === "zoom" && c.status === "connected"
+  );
+  const isTeamsConnected = !!(connectorsData?.connectors ?? []).find(
+    (c) => c.connectorId === "teams" && c.status === "connected"
+  );
 
   const now = new Date();
   const defaultStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0);
@@ -176,9 +200,13 @@ export default function CreateEventScreen() {
     setSaving(true);
     try {
       const headers = await authHeaders();
-      const needsUrl = conferenceType === "zoom" || conferenceType === "teams";
-      if (needsUrl && !conferenceUrl.trim()) {
-        Alert.alert("Missing link", `Please paste your ${conferenceType === "zoom" ? "Zoom" : "Teams"} meeting URL.`);
+      const isZoomSelected = conferenceType === "zoom";
+      const isTeamsSelected = conferenceType === "teams";
+      const needsManualUrl =
+        (isZoomSelected && !isZoomConnected) ||
+        (isTeamsSelected && !isTeamsConnected);
+      if (needsManualUrl && !conferenceUrl.trim()) {
+        Alert.alert("Missing link", `Please paste your ${isZoomSelected ? "Zoom" : "Teams"} meeting URL.`);
         setSaving(false);
         return;
       }
@@ -193,7 +221,7 @@ export default function CreateEventScreen() {
           ...(location.trim() ? { location: location.trim() } : {}),
           ...(attendees.length > 0 ? { attendees: attendees.map((a) => a.email) } : {}),
           ...(conferenceType ? { conferenceType } : {}),
-          ...(needsUrl && conferenceUrl.trim() ? { conferenceUrl: conferenceUrl.trim() } : {}),
+          ...(needsManualUrl && conferenceUrl.trim() ? { conferenceUrl: conferenceUrl.trim() } : {}),
         }),
       });
       const data = await res.json() as { error?: string; id?: string };
@@ -549,21 +577,91 @@ export default function CreateEventScreen() {
                 })}
               </View>
             </View>
-            {(conferenceType === "zoom" || conferenceType === "teams") && (
-              <View style={styles.confUrlRow}>
-                <Feather name="link" size={14} color={colors.mutedForeground} />
-                <TextInput
-                  style={styles.confUrlInput}
-                  value={conferenceUrl}
-                  onChangeText={setConferenceUrl}
-                  placeholder={`Paste ${conferenceType === "zoom" ? "Zoom" : "Teams"} meeting link`}
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                  selectionColor={colors.foreground}
-                />
-              </View>
+            {conferenceType === "zoom" && (
+              isZoomConnected ? (
+                <View style={styles.confUrlRow}>
+                  <Feather name="check-circle" size={14} color={colors.mutedForeground} />
+                  <Text style={[styles.confUrlInput, { color: colors.mutedForeground }]}>
+                    A Zoom meeting link will be created automatically
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.confUrlRow}>
+                  <Feather name="link" size={14} color={colors.mutedForeground} />
+                  <TextInput
+                    style={styles.confUrlInput}
+                    value={conferenceUrl}
+                    onChangeText={setConferenceUrl}
+                    placeholder="Paste Zoom meeting link"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    selectionColor={colors.foreground}
+                  />
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        const headers = await authHeaders();
+                        const r = await fetch(`${apiBaseUrl}/api/auth/zoom/mobile-url`, { headers });
+                        if (!r.ok) return;
+                        const { url } = await r.json() as { url: string };
+                        const result = await WebBrowser.openAuthSessionAsync(url, "replyai://oauth-success");
+                        if (result.type === "success" && result.url.startsWith("replyai://oauth-success")) {
+                          qc.invalidateQueries({ queryKey: ["connectors"] });
+                        }
+                      } catch {}
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.foreground, fontFamily: "Inter_500Medium" }}>
+                      Connect
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )
+            )}
+            {conferenceType === "teams" && (
+              isTeamsConnected ? (
+                <View style={styles.confUrlRow}>
+                  <Feather name="check-circle" size={14} color={colors.mutedForeground} />
+                  <Text style={[styles.confUrlInput, { color: colors.mutedForeground }]}>
+                    A Teams meeting link will be created automatically
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.confUrlRow}>
+                  <Feather name="link" size={14} color={colors.mutedForeground} />
+                  <TextInput
+                    style={styles.confUrlInput}
+                    value={conferenceUrl}
+                    onChangeText={setConferenceUrl}
+                    placeholder="Paste Teams meeting link"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    selectionColor={colors.foreground}
+                  />
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        const headers = await authHeaders();
+                        const r = await fetch(`${apiBaseUrl}/api/auth/teams/mobile-url`, { headers });
+                        if (!r.ok) return;
+                        const { url } = await r.json() as { url: string };
+                        const result = await WebBrowser.openAuthSessionAsync(url, "replyai://oauth-success");
+                        if (result.type === "success" && result.url.startsWith("replyai://oauth-success")) {
+                          qc.invalidateQueries({ queryKey: ["connectors"] });
+                        }
+                      } catch {}
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.foreground, fontFamily: "Inter_500Medium" }}>
+                      Connect
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )
             )}
             {conferenceType === "meet" && (
               <View style={styles.confUrlRow}>

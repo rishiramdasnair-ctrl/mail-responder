@@ -3,8 +3,227 @@ import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
 import { getCalendarClientForUser, getGmailClientForUser } from "../lib/gmailClient";
 import { openrouter, FAST_MODEL } from "../lib/openrouter";
+import { db } from "@workspace/db";
+import { connectorsTable } from "@workspace/db/schema";
+import { and, eq } from "drizzle-orm";
 
 const router = Router();
+
+interface ZoomConnectorConfig {
+  accessToken: string;
+  refreshToken?: string | null;
+  expiresAt?: string | null;
+  zoomUserId?: string | null;
+  zoomEmail?: string | null;
+}
+
+interface TeamsConnectorConfig {
+  accessToken: string;
+  refreshToken?: string | null;
+  expiresAt?: string | null;
+  teamsUserId?: string | null;
+  teamsEmail?: string | null;
+}
+
+async function refreshZoomToken(userId: string, config: ZoomConnectorConfig): Promise<string | null> {
+  const clientId = process.env.ZOOM_CLIENT_ID;
+  const clientSecret = process.env.ZOOM_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !config.refreshToken) return null;
+
+  try {
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const res = await fetch("https://zoom.us/oauth/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${credentials}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: config.refreshToken,
+      }).toString(),
+    });
+    if (!res.ok) return null;
+
+    const tokens = await res.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+    const newExpiresAt = tokens.expires_in
+      ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+      : null;
+
+    const newConfig: ZoomConnectorConfig = {
+      ...config,
+      accessToken: tokens.access_token,
+      expiresAt: newExpiresAt,
+      ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+    };
+
+    await db.update(connectorsTable).set({
+      config: newConfig,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(connectorsTable.userId, userId),
+      eq(connectorsTable.connectorId, "zoom"),
+    ));
+
+    return tokens.access_token;
+  } catch {
+    return null;
+  }
+}
+
+async function getZoomToken(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({ config: connectorsTable.config })
+    .from(connectorsTable)
+    .where(and(
+      eq(connectorsTable.userId, userId),
+      eq(connectorsTable.connectorId, "zoom"),
+      eq(connectorsTable.status, "connected"),
+    ))
+    .limit(1);
+
+  if (!rows.length) return null;
+  const config = rows[0].config as ZoomConnectorConfig | null;
+  if (!config?.accessToken) return null;
+
+  const expiresAt = config.expiresAt ? new Date(config.expiresAt) : null;
+  if (!expiresAt || expiresAt > new Date()) return config.accessToken;
+
+  return refreshZoomToken(userId, config);
+}
+
+async function createZoomMeeting(token: string, title: string, startIso: string, endIso: string): Promise<string | null> {
+  try {
+    const startDate = new Date(startIso);
+    const endDate = new Date(endIso);
+    const durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+
+    const res = await fetch("https://api.zoom.us/v2/users/me/meetings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        topic: title,
+        type: 2,
+        start_time: startDate.toISOString(),
+        duration: durationMinutes > 0 ? durationMinutes : 60,
+        settings: {
+          join_before_host: true,
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { message?: string };
+      console.error("[zoom] create meeting failed:", err);
+      return null;
+    }
+
+    const data = await res.json() as { join_url?: string };
+    return data.join_url ?? null;
+  } catch (err) {
+    console.error("[zoom] create meeting error:", err);
+    return null;
+  }
+}
+
+async function refreshTeamsToken(userId: string, config: TeamsConnectorConfig): Promise<string | null> {
+  const clientId = process.env.TEAMS_CLIENT_ID;
+  const clientSecret = process.env.TEAMS_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !config.refreshToken) return null;
+
+  try {
+    const tenantId = process.env.TEAMS_TENANT_ID || "common";
+    const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: "refresh_token",
+        refresh_token: config.refreshToken,
+        scope: "OnlineMeetings.ReadWrite offline_access",
+      }).toString(),
+    });
+    if (!res.ok) return null;
+
+    const tokens = await res.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+    const newExpiresAt = tokens.expires_in
+      ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+      : null;
+
+    const newConfig: TeamsConnectorConfig = {
+      ...config,
+      accessToken: tokens.access_token,
+      expiresAt: newExpiresAt,
+      ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+    };
+
+    await db.update(connectorsTable).set({
+      config: newConfig,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(connectorsTable.userId, userId),
+      eq(connectorsTable.connectorId, "teams"),
+    ));
+
+    return tokens.access_token;
+  } catch {
+    return null;
+  }
+}
+
+async function getTeamsToken(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({ config: connectorsTable.config })
+    .from(connectorsTable)
+    .where(and(
+      eq(connectorsTable.userId, userId),
+      eq(connectorsTable.connectorId, "teams"),
+      eq(connectorsTable.status, "connected"),
+    ))
+    .limit(1);
+
+  if (!rows.length) return null;
+  const config = rows[0].config as TeamsConnectorConfig | null;
+  if (!config?.accessToken) return null;
+
+  const expiresAt = config.expiresAt ? new Date(config.expiresAt) : null;
+  if (!expiresAt || expiresAt > new Date()) return config.accessToken;
+
+  return refreshTeamsToken(userId, config);
+}
+
+async function createTeamsMeeting(token: string, title: string, startIso: string, endIso: string): Promise<string | null> {
+  try {
+    const res = await fetch("https://graph.microsoft.com/v1.0/me/onlineMeetings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        subject: title,
+        startDateTime: new Date(startIso).toISOString(),
+        endDateTime: new Date(endIso).toISOString(),
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+      console.error("[teams] create meeting failed:", err);
+      return null;
+    }
+
+    const data = await res.json() as { joinWebUrl?: string };
+    return data.joinWebUrl ?? null;
+  } catch (err) {
+    console.error("[teams] create meeting error:", err);
+    return null;
+  }
+}
 
 router.get("/calendar/events", requireAuth, async (req, res) => {
   try {
@@ -97,12 +316,31 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
 
     const isDateOnly = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+    // Auto-create Zoom meeting if connected and no URL provided
+    let resolvedConferenceUrl = conferenceUrl;
+    if (conferenceType === "zoom" && !conferenceUrl) {
+      const zoomToken = await getZoomToken(userId);
+      if (zoomToken) {
+        const joinUrl = await createZoomMeeting(zoomToken, title, start, end);
+        if (joinUrl) resolvedConferenceUrl = joinUrl;
+      }
+    }
+
+    // Auto-create Teams meeting if connected and no URL provided
+    if (conferenceType === "teams" && !conferenceUrl) {
+      const teamsToken = await getTeamsToken(userId);
+      if (teamsToken) {
+        const joinUrl = await createTeamsMeeting(teamsToken, title, start, end);
+        if (joinUrl) resolvedConferenceUrl = joinUrl;
+      }
+    }
+
     // Build description with external conference URL if provided
     let finalDescription = description || undefined;
-    if (conferenceType === "zoom" && conferenceUrl) {
-      finalDescription = [finalDescription, `Zoom Meeting: ${conferenceUrl}`].filter(Boolean).join("\n\n");
-    } else if (conferenceType === "teams" && conferenceUrl) {
-      finalDescription = [finalDescription, `Teams Meeting: ${conferenceUrl}`].filter(Boolean).join("\n\n");
+    if (conferenceType === "zoom" && resolvedConferenceUrl) {
+      finalDescription = [finalDescription, `Zoom Meeting: ${resolvedConferenceUrl}`].filter(Boolean).join("\n\n");
+    } else if (conferenceType === "teams" && resolvedConferenceUrl) {
+      finalDescription = [finalDescription, `Teams Meeting: ${resolvedConferenceUrl}`].filter(Boolean).join("\n\n");
     }
 
     const isMeet = conferenceType === "meet";
@@ -140,8 +378,8 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
       end: event.data.end?.dateTime || event.data.end?.date,
       htmlLink: event.data.htmlLink,
       ...(meetLink ? { meetLink } : {}),
-      ...(conferenceType === "zoom" && conferenceUrl ? { conferenceUrl } : {}),
-      ...(conferenceType === "teams" && conferenceUrl ? { conferenceUrl } : {}),
+      ...(conferenceType === "zoom" && resolvedConferenceUrl ? { conferenceUrl: resolvedConferenceUrl } : {}),
+      ...(conferenceType === "teams" && resolvedConferenceUrl ? { conferenceUrl: resolvedConferenceUrl } : {}),
     });
   } catch (err: any) {
     if (err.message?.includes("not connected") || err.message?.includes("Not connected")) {

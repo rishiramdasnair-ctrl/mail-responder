@@ -23,6 +23,8 @@ import slackAuthRouter from "./slackAuth";
 import slackRouter from "./slack";
 import calendlyAuthRouter from "./calendlyAuth";
 import calendlyRouter from "./calendly";
+import zoomAuthRouter from "./zoomAuth";
+import teamsAuthRouter from "./teamsAuth";
 
 const router: IRouter = Router();
 
@@ -34,6 +36,8 @@ router.use(hubspotAuthRouter);
 router.use(linkedinAuthRouter);
 router.use(slackAuthRouter);
 router.use(calendlyAuthRouter);
+router.use(zoomAuthRouter);
+router.use(teamsAuthRouter);
 router.use(gmailRouter);
 router.use(calendarRouter);
 router.use(aiRouter);

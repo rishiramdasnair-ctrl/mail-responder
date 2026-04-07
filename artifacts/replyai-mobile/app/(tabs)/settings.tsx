@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
+import * as WebBrowser from "expo-web-browser";
 import { Link } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "@clerk/clerk-expo";
@@ -49,6 +50,15 @@ interface GmailAccount {
   id: number;
   email: string;
   isPrimary: boolean;
+}
+
+interface Connector {
+  id: string;
+  connectorId: string;
+  displayName: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const TONES: Array<{ value: "pro" | "casual" | "fast"; label: string; desc: string; icon: FeatherName }> = [
@@ -95,6 +105,31 @@ export default function SettingsScreen() {
       const headers = await authHeaders();
       const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
       return res.json();
+    },
+  });
+
+  const { data: connectorsData, isLoading: connectorsLoading } = useQuery<{ connectors: Connector[] }>({
+    queryKey: ["connectors"],
+    queryFn: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/connectors`, { headers });
+      return res.json();
+    },
+  });
+
+  const disconnectConnectorMutation = useMutation({
+    mutationFn: async (connectorId: string) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/connectors/${encodeURIComponent(connectorId)}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) throw new Error("Failed to disconnect");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["connectors"] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
 
@@ -197,6 +232,43 @@ export default function SettingsScreen() {
 
   const handleCancelEditName = () => {
     setEditingName(false);
+  };
+
+  const handleConnectConnector = async (connectorId: "zoom" | "teams") => {
+    try {
+      const headers = await authHeaders();
+      const mobileUrlRes = await fetch(`${apiBaseUrl}/api/auth/${connectorId}/mobile-url`, { headers });
+      if (!mobileUrlRes.ok) {
+        Alert.alert("Error", `Could not start ${connectorId === "zoom" ? "Zoom" : "Teams"} authorization.`);
+        return;
+      }
+      const { url: oauthUrl } = await mobileUrlRes.json() as { url: string };
+
+      const result = await WebBrowser.openAuthSessionAsync(oauthUrl, "replyai://oauth-success", {
+        showInRecents: true,
+        preferEphemeralSession: false,
+      });
+
+      if (result.type === "success" && result.url.startsWith("replyai://oauth-success")) {
+        qc.invalidateQueries({ queryKey: ["connectors"] });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else if (result.type !== "cancel") {
+        Alert.alert("Error", `Could not connect ${connectorId === "zoom" ? "Zoom" : "Teams"}. Please try again.`);
+      }
+    } catch {
+      Alert.alert("Error", "Something went wrong. Please try again.");
+    }
+  };
+
+  const handleDisconnectConnector = (connectorId: string, label: string) => {
+    Alert.alert(`Disconnect ${label}`, `Remove your ${label} connection?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Disconnect",
+        style: "destructive",
+        onPress: () => disconnectConnectorMutation.mutate(connectorId),
+      },
+    ]);
   };
 
   const handleSignOut = () => {
@@ -517,7 +589,7 @@ export default function SettingsScreen() {
     },
   });
 
-  const isLoading = profileLoading || settingsLoading;
+  const isLoading = profileLoading || settingsLoading || connectorsLoading;
   const initials = displayName
     ? displayName
         .split(" ")
@@ -528,6 +600,12 @@ export default function SettingsScreen() {
     : "?";
 
   const accounts = accountsData?.accounts ?? [];
+  const connectors = connectorsData?.connectors ?? [];
+
+  const VIDEO_CONNECTORS: Array<{ id: "zoom" | "teams"; label: string; icon: FeatherName }> = [
+    { id: "zoom", label: "Zoom", icon: "video" },
+    { id: "teams", label: "Microsoft Teams", icon: "video" },
+  ];
 
   return (
     <View style={styles.container}>
@@ -670,6 +748,50 @@ export default function SettingsScreen() {
                   </Text>
                 </TouchableOpacity>
               </Link>
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Connectors</Text>
+            <View style={styles.card}>
+              {VIDEO_CONNECTORS.map((vc, i) => {
+                const conn = connectors.find((c) => c.connectorId === vc.id && c.status === "connected");
+                return (
+                  <React.Fragment key={vc.id}>
+                    {i > 0 && <View style={styles.divider} />}
+                    <View style={styles.row}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                        <Feather name={vc.icon} size={16} color={colors.foreground} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.rowLabel}>{vc.label}</Text>
+                          {conn && (
+                            <Text style={styles.rowSubLabel} numberOfLines={1}>
+                              {conn.displayName}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      {conn ? (
+                        <TouchableOpacity
+                          onPress={() => handleDisconnectConnector(vc.id, vc.label)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="x" size={16} color={colors.mutedForeground} />
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => handleConnectConnector(vc.id)}
+                          style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.foreground }}
+                        >
+                          <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: colors.primaryForeground }}>
+                            Connect
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </React.Fragment>
+                );
+              })}
             </View>
           </View>
 

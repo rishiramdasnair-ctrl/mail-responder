@@ -6,7 +6,7 @@ import { GenerateRepliesBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { usersTable, replyHistoryTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { openrouter as openai, FAST_MODEL } from "../lib/openrouter";
 import rateLimit from "express-rate-limit";
 
 const router = Router();
@@ -74,8 +74,8 @@ Message:
 ${body.emailBody}`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.2",
-      max_completion_tokens: 2048,
+      model: FAST_MODEL,
+      max_tokens: 2048,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -224,8 +224,8 @@ Respond ONLY with a valid JSON object in this exact format:
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_completion_tokens: 2048,
+      model: FAST_MODEL,
+      max_tokens: 2048,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },

@@ -6,7 +6,7 @@ import { requireAuth } from "../lib/requireAuth";
 import { getGmailClientForUser, getCalendarClientForUser, parseEmailAddress, getHeader, decodeBody } from "../lib/gmailClient";
 import { createBrowserSession, getPageSnapshot, extractDdgResults } from "../lib/browserManager";
 import { isUrlSafe, resolveAndCheckUrl } from "../lib/urlSafety";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { openrouter as openai, AGENT_MODEL, FAST_MODEL } from "../lib/openrouter";
 import { AgentRunBody as AgentRunBodySchema, AgentSendBody as AgentSendBodySchema } from "@workspace/api-zod";
 import type {
   ChatCompletionMessageParam,
@@ -420,8 +420,8 @@ Be concise but informative. Explain what you found and what actions you took.`;
       while (iteration < MAX_ITERATIONS) {
         iteration++;
         const completion = await openai.chat.completions.create({
-          model: "gpt-5.2",
-          max_completion_tokens: 2048,
+          model: AGENT_MODEL,
+          max_tokens: 2048,
           messages,
           tools: TOOLS,
           tool_choice: "auto",
@@ -660,8 +660,8 @@ Be concise but informative. Explain what you found and what actions you took.`;
           const lastMsg = messages[messages.length - 1];
           if (!("content" in lastMsg) || lastMsg.role !== "assistant") {
             const pendingCompletion = await openai.chat.completions.create({
-              model: "gpt-5.2",
-              max_completion_tokens: 512,
+              model: AGENT_MODEL,
+              max_tokens: 512,
               messages,
             });
             finalAnswer = pendingCompletion.choices[0]?.message?.content || "I've drafted an email for you. Please review and confirm.";
@@ -793,8 +793,8 @@ router.get("/agent/suggestions", requireAuth, async (req, res) => {
     const validSummaries = emailSummaries.filter(Boolean).join("\n");
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_completion_tokens: 600,
+      model: FAST_MODEL,
+      max_tokens: 600,
       messages: [
         {
           role: "system",

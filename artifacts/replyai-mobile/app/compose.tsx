@@ -18,6 +18,7 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+import { useToast } from "@/components/ToastProvider";
 
 interface GmailAccount {
   email: string;
@@ -87,6 +88,7 @@ export default function ComposeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { apiBaseUrl, authHeaders } = useApiClient();
+  const { showToast } = useToast();
 
   const [toInput, setToInput] = useState("");
   const [toRecipients, setToRecipients] = useState<Recipient[]>([]);
@@ -298,6 +300,7 @@ export default function ComposeScreen() {
 
       allowBackRef.current = true;
       router.back();
+      showToast("Email sent successfully", "success");
     } catch {
       Alert.alert("Error", "Could not send email. Check your connection and try again.");
     } finally {

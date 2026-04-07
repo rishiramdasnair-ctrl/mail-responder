@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Platform,
+  Animated,
 } from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 
@@ -29,6 +31,8 @@ export interface EmailThread {
 interface EmailRowProps {
   email: EmailThread;
   onPress: (email: EmailThread) => void;
+  onStar?: (email: EmailThread) => void;
+  onTrash?: (email: EmailThread) => void;
 }
 
 function formatDate(dateStr: string): string {
@@ -63,12 +67,75 @@ function getInitials(name: string, email: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
-export function EmailRow({ email, onPress }: EmailRowProps) {
+export function EmailRow({ email, onPress, onStar, onTrash }: EmailRowProps) {
   const colors = useColors();
+  const swipeableRef = useRef<Swipeable>(null);
 
   const displayName = email.fromName || email.fromEmail || email.from;
   const initials = getInitials(email.fromName, email.fromEmail);
   const accountDomain = email.accountEmail ? email.accountEmail.split("@")[1] : null;
+
+  const handleStar = () => {
+    swipeableRef.current?.close();
+    onStar?.(email);
+  };
+
+  const handleTrash = () => {
+    swipeableRef.current?.close();
+    onTrash?.(email);
+  };
+
+  const renderLeftActions = (
+    _progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>
+  ) => {
+    const scale = dragX.interpolate({
+      inputRange: [0, 80],
+      outputRange: [0.6, 1],
+      extrapolate: "clamp",
+    });
+    return (
+      <TouchableOpacity
+        style={styles.starAction}
+        onPress={handleStar}
+        activeOpacity={0.85}
+      >
+        <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
+          <Feather
+            name={email.isStarred ? "star" : "star"}
+            size={22}
+            color="#fff"
+          />
+          <Text style={styles.actionLabel}>
+            {email.isStarred ? "Unstar" : "Star"}
+          </Text>
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderRightActions = (
+    _progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>
+  ) => {
+    const scale = dragX.interpolate({
+      inputRange: [-80, 0],
+      outputRange: [1, 0.6],
+      extrapolate: "clamp",
+    });
+    return (
+      <TouchableOpacity
+        style={styles.trashAction}
+        onPress={handleTrash}
+        activeOpacity={0.85}
+      >
+        <Animated.View style={{ transform: [{ scale }], alignItems: "center", gap: 4 }}>
+          <Feather name="trash-2" size={22} color="#fff" />
+          <Text style={styles.actionLabel}>Delete</Text>
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
 
   const styles = StyleSheet.create({
     row: {
@@ -154,9 +221,26 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
       fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
     },
+    starAction: {
+      backgroundColor: "#F59E0B",
+      justifyContent: "center",
+      alignItems: "center",
+      width: 80,
+    },
+    trashAction: {
+      backgroundColor: "#EF4444",
+      justifyContent: "center",
+      alignItems: "center",
+      width: 80,
+    },
+    actionLabel: {
+      color: "#fff",
+      fontSize: 11,
+      fontFamily: "Inter_600SemiBold",
+    },
   });
 
-  return (
+  const rowContent = (
     <TouchableOpacity
       style={styles.row}
       onPress={() => onPress(email)}
@@ -188,9 +272,28 @@ export function EmailRow({ email, onPress }: EmailRowProps) {
       </View>
       {email.isStarred && (
         <View style={styles.starIcon}>
-          <Feather name="star" size={14} color={colors.mutedForeground} />
+          <Feather name="star" size={14} color="#F59E0B" />
         </View>
       )}
     </TouchableOpacity>
+  );
+
+  if (Platform.OS === "web") {
+    return rowContent;
+  }
+
+  return (
+    <Swipeable
+      ref={swipeableRef}
+      renderLeftActions={onStar ? renderLeftActions : undefined}
+      renderRightActions={onTrash ? renderRightActions : undefined}
+      friction={2}
+      leftThreshold={60}
+      rightThreshold={60}
+      overshootLeft={false}
+      overshootRight={false}
+    >
+      {rowContent}
+    </Swipeable>
   );
 }

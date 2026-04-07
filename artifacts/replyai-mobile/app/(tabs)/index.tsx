@@ -130,6 +130,67 @@ export default function InboxScreen() {
     });
   };
 
+  const modifyThread = useCallback(async (
+    threadId: string,
+    accountEmail: string | undefined,
+    addLabelIds: string[],
+    removeLabelIds: string[]
+  ) => {
+    const headers = await authHeaders();
+    const qs = accountEmail ? `?account=${encodeURIComponent(accountEmail)}` : "";
+    await fetch(`${apiBaseUrl}/api/gmail/threads/${threadId}/modify${qs}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ addLabelIds, removeLabelIds }),
+    });
+  }, [apiBaseUrl, authHeaders]);
+
+  const onStar = useCallback((email: EmailThread) => {
+    const addLabels = email.isStarred ? [] : ["STARRED"];
+    const removeLabels = email.isStarred ? ["STARRED"] : [];
+    // Optimistic update
+    qc.setQueriesData<InfiniteData<InboxPage>>(
+      { queryKey: ["inbox"] },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            threads: page.threads.map((t) =>
+              t.threadId === email.threadId
+                ? { ...t, isStarred: !email.isStarred }
+                : t
+            ),
+          })),
+        };
+      }
+    );
+    modifyThread(email.threadId, email.accountEmail, addLabels, removeLabels).catch(() => {
+      qc.invalidateQueries({ queryKey: ["inbox"] });
+    });
+  }, [qc, modifyThread]);
+
+  const onTrash = useCallback((email: EmailThread) => {
+    // Optimistic: remove from inbox list immediately
+    qc.setQueriesData<InfiniteData<InboxPage>>(
+      { queryKey: ["inbox"] },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            threads: page.threads.filter((t) => t.threadId !== email.threadId),
+          })),
+        };
+      }
+    );
+    modifyThread(email.threadId, email.accountEmail, ["TRASH"], ["INBOX"]).catch(() => {
+      qc.invalidateQueries({ queryKey: ["inbox"] });
+    });
+  }, [qc, modifyThread]);
+
   const submitSearch = () => {
     setActiveQuery(searchQuery);
   };
@@ -450,7 +511,14 @@ export default function InboxScreen() {
       <FlatList
         data={visibleThreads}
         keyExtractor={(item) => item.threadId || item.id}
-        renderItem={({ item }) => <EmailRow email={item} onPress={onPressEmail} />}
+        renderItem={({ item }) => (
+          <EmailRow
+            email={item}
+            onPress={onPressEmail}
+            onStar={onStar}
+            onTrash={onTrash}
+          />
+        )}
         ListHeaderComponent={
           !activeQuery ? (
             <PrioritySection

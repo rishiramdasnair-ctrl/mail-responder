@@ -56,6 +56,36 @@ interface PendingEmail {
   threadId?: string;
 }
 
+interface PendingCalendarEvent {
+  title: string;
+  start: string;
+  end: string;
+  description?: string;
+  location?: string;
+  attendees?: string[];
+}
+
+interface AgentJob {
+  userId: string;
+  status: "running" | "done" | "error";
+  steps: AgentStep[];
+  answer: string;
+  pendingEmail?: PendingEmail;
+  pendingCalendarEvent?: PendingCalendarEvent;
+  sessionId?: string;
+  browserSessionActive?: boolean;
+  error?: string;
+  createdAt: number;
+}
+
+const jobStore = new Map<string, AgentJob>();
+setInterval(() => {
+  const cutoff = Date.now() - 3_600_000;
+  for (const [id, job] of jobStore.entries()) {
+    if (job.createdAt < cutoff) jobStore.delete(id);
+  }
+}, 300_000);
+
 const TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
@@ -358,25 +388,25 @@ function cleanupSession(sessionId: string) {
   }
 }
 
-router.post("/agent/run", requireAuth, async (req, res) => {
-  try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+interface AgentCoreResult {
+  answer: string;
+  steps: AgentStep[];
+  pendingEmail?: PendingEmail;
+  pendingCalendarEvent?: PendingCalendarEvent;
+  sessionId: string;
+  browserWasUsed: boolean;
+}
 
-    const parsed = AgentRunBodySchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request body" });
-      return;
-    }
-    const { task, history: rawHistory = [], sessionId: incomingSessionId } = parsed.data;
-    if (task.length > 2000) {
-      res.status(400).json({ error: "task must be under 2000 characters" });
-      return;
-    }
-    const history: AgentRunBody["history"] = rawHistory.slice(-20);
-
+async function runAgentCore(
+  userId: string,
+  task: string,
+  history: AgentRunBody["history"],
+  incomingSessionId: string | undefined,
+  onStep?: (step: AgentStep) => void,
+): Promise<AgentCoreResult> {
     const steps: AgentStep[] = [];
     let pendingEmail: PendingEmail | undefined;
+    let pendingCalendarEvent: PendingCalendarEvent | undefined;
     const sessionId = incomingSessionId && activeSessions.has(incomingSessionId)
       ? incomingSessionId
       : `${userId}-${randomUUID()}`;
@@ -478,10 +508,16 @@ Be concise but informative. Explain what you found and what actions you took.`;
               } else if (toolName === "list_calendar_events") {
                 toolOutput = await executeListCalendarEvents(userId, args as { days?: number });
               } else if (toolName === "create_calendar_event") {
-                toolOutput = await executeCreateCalendarEvent(userId, args as {
-                  title: string; start: string; end: string;
-                  description?: string; location?: string; attendees?: string[];
-                });
+                const calArgs = args as { title: string; start: string; end: string; description?: string; location?: string; attendees?: string[] };
+                pendingCalendarEvent = {
+                  title: calArgs.title,
+                  start: calArgs.start,
+                  end: calArgs.end,
+                  ...(calArgs.description ? { description: calArgs.description } : {}),
+                  ...(calArgs.location ? { location: calArgs.location } : {}),
+                  ...(calArgs.attendees?.length ? { attendees: calArgs.attendees } : {}),
+                };
+                toolOutput = "Calendar event queued for user confirmation. Present the event details to the user and ask them to confirm creating it.";
               } else if (toolName === "search_web") {
                 toolOutput = await executeSearchWeb(args as { query: string });
               } else if (toolName === "browse_url") {
@@ -645,7 +681,9 @@ Be concise but informative. Explain what you found and what actions you took.`;
               } catch { /* ignore screenshot errors */ }
             }
           }
-          steps.push({ toolName, input: args, output: toolOutput, status, ...(stepUrl ? { url: stepUrl } : {}), ...(stepScreenshot ? { screenshot: stepScreenshot } : {}) });
+          const step: AgentStep = { toolName, input: args, output: toolOutput, status, ...(stepUrl ? { url: stepUrl } : {}), ...(stepScreenshot ? { screenshot: stepScreenshot } : {}) };
+          steps.push(step);
+          onStep?.(step);
           const toolMsg: ChatCompletionToolMessageParam = {
             role: "tool",
             tool_call_id: toolCall.id,
@@ -653,7 +691,7 @@ Be concise but informative. Explain what you found and what actions you took.`;
           };
           messages.push(toolMsg);
 
-          if (pendingEmail) break;
+          if (pendingEmail || pendingCalendarEvent) break;
         }
 
         if (pendingEmail) {
@@ -670,6 +708,11 @@ Be concise but informative. Explain what you found and what actions you took.`;
           }
           break;
         }
+
+        if (pendingCalendarEvent) {
+          finalAnswer = `I've prepared the calendar event details. Please review and confirm creating it.`;
+          break;
+        }
       }
     } finally {
       if (!browserWasUsed) {
@@ -681,21 +724,100 @@ Be concise but informative. Explain what you found and what actions you took.`;
       finalAnswer = "I completed the task but couldn't generate a summary.";
     }
 
-    res.json({
+    return {
       answer: finalAnswer,
       steps,
-      ...(pendingEmail ? { pendingEmail } : {}),
-      ...(browserWasUsed ? { sessionId, browserSessionActive: true } : {}),
-    });
-  } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Agent run error");
-    if (errMsg.includes("not connected") || errMsg.includes("Not connected")) {
-      res.status(403).json({ error: "Gmail not connected. Please connect your Google account in Settings.", code: "NOT_CONNECTED" });
+      pendingEmail,
+      pendingCalendarEvent,
+      sessionId,
+      browserWasUsed,
+    };
+}
+
+function wrapAgentError(err: unknown): { status: number; body: Record<string, string> } {
+  const errMsg = err instanceof Error ? err.message : "Unknown error";
+  if (errMsg.includes("not connected") || errMsg.includes("Not connected")) {
+    return { status: 403, body: { error: "Gmail not connected. Please connect your Google account in Settings.", code: "NOT_CONNECTED" } };
+  }
+  return { status: 500, body: { error: "Agent task failed. Please try again." } };
+}
+
+router.post("/agent/run", requireAuth, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const parsed = AgentRunBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request body" });
       return;
     }
-    res.status(500).json({ error: "Agent task failed. Please try again." });
+    const { task, history: rawHistory = [], sessionId: incomingSessionId } = parsed.data;
+    if (task.length > 2000) {
+      res.status(400).json({ error: "task must be under 2000 characters" });
+      return;
+    }
+    const result = await runAgentCore(userId, task, rawHistory.slice(-20), incomingSessionId);
+    res.json({
+      answer: result.answer,
+      steps: result.steps,
+      ...(result.pendingEmail ? { pendingEmail: result.pendingEmail } : {}),
+      ...(result.pendingCalendarEvent ? { pendingCalendarEvent: result.pendingCalendarEvent } : {}),
+      ...(result.browserWasUsed ? { sessionId: result.sessionId, browserSessionActive: true } : {}),
+    });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Agent run error");
+    const { status, body } = wrapAgentError(err);
+    res.status(status).json(body);
   }
+});
+
+router.post("/agent/start", requireAuth, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const parsed = AgentRunBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request body" });
+      return;
+    }
+    const { task, history: rawHistory = [], sessionId: incomingSessionId } = parsed.data;
+    if (task.length > 2000) {
+      res.status(400).json({ error: "task must be under 2000 characters" });
+      return;
+    }
+    const jobId = randomUUID();
+    const job: AgentJob = { userId, status: "running", steps: [], answer: "", createdAt: Date.now() };
+    jobStore.set(jobId, job);
+    runAgentCore(userId, task, rawHistory.slice(-20), incomingSessionId, (step) => {
+      job.steps.push(step);
+    }).then((result) => {
+      job.status = "done";
+      job.answer = result.answer;
+      if (result.pendingEmail) job.pendingEmail = result.pendingEmail;
+      if (result.pendingCalendarEvent) job.pendingCalendarEvent = result.pendingCalendarEvent;
+      if (result.browserWasUsed) {
+        job.sessionId = result.sessionId;
+        job.browserSessionActive = true;
+      }
+    }).catch((err) => {
+      job.status = "error";
+      job.error = wrapAgentError(err).body.error;
+    });
+    res.json({ jobId });
+  } catch (err) {
+    req.log.error({ err }, "Agent start error");
+    res.status(500).json({ error: "Failed to start agent task." });
+  }
+});
+
+router.get("/agent/jobs/:jobId", requireAuth, (req, res) => {
+  const { userId } = getAuth(req);
+  const job = jobStore.get(req.params.jobId);
+  if (!job || job.userId !== userId) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  res.json(job);
 });
 
 router.delete("/agent/session/:sessionId", requireAuth, (req, res) => {
@@ -747,6 +869,22 @@ router.post("/agent/send", requireAuth, async (req, res) => {
   } catch (err: unknown) {
     req.log.error({ err }, "Agent send error");
     res.status(500).json({ error: "Failed to send email" });
+  }
+});
+
+router.post("/agent/create-event", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const { title, start, end, description, location, attendees } = req.body as PendingCalendarEvent;
+    if (!title || !start || !end) {
+      res.status(400).json({ error: "title, start, and end are required" });
+      return;
+    }
+    const message = await executeCreateCalendarEvent(userId, { title, start, end, description, location, attendees });
+    res.json({ success: true, message });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Agent create-event error");
+    res.status(500).json({ error: "Failed to create calendar event" });
   }
 });
 

@@ -143,11 +143,12 @@ router.post("/ai/actions", requireAuth, aiRateLimit, async (req, res) => {
       return;
     }
 
-    const { threadId, emailBody, emailFrom, emailSubject, customInstruction } = req.body as {
+    const { threadId, emailBody, emailFrom, emailSubject, accountEmail: reqAccountEmail, customInstruction } = req.body as {
       threadId?: string;
       emailBody?: string;
       emailFrom?: string;
       emailSubject?: string;
+      accountEmail?: string;
       customInstruction?: string;
     };
 
@@ -156,8 +157,9 @@ router.post("/ai/actions", requireAuth, aiRateLimit, async (req, res) => {
       return;
     }
 
+    const accountLine = reqAccountEmail ? `\nYour email account: ${reqAccountEmail}` : "";
     const emailCtx = `Email from: ${emailFrom || "unknown"}
-Subject: ${emailSubject || "(no subject)"}
+Subject: ${emailSubject || "(no subject)"}${accountLine}
 Message:
 ${(emailBody || "").slice(0, 3000)}`;
 
@@ -165,7 +167,15 @@ ${(emailBody || "").slice(0, 3000)}`;
     let userMessage: string;
 
     if (customInstruction) {
-      systemPrompt = `You are ReplyAI, an expert email assistant. The user wants to take a specific action on an email. Generate a draft reply that follows their instruction exactly.
+      systemPrompt = `You are ReplyAI, an expert email assistant. The user wants to take a specific action on an email. Generate the most appropriate action based on their instruction.
+
+Action types:
+- "reply": Send a reply (provide draftContent with the full draft text, plain text)
+- "forward": Forward to someone (provide draftContent with the message body)
+- "calendar": Create a calendar event (provide draftContent as JSON: {"title":"...","start":"ISO8601","end":"ISO8601","description":"...","attendees":["email"]})
+- "archive": Archive this thread (no draftContent)
+
+Choose the most appropriate type based on the user's instruction. If the instruction implies forwarding, use "forward". If it implies scheduling, use "calendar". If it implies archiving, use "archive". Otherwise, use "reply".
 
 Respond ONLY with a valid JSON object in this exact format:
 {
@@ -174,8 +184,8 @@ Respond ONLY with a valid JSON object in this exact format:
       "id": "1",
       "label": "<short action label, max 8 words>",
       "description": "<one sentence explaining what this will do>",
-      "type": "reply",
-      "draftContent": "<the full draft reply text, plain text, no markdown>"
+      "type": "reply|forward|calendar|archive",
+      "draftContent": "<string or omit for archive>"
     }
   ]
 }`;
@@ -231,9 +241,27 @@ Respond ONLY with a valid JSON object in this exact format:
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { actions: [] };
     }
 
-    const actions = (parsed.actions || [])
+    let actions = (parsed.actions || [])
       .filter((a: ProposedAction) => a.id && a.label && a.type && ACTION_TYPES.includes(a.type))
       .slice(0, 5);
+
+    if (!customInstruction && actions.length < 3) {
+      const fallbackReply: ProposedAction = {
+        id: "fallback-reply",
+        label: "Write a reply",
+        description: "Compose a thoughtful reply to this email",
+        type: "reply",
+        draftContent: "",
+      };
+      const fallbackArchive: ProposedAction = {
+        id: "fallback-archive",
+        label: "Archive this thread",
+        description: "Remove this thread from your inbox",
+        type: "archive",
+      };
+      if (!actions.some((a) => a.type === "reply")) actions.push(fallbackReply);
+      if (!actions.some((a) => a.type === "archive")) actions.push(fallbackArchive);
+    }
 
     res.json({ actions, threadId });
   } catch (err) {

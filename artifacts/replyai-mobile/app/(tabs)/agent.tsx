@@ -277,7 +277,8 @@ export default function AgentScreen() {
   const loadingMsgIdRef = useRef<string | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const botPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const TAB_BAR_HEIGHT = Platform.select({ ios: 49, android: 56, web: 84, default: 49 }) as number;
+  const botPad = (Platform.OS === "web" ? 0 : insets.bottom) + TAB_BAR_HEIGHT;
 
   useEffect(() => {
     (async () => {

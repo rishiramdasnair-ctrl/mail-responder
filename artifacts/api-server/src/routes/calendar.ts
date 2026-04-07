@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
-import { getCalendarClientForUser } from "../lib/gmailClient";
+import { getCalendarClientForUser, getGmailClientForUser } from "../lib/gmailClient";
+import { openrouter, FAST_MODEL } from "../lib/openrouter";
 
 const router = Router();
 
@@ -121,6 +122,154 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
     }
     req.log.error({ err }, "Error creating calendar event");
     res.status(500).json({ error: "Failed to create calendar event" });
+  }
+});
+
+router.get("/calendar/events/:eventId", requireAuth, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const eventId = String(req.params.eventId);
+    const calendar = await getCalendarClientForUser(userId);
+    const eventResp = await (calendar.events.get as any)({ calendarId: "primary", eventId });
+    const e = eventResp.data as any;
+    res.json({
+      id: e.id,
+      title: e.summary || "(No title)",
+      start: e.start?.dateTime || e.start?.date,
+      end: e.end?.dateTime || e.end?.date,
+      isAllDay: !e.start?.dateTime,
+      location: e.location || null,
+      attendees: (e.attendees || []).map((a: any) => ({
+        email: a.email || "",
+        name: a.displayName || "",
+        responseStatus: a.responseStatus || "needsAction",
+      })),
+      htmlLink: e.htmlLink || null,
+      description: e.description || null,
+      organizer: e.organizer ? { email: e.organizer.email || "", name: e.organizer.displayName || "" } : null,
+      conferenceData: e.conferenceData ? {
+        entryPoints: (e.conferenceData.entryPoints || []).map((ep: any) => ({
+          entryPointType: ep.entryPointType,
+          uri: ep.uri,
+          label: ep.label,
+        })),
+      } : null,
+    });
+  } catch (err: any) {
+    if (err.message?.includes("not connected") || err.message?.includes("Not connected")) {
+      res.status(403).json({ error: "Google account not connected", code: "NOT_CONNECTED" });
+      return;
+    }
+    if (err.code === 404 || err.status === 404) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+    req.log.error({ err }, "Error fetching calendar event");
+    res.status(500).json({ error: "Failed to fetch event" });
+  }
+});
+
+router.post("/calendar/events/:eventId/brief", requireAuth, async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId!;
+    const eventId = String(req.params.eventId);
+
+    const calendar = await getCalendarClientForUser(userId);
+    const eventResp = await (calendar.events.get as any)({ calendarId: "primary", eventId });
+    const e = eventResp.data as any;
+
+    const title = e.summary || "(No title)";
+    const startRaw = e.start?.dateTime || e.start?.date || "";
+    const endRaw = e.end?.dateTime || e.end?.date || "";
+    const location = e.location || null;
+    const description = e.description || null;
+    const attendees = (e.attendees || []).map((a: any) => ({
+      email: a.email || "",
+      name: a.displayName || a.email || "",
+      responseStatus: a.responseStatus || "needsAction",
+    }));
+    const organizer = e.organizer ? (e.organizer.displayName || e.organizer.email || "") : "";
+
+    const formatDate = (iso: string) => {
+      try { return new Date(iso).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+      catch { return iso; }
+    };
+
+    let emailContext = "";
+    try {
+      const gmail = await getGmailClientForUser(userId);
+      const attendeeEmails = attendees.map((a: any) => a.email).filter(Boolean);
+      if (attendeeEmails.length > 0) {
+        const query = attendeeEmails.map((em: any) => `from:${em} OR to:${em}`).join(" OR ");
+        const threads = await gmail.users.threads.list({
+          userId: "me",
+          q: `(${query}) newer_than:14d`,
+          maxResults: 8,
+        });
+        const threadItems = threads.data.threads || [];
+        const snippets: string[] = [];
+        for (const t of threadItems.slice(0, 6)) {
+          if (!t.id) continue;
+          const full = await gmail.users.threads.get({ userId: "me", id: t.id, format: "metadata", metadataHeaders: ["Subject", "From", "Date"] });
+          const msgs = full.data.messages || [];
+          const lastMsg = msgs[msgs.length - 1];
+          const headers = lastMsg?.payload?.headers || [];
+          const subject = headers.find((h) => h.name === "Subject")?.value || "(no subject)";
+          const from = headers.find((h) => h.name === "From")?.value || "";
+          const date = headers.find((h) => h.name === "Date")?.value || "";
+          snippets.push(`- "${subject}" from ${from} (${date}) — ${msgs.length} message(s)`);
+        }
+        if (snippets.length > 0) {
+          emailContext = `\n\nRecent email threads with attendees (last 14 days):\n${snippets.join("\n")}`;
+        }
+      }
+    } catch (_) {}
+
+    const attendeeList = attendees.length > 0
+      ? attendees.map((a: any) => `${a.name || a.email} <${a.email}> (${a.responseStatus})`).join(", ")
+      : "No attendees listed";
+
+    const prompt = `You are a professional executive assistant. Generate a concise pre-meeting brief for the following meeting.
+
+Meeting: ${title}
+When: ${formatDate(startRaw)} – ${formatDate(endRaw)}${location ? `\nLocation: ${location}` : ""}${organizer ? `\nOrganizer: ${organizer}` : ""}
+Attendees: ${attendeeList}${description ? `\nMeeting description: ${description}` : ""}${emailContext}
+
+Write a pre-meeting brief with these sections:
+## Meeting Overview
+A 2-3 sentence summary of what this meeting is likely about and its purpose.
+
+## Attendees
+For each attendee, a brief one-line context (role if inferable, relationship context from emails).
+
+## Key Topics to Cover
+3-5 bullet points of likely agenda items or important topics to address.
+
+## Talking Points & Questions
+3-5 specific talking points or questions to raise in this meeting.
+
+## Preparation Checklist
+2-4 concrete things to prepare before the meeting (documents to review, data to pull, etc.).
+
+Be concise, actionable, and professional. Use the email context to make the brief more specific.`;
+
+    const response = await openrouter.chat.completions.create({
+      model: FAST_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 1200,
+    });
+
+    const brief = response.choices[0]?.message?.content?.trim() || "";
+    res.json({ brief });
+  } catch (err: any) {
+    if (err.message?.includes("not connected") || err.message?.includes("Not connected")) {
+      res.status(403).json({ error: "Google account not connected", code: "NOT_CONNECTED" });
+      return;
+    }
+    req.log.error({ err }, "Error generating meeting brief");
+    res.status(500).json({ error: "Failed to generate brief" });
   }
 });
 

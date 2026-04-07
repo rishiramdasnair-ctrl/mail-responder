@@ -288,13 +288,20 @@ export default function CalendarScreen() {
     }
     const evt = item.event;
     return (
-      <View style={styles.eventCard}>
+      <TouchableOpacity
+        style={styles.eventCard}
+        activeOpacity={0.75}
+        onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id } })}
+      >
         {evt.isAllDay && (
           <View style={styles.allDayBadge}>
             <Text style={styles.allDayText}>ALL DAY</Text>
           </View>
         )}
-        <Text style={styles.eventTitle}>{evt.title}</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <Text style={[styles.eventTitle, { flex: 1, marginRight: 8 }]}>{evt.title}</Text>
+          <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginTop: 1 }} />
+        </View>
         <Text style={styles.eventTime}>{formatEventTime(evt)}</Text>
         {evt.location && (
           <View style={styles.eventMeta}>
@@ -318,7 +325,7 @@ export default function CalendarScreen() {
             )}
           </View>
         )}
-      </View>
+      </TouchableOpacity>
     );
   };
 

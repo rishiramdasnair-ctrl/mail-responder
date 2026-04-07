@@ -454,37 +454,34 @@ export default function ThreadScreen() {
               )}
 
               {thread.unsubscribeLink ? (
-                <TouchableOpacity
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    const link = thread.unsubscribeLink!;
-                    if (link.startsWith("mailto:")) {
-                      Linking.openURL(link);
-                    } else {
-                      Linking.openURL(link);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    marginHorizontal: 16,
-                    marginBottom: 12,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 8,
-                    borderWidth: StyleSheet.hairlineWidth,
-                    borderColor: "#EF4444",
-                    backgroundColor: "#EF444415",
-                  }}
-                >
-                  <Feather name="mail" size={13} color="#EF4444" />
-                  <Text style={{ fontSize: 12, fontFamily: "Inter_500Medium", color: "#EF4444", flex: 1 }}>
-                    Unsubscribe from this sender
+                <View style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginHorizontal: 16,
+                  marginBottom: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  backgroundColor: colors.muted,
+                  gap: 8,
+                }}>
+                  <Feather name="inbox" size={14} color={colors.mutedForeground} />
+                  <Text style={{ flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+                    Mailing list
                   </Text>
-                  <Feather name="external-link" size={12} color="#EF4444" />
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      Linking.openURL(thread.unsubscribeLink!);
+                    }}
+                    activeOpacity={0.65}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: colors.foreground }}>
+                      Unsubscribe
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               ) : null}
 
               {thread.messages.map((msg) => (

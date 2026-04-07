@@ -39,6 +39,7 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="color-scheme" content="light" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.5, user-scalable=yes" />
   <style>
     * { box-sizing: border-box; }
@@ -62,9 +63,6 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       max-width: 100%;
       overflow-x: hidden;
     }
-    p, div, span, li, td, th, h1, h2, h3, h4, h5, h6 {
-      color: inherit !important;
-    }
     a {
       color: ${text} !important;
       text-decoration: underline;
@@ -76,7 +74,6 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       display: block;
       border-radius: 4px;
     }
-    /* Make marketing email tables flow to mobile width */
     table {
       max-width: 100% !important;
       width: 100% !important;
@@ -87,7 +84,6 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       word-break: break-word;
       max-width: 100% !important;
     }
-    /* Enforce a minimum readable font size — fine print boosted to 12px */
     * {
       -webkit-text-size-adjust: none !important;
     }
@@ -117,29 +113,72 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       border-top: 1px solid ${border};
       margin: 12px 0;
     }
-    /* Override white/black backgrounds from marketing emails */
-    *[style*="background-color: white"],
-    *[style*="background-color: #fff"],
-    *[style*="background-color: #ffffff"],
-    *[style*="background: white"],
-    *[style*="background: #fff"],
-    *[style*="background: #ffffff"] {
-      background-color: ${bg} !important;
-    }
-    *[style*="color: black"],
-    *[style*="color: #000"],
-    *[style*="color: #000000"],
-    *[style*="color: rgb(0,0,0)"],
-    *[style*="color: rgb(0, 0, 0)"] {
-      color: ${text} !important;
-    }
     *[width] {
       max-width: 100% !important;
     }
   </style>
   <script>
-    // Boost any inline font-size styles smaller than 12px up to 12px
-    document.addEventListener('DOMContentLoaded', function() {
+    function getLuminance(r, g, b) {
+      var a = [r, g, b].map(function(v) {
+        v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
+    }
+
+    function parseColor(str) {
+      if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+      var m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
+      return m ? [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])] : null;
+    }
+
+    function getEffectiveBg(el) {
+      var node = el;
+      while (node && node !== document.documentElement) {
+        var c = parseColor(window.getComputedStyle(node).backgroundColor);
+        if (c) return c;
+        node = node.parentElement;
+      }
+      return [255, 255, 255]; // default to white
+    }
+
+    function fixContrast() {
+      var appText = '${text}';
+      var all = document.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (!el.childNodes.length) continue;
+        var hasTextNode = false;
+        for (var j = 0; j < el.childNodes.length; j++) {
+          if (el.childNodes[j].nodeType === 3 && el.childNodes[j].textContent.trim()) {
+            hasTextNode = true; break;
+          }
+        }
+        if (!hasTextNode) continue;
+
+        var computed = window.getComputedStyle(el);
+        var textColor = parseColor(computed.color);
+        if (!textColor) continue;
+
+        var bgColor = getEffectiveBg(el);
+        var textLum = getLuminance(textColor[0], textColor[1], textColor[2]);
+        var bgLum = getLuminance(bgColor[0], bgColor[1], bgColor[2]);
+        var brighter = Math.max(textLum, bgLum);
+        var darker = Math.min(textLum, bgLum);
+        var ratio = (brighter + 0.05) / (darker + 0.05);
+
+        if (ratio < 2.5) {
+          // Low contrast — force text to app foreground color if background is light
+          if (bgLum > 0.4) {
+            el.style.setProperty('color', appText, 'important');
+          } else {
+            el.style.setProperty('color', '#ffffff', 'important');
+          }
+        }
+      }
+    }
+
+    function boostSmallFonts() {
       var all = document.querySelectorAll('[style]');
       for (var i = 0; i < all.length; i++) {
         var el = all[i];
@@ -149,11 +188,17 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
           var size = parseFloat(match[1]);
           var unit = match[2].toLowerCase();
           var px = unit === 'pt' ? size * 1.333 : size;
-          if (px < 12) {
-            el.style.fontSize = '12px';
-          }
+          if (px < 12) el.style.fontSize = '12px';
         }
       }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      boostSmallFonts();
+      fixContrast();
+      // Run again after images/fonts load in case layout shifts
+      setTimeout(fixContrast, 600);
+      setTimeout(fixContrast, 1800);
     });
   </script>
 </head>

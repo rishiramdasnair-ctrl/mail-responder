@@ -572,9 +572,6 @@ export default function AgentScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <View style={styles.headerIcon}>
-            <Feather name="message-square" size={18} color={colors.primaryForeground} />
-          </View>
           <View>
             <Text style={styles.title}>Agent</Text>
             <Text style={styles.subtitle}>AI assistant for email &amp; calendar</Text>

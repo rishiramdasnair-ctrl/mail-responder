@@ -13,6 +13,7 @@ import {
   Dimensions,
   Alert,
 } from "react-native";
+import { SchedulePicker } from "./SchedulePicker";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
@@ -73,9 +74,11 @@ export function ReplySheet({
   const [editedContent, setEditedContent] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
   const [phase, setPhase] = useState<"select" | "edit">("select");
   const [error, setError] = useState<string | null>(null);
   const [repliesRemaining, setRepliesRemaining] = useState<number | null>(null);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
 
   const generateReplies = useCallback(async () => {
     setIsGenerating(true);
@@ -166,6 +169,41 @@ export function ReplySheet({
       Alert.alert("Send failed", "Network error. Please try again.");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const scheduleLater = async (date: Date) => {
+    if (!editedContent.trim()) return;
+    setIsScheduling(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${apiBaseUrl}/api/gmail/schedule`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          type: "reply",
+          threadId,
+          to: toEmail,
+          subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`,
+          body: editedContent,
+          ...(accountEmail ? { accountEmail } : {}),
+          scheduledAt: date.toISOString(),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        Alert.alert("Schedule failed", d.error || "Could not schedule reply");
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onClose();
+    } catch {
+      Alert.alert("Schedule failed", "Network error. Please try again.");
+    } finally {
+      setIsScheduling(false);
     }
   };
 
@@ -352,6 +390,24 @@ export function ReplySheet({
     scrollContent: {
       paddingBottom: 20,
     },
+    sendRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginTop: 4,
+    },
+    scheduleLaterBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 14,
+      paddingHorizontal: 4,
+    },
+    scheduleLaterText: {
+      fontSize: 14,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_500Medium",
+    },
   });
 
   return (
@@ -467,21 +523,43 @@ export function ReplySheet({
                   selectionColor={colors.foreground}
                 />
 
-                <TouchableOpacity
-                  style={[styles.sendBtn, (!editedContent.trim() || isSending) && { opacity: 0.5 }]}
-                  onPress={sendReply}
-                  disabled={!editedContent.trim() || isSending}
-                  activeOpacity={0.8}
-                >
-                  {isSending ? (
-                    <ActivityIndicator color={colors.primaryForeground} size="small" />
-                  ) : (
-                    <>
-                      <Feather name="send" size={16} color={colors.primaryForeground} />
-                      <Text style={styles.sendBtnText}>Send</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                <SchedulePicker
+                  visible={showSchedulePicker}
+                  onConfirm={(date) => { setShowSchedulePicker(false); scheduleLater(date); }}
+                  onCancel={() => setShowSchedulePicker(false)}
+                />
+                <View style={styles.sendRow}>
+                  <TouchableOpacity
+                    style={[styles.sendBtn, (!editedContent.trim() || isSending || isScheduling) && { opacity: 0.5 }]}
+                    onPress={sendReply}
+                    disabled={!editedContent.trim() || isSending || isScheduling}
+                    activeOpacity={0.8}
+                  >
+                    {isSending ? (
+                      <ActivityIndicator color={colors.primaryForeground} size="small" />
+                    ) : (
+                      <>
+                        <Feather name="send" size={16} color={colors.primaryForeground} />
+                        <Text style={styles.sendBtnText}>Send</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.scheduleLaterBtn, (!editedContent.trim() || isSending || isScheduling) && { opacity: 0.5 }]}
+                    onPress={() => setShowSchedulePicker(true)}
+                    disabled={!editedContent.trim() || isSending || isScheduling}
+                    activeOpacity={0.8}
+                  >
+                    {isScheduling ? (
+                      <ActivityIndicator color={colors.mutedForeground} size="small" />
+                    ) : (
+                      <>
+                        <Feather name="clock" size={14} color={colors.mutedForeground} />
+                        <Text style={styles.scheduleLaterText}>Send later</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
             </KeyboardAvoidingView>
           )}

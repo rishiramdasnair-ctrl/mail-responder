@@ -647,4 +647,50 @@ router.get("/gmail/snoozed", requireAuth, async (req, res) => {
   }
 });
 
+// ── Gmail Push: watch registration ────────────────────────────────────────────
+router.post("/gmail/watch", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { watchUser } = await import("../lib/gmailWatcher");
+    await watchUser(userId);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Error registering Gmail watch");
+    res.status(500).json({ error: "Failed to register Gmail watch" });
+  }
+});
+
+// ── Gmail Pub/Sub webhook (public — no auth, verified by token query param) ──
+router.post("/gmail/webhook", async (req, res) => {
+  try {
+    const secret = process.env.PUBSUB_WEBHOOK_SECRET;
+    if (secret && req.query.token !== secret) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const message = req.body?.message;
+    if (!message?.data) {
+      res.status(200).send("ok"); // Pub/Sub requires 200 to ack
+      return;
+    }
+
+    const decoded = Buffer.from(message.data, "base64").toString("utf-8");
+    const parsed = JSON.parse(decoded) as { emailAddress?: string; historyId?: number };
+
+    if (parsed.emailAddress && parsed.historyId) {
+      const { handlePushNotification } = await import("../lib/gmailWatcher");
+      // Don't await — respond immediately, process async
+      handlePushNotification({ emailAddress: parsed.emailAddress, historyId: parsed.historyId })
+        .catch(console.error);
+    }
+
+    res.status(200).send("ok");
+  } catch (err) {
+    req.log.error({ err }, "Error processing Gmail webhook");
+    res.status(200).send("ok"); // Always 200 to avoid Pub/Sub retry storms
+  }
+});
+
 export default router;

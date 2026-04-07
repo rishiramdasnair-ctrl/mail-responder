@@ -13,6 +13,7 @@ import {
   FlatList,
   BackHandler,
 } from "react-native";
+import { SchedulePicker } from "@/components/SchedulePicker";
 import { useRouter, useFocusEffect, useNavigation, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -117,6 +118,8 @@ export default function ComposeScreen() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
 
   const [sending, setSending] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
 
   const toDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ccDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -284,6 +287,63 @@ export default function ComposeScreen() {
     confirmDiscard(() => router.back());
   };
 
+  const handleScheduleConfirm = async (date: Date) => {
+    setScheduledDate(date);
+    setShowSchedulePicker(false);
+
+    const allTo = [...toRecipients.map((r) => r.email)];
+    if (toInput.trim().includes("@")) allTo.push(toInput.trim().toLowerCase());
+    if (allTo.length === 0) {
+      Alert.alert("Missing recipient", "Please add at least one recipient in the To field.");
+      return;
+    }
+    if (!subject.trim()) {
+      Alert.alert("Missing subject", "Please enter a subject before scheduling.");
+      return;
+    }
+
+    setScheduling(true);
+    try {
+      const headers = await authHeaders();
+      const allCc = [...ccRecipients.map((r) => r.email)];
+      if (ccInput.trim().includes("@")) allCc.push(ccInput.trim().toLowerCase());
+
+      const payload: Record<string, string> = {
+        type: "compose",
+        to: allTo.join(", "),
+        subject: subject.trim(),
+        body,
+        ...(allCc.length > 0 ? { cc: allCc.join(", ") } : {}),
+        ...(selectedAccount ? { accountEmail: selectedAccount } : {}),
+        scheduledAt: date.toISOString(),
+      };
+
+      const res = await fetch(`${apiBaseUrl}/api/gmail/schedule`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const data = (await res.json()) as { success?: boolean; error?: string };
+
+      if (!res.ok || !data.success) {
+        Alert.alert("Failed to schedule", data.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+
+      allowBackRef.current = true;
+      router.back();
+      showToast(
+        `Email scheduled for ${date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`,
+        "success",
+      );
+    } catch {
+      Alert.alert("Error", "Could not schedule email. Check your connection and try again.");
+    } finally {
+      setScheduling(false);
+    }
+  };
+
   const handleSend = async () => {
     const allTo = [...toRecipients.map((r) => r.email)];
     if (toInput.trim().includes("@")) allTo.push(toInput.trim().toLowerCase());
@@ -364,6 +424,11 @@ export default function ComposeScreen() {
       fontSize: 15,
       color: colors.foreground,
       fontFamily: "Inter_400Regular",
+    },
+    scheduleBtn: {
+      padding: 8,
+      alignItems: "center",
+      justifyContent: "center",
     },
     sendBtn: {
       backgroundColor: colors.foreground,
@@ -510,18 +575,36 @@ export default function ComposeScreen() {
 
   return (
     <View style={styles.container}>
+      <SchedulePicker
+        visible={showSchedulePicker}
+        onConfirm={(date) => { setShowSchedulePicker(false); handleScheduleConfirm(date); }}
+        onCancel={() => setShowSchedulePicker(false)}
+      />
       <View style={styles.header}>
         <TouchableOpacity style={styles.headerBtn} onPress={handleCancel}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Message</Text>
-        <TouchableOpacity style={styles.sendBtn} onPress={handleSend} disabled={sending}>
-          {sending ? (
-            <ActivityIndicator size="small" color={colors.primaryForeground} />
-          ) : (
-            <Text style={styles.sendText}>Send</Text>
-          )}
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity
+            style={styles.scheduleBtn}
+            onPress={() => setShowSchedulePicker(true)}
+            disabled={sending || scheduling}
+          >
+            {scheduling ? (
+              <ActivityIndicator size="small" color={colors.mutedForeground} />
+            ) : (
+              <Feather name="clock" size={18} color={colors.mutedForeground} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.sendBtn} onPress={handleSend} disabled={sending || scheduling}>
+            {sending ? (
+              <ActivityIndicator size="small" color={colors.primaryForeground} />
+            ) : (
+              <Text style={styles.sendText}>Send</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <KeyboardAvoidingView

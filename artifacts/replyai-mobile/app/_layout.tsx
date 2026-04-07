@@ -19,6 +19,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { usePushToken } from "@/hooks/usePushToken";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -47,6 +48,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+
+  usePushToken();
 
   useEffect(() => {
     if (!isLoaded) return;

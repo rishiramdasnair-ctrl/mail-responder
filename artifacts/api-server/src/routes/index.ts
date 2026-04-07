@@ -28,6 +28,8 @@ import teamsAuthRouter from "./teamsAuth";
 import teamsActionsRouter from "./teamsActions";
 import fathomAuthRouter from "./fathomAuth";
 import fathomRouter from "./fathom";
+import scheduledEmailRouter from "./scheduledEmail";
+import pushTokenRouter from "./pushToken";
 
 const router: IRouter = Router();
 
@@ -60,5 +62,7 @@ router.use(driveRouter);
 router.use(contactsRouter);
 router.use(githubAuthRouter);
 router.use(linearAuthRouter);
+router.use(scheduledEmailRouter);
+router.use(pushTokenRouter);
 
 export default router;

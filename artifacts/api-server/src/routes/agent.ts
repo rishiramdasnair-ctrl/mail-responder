@@ -7,6 +7,7 @@ import { getGmailClientForUser, getCalendarClientForUser, parseEmailAddress, get
 import { createBrowserSession, getPageSnapshot, extractDdgResults } from "../lib/browserManager";
 import { isUrlSafe, resolveAndCheckUrl } from "../lib/urlSafety";
 import { openrouter as openai, AGENT_MODEL, FAST_MODEL } from "../lib/openrouter";
+import { getTeamsToken, teamsGet, teamsPost } from "../lib/teamsClient";
 import { AgentRunBody as AgentRunBodySchema, AgentSendBody as AgentSendBodySchema } from "@workspace/api-zod";
 import type {
   ChatCompletionMessageParam,
@@ -230,6 +231,106 @@ const TOOLS: ChatCompletionTool[] = [
           text: { type: "string", description: "The text to type into the field" },
         },
         required: ["field_description", "text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "teams_list_chats",
+      description: "List the user's recent Microsoft Teams chats and direct message conversations.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "teams_send_message",
+      description: "Send a direct message in a Microsoft Teams chat. Always confirm the message content with the user before sending.",
+      parameters: {
+        type: "object",
+        properties: {
+          chatId: { type: "string", description: "The Teams chat ID to send the message to" },
+          content: { type: "string", description: "The message content to send" },
+        },
+        required: ["chatId", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "teams_list_teams",
+      description: "List the Microsoft Teams teams and groups the user belongs to.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "teams_list_channels",
+      description: "List the channels in a specific Microsoft Teams team.",
+      parameters: {
+        type: "object",
+        properties: {
+          teamId: { type: "string", description: "The Teams team ID" },
+        },
+        required: ["teamId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "teams_post_to_channel",
+      description: "Post a message to a Microsoft Teams channel. Always confirm the message content with the user before posting.",
+      parameters: {
+        type: "object",
+        properties: {
+          teamId: { type: "string", description: "The Teams team ID" },
+          channelId: { type: "string", description: "The Teams channel ID" },
+          content: { type: "string", description: "The message content to post" },
+          subject: { type: "string", description: "Optional subject/headline for the channel post" },
+        },
+        required: ["teamId", "channelId", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "teams_reply_to_thread",
+      description: "Reply to a specific message thread in a Microsoft Teams channel.",
+      parameters: {
+        type: "object",
+        properties: {
+          teamId: { type: "string", description: "The Teams team ID" },
+          channelId: { type: "string", description: "The Teams channel ID" },
+          messageId: { type: "string", description: "The message ID to reply to" },
+          content: { type: "string", description: "The reply content" },
+        },
+        required: ["teamId", "channelId", "messageId", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "teams_create_meeting",
+      description: "Create a Microsoft Teams online meeting. Always confirm details with the user first.",
+      parameters: {
+        type: "object",
+        properties: {
+          subject: { type: "string", description: "Meeting subject/title" },
+          startDateTime: { type: "string", description: "Start time in ISO 8601 format (e.g. 2025-01-15T10:00:00)" },
+          endDateTime: { type: "string", description: "End time in ISO 8601 format" },
+          attendees: {
+            type: "array",
+            items: { type: "object", properties: { email: { type: "string" }, displayName: { type: "string" } } },
+            description: "Optional list of attendees",
+          },
+        },
+        required: ["subject", "startDateTime", "endDateTime"],
       },
     },
   },
@@ -662,6 +763,75 @@ Be concise but informative. Explain what you found and what actions you took, in
                       status = "error";
                     }
                   }
+                }
+              } else if (toolName === "teams_list_chats") {
+                const token = await getTeamsToken(userId);
+                if (!token) {
+                  toolOutput = "Microsoft Teams is not connected. Ask the user to connect Teams in Settings → Connectors.";
+                } else {
+                  const data = await teamsGet<{ value: Array<{ id: string; chatType: string; topic?: string; members?: Array<{ displayName?: string }> }> }>(token, "/me/chats?$expand=members&$top=30");
+                  const chats = (data.value || []).map(c => {
+                    const members = (c.members || []).map(m => m.displayName).filter(Boolean).join(", ");
+                    return `ID: ${c.id} | Type: ${c.chatType}${c.topic ? ` | Topic: ${c.topic}` : ""}${members ? ` | With: ${members}` : ""}`;
+                  });
+                  toolOutput = chats.length ? chats.join("\n") : "No chats found.";
+                }
+              } else if (toolName === "teams_send_message") {
+                const token = await getTeamsToken(userId);
+                if (!token) {
+                  toolOutput = "Microsoft Teams is not connected. Ask the user to connect Teams in Settings → Connectors.";
+                } else {
+                  const a = args as { chatId: string; content: string };
+                  await teamsPost(token, `/me/chats/${a.chatId}/messages`, { body: { contentType: "text", content: a.content } });
+                  toolOutput = `Message sent successfully to chat ${a.chatId}.`;
+                }
+              } else if (toolName === "teams_list_teams") {
+                const token = await getTeamsToken(userId);
+                if (!token) {
+                  toolOutput = "Microsoft Teams is not connected. Ask the user to connect Teams in Settings → Connectors.";
+                } else {
+                  const data = await teamsGet<{ value: Array<{ id: string; displayName: string; description?: string }> }>(token, "/me/joinedTeams?$select=id,displayName,description");
+                  const teams = (data.value || []).map(t => `ID: ${t.id} | Name: ${t.displayName}${t.description ? ` | ${t.description}` : ""}`);
+                  toolOutput = teams.length ? teams.join("\n") : "No teams found.";
+                }
+              } else if (toolName === "teams_list_channels") {
+                const token = await getTeamsToken(userId);
+                if (!token) {
+                  toolOutput = "Microsoft Teams is not connected. Ask the user to connect Teams in Settings → Connectors.";
+                } else {
+                  const a = args as { teamId: string };
+                  const data = await teamsGet<{ value: Array<{ id: string; displayName: string; description?: string }> }>(token, `/teams/${a.teamId}/channels?$select=id,displayName,description`);
+                  const channels = (data.value || []).map(c => `ID: ${c.id} | Name: ${c.displayName}${c.description ? ` | ${c.description}` : ""}`);
+                  toolOutput = channels.length ? channels.join("\n") : "No channels found.";
+                }
+              } else if (toolName === "teams_post_to_channel") {
+                const token = await getTeamsToken(userId);
+                if (!token) {
+                  toolOutput = "Microsoft Teams is not connected. Ask the user to connect Teams in Settings → Connectors.";
+                } else {
+                  const a = args as { teamId: string; channelId: string; content: string; subject?: string };
+                  const body: Record<string, unknown> = { body: { contentType: "text", content: a.content } };
+                  if (a.subject) body.subject = a.subject;
+                  await teamsPost(token, `/teams/${a.teamId}/channels/${a.channelId}/messages`, body);
+                  toolOutput = `Posted successfully to channel ${a.channelId}.`;
+                }
+              } else if (toolName === "teams_reply_to_thread") {
+                const token = await getTeamsToken(userId);
+                if (!token) {
+                  toolOutput = "Microsoft Teams is not connected. Ask the user to connect Teams in Settings → Connectors.";
+                } else {
+                  const a = args as { teamId: string; channelId: string; messageId: string; content: string };
+                  await teamsPost(token, `/teams/${a.teamId}/channels/${a.channelId}/messages/${a.messageId}/replies`, { body: { contentType: "text", content: a.content } });
+                  toolOutput = `Reply sent successfully.`;
+                }
+              } else if (toolName === "teams_create_meeting") {
+                const token = await getTeamsToken(userId);
+                if (!token) {
+                  toolOutput = "Microsoft Teams is not connected. Ask the user to connect Teams in Settings → Connectors.";
+                } else {
+                  const a = args as { subject: string; startDateTime: string; endDateTime: string; attendees?: Array<{ email: string; displayName?: string }> };
+                  const meeting = await teamsPost<{ joinWebUrl?: string; subject?: string; id?: string }>(token, "/me/onlineMeetings", { subject: a.subject, startDateTime: a.startDateTime, endDateTime: a.endDateTime });
+                  toolOutput = `Teams meeting created: "${meeting.subject || a.subject}". Join URL: ${meeting.joinWebUrl || "unavailable"}`;
                 }
               } else {
                 toolOutput = `Unknown tool: ${toolName}`;

@@ -71,16 +71,6 @@ export const ALL_CONNECTORS: ConnectorDef[] = [
     oauthPath: "/api/auth/hubspot/start",
   },
   {
-    id: "notion",
-    label: "Notion",
-    description: "Read and create Notion pages and databases.",
-    capabilities: ["Read pages", "Create notes", "Search workspace", "Update databases"],
-    color: "#000000",
-    textColor: "#fff",
-    initials: "N",
-    oauthPath: "/api/auth/notion/start",
-  },
-  {
     id: "zoom",
     label: "Zoom",
     description: "Schedule and manage Zoom meetings from your emails.",
@@ -93,8 +83,8 @@ export const ALL_CONNECTORS: ConnectorDef[] = [
   {
     id: "teams",
     label: "Teams",
-    description: "Create Microsoft Teams meetings and send messages.",
-    capabilities: ["Create meetings", "Send messages", "Schedule calls", "Channel posts"],
+    description: "Send messages, post to channels, and create meetings in Microsoft Teams.",
+    capabilities: ["Send chat messages", "Post to channels", "Create meetings", "Reply to threads", "List teams & channels"],
     color: "#6264A7",
     textColor: "#fff",
     initials: "MS",

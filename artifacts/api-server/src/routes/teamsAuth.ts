@@ -9,7 +9,15 @@ import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 
 const router = Router();
 
-const TEAMS_SCOPES = ["OnlineMeetings.ReadWrite", "offline_access"].join(" ");
+const TEAMS_SCOPES = [
+  "OnlineMeetings.ReadWrite",
+  "Chat.ReadWrite",
+  "ChannelMessage.Send",
+  "Team.ReadBasic.All",
+  "Channel.ReadBasic.All",
+  "User.Read",
+  "offline_access",
+].join(" ");
 
 function getTeamsRedirectUri() {
   if (process.env.TEAMS_REDIRECT_URI) return process.env.TEAMS_REDIRECT_URI;

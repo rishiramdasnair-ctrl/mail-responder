@@ -194,7 +194,7 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
             {item.subject || "(no subject)"}
           </Text>
 
-          <Text style={[cardStyles.summary, { color: colors.mutedForeground }]} numberOfLines={2}>
+          <Text style={[cardStyles.summary, { color: colors.mutedForeground }]}>
             {item.summary}
           </Text>
 

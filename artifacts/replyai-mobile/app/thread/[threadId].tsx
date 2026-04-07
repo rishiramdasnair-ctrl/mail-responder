@@ -17,6 +17,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { ActionSheet } from "@/components/ActionSheet";
 import { EmailBodyRenderer } from "@/components/EmailBodyRenderer";
+import { AttachmentsSection, type Attachment } from "@/components/AttachmentViewer";
 
 interface EmailMessage {
   id: string;
@@ -33,6 +34,7 @@ interface EmailMessage {
   isUnread: boolean;
   isStarred: boolean;
   labelIds: string[];
+  attachments?: Attachment[];
 }
 
 interface Thread {
@@ -65,7 +67,15 @@ function getInitials(name: string, email: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
-function MessageBubble({ msg }: { msg: EmailMessage }) {
+function MessageBubble({
+  msg,
+  apiBaseUrl,
+  authHeaders,
+}: {
+  msg: EmailMessage;
+  apiBaseUrl: string;
+  authHeaders: () => Promise<Record<string, string>>;
+}) {
   const colors = useColors();
   const [expanded, setExpanded] = useState(true);
   const initials = getInitials(msg.fromName, msg.fromEmail);
@@ -121,8 +131,6 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
       overflow: "hidden",
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
     },
     collapsedSnippet: {
       paddingHorizontal: 16,
@@ -142,6 +150,8 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
     },
   });
 
+  const hasAttachments = msg.attachments && msg.attachments.length > 0;
+
   return (
     <View style={styles.bubble}>
       <TouchableOpacity
@@ -156,8 +166,13 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
           <Text style={styles.senderName}>{msg.fromName || msg.fromEmail}</Text>
           <Text style={styles.senderDate}>{formatDate(msg.date)}</Text>
         </View>
-        <View style={styles.collapseBtn}>
-          <Feather name={expanded ? "chevron-up" : "chevron-down"} size={15} color={colors.mutedForeground} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {hasAttachments && !expanded && (
+            <Feather name="paperclip" size={14} color={colors.mutedForeground} />
+          )}
+          <View style={styles.collapseBtn}>
+            <Feather name={expanded ? "chevron-up" : "chevron-down"} size={15} color={colors.mutedForeground} />
+          </View>
         </View>
       </TouchableOpacity>
 
@@ -171,6 +186,14 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
             mutedColor={colors.mutedForeground}
             borderColor={colors.border}
           />
+          {hasAttachments && (
+            <AttachmentsSection
+              attachments={msg.attachments!}
+              messageId={msg.id}
+              apiBaseUrl={apiBaseUrl}
+              authHeaders={authHeaders}
+            />
+          )}
         </View>
       ) : (
         <TouchableOpacity style={styles.collapsedSnippet} onPress={() => setExpanded(true)}>
@@ -305,14 +328,39 @@ export default function ThreadScreen() {
       textAlign: "center",
       marginBottom: 12,
     },
+    backBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingLeft: Platform.OS === "web" ? 4 : 0,
+      paddingRight: 8,
+      paddingVertical: 4,
+    },
+    backBtnText: {
+      fontSize: 16,
+      color: colors.foreground,
+      fontFamily: "Inter_400Regular",
+    },
   });
+
+  const BackButton = () => (
+    <TouchableOpacity
+      style={styles.backBtn}
+      onPress={() => router.back()}
+      activeOpacity={0.6}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Feather name="arrow-left" size={22} color={colors.foreground} />
+      <Text style={styles.backBtnText}>Inbox</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <>
       <Stack.Screen
         options={{
           title: "",
-          headerBackTitle: "Inbox",
+          headerLeft: () => <BackButton />,
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerShadowVisible: false,
@@ -340,7 +388,12 @@ export default function ThreadScreen() {
                 </Text>
               )}
               {thread.messages.map((msg) => (
-                <MessageBubble key={msg.id} msg={msg} />
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  apiBaseUrl={apiBaseUrl}
+                  authHeaders={authHeaders}
+                />
               ))}
             </ScrollView>
 

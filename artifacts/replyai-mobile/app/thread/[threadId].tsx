@@ -422,26 +422,24 @@ export default function ThreadScreen() {
               </TouchableOpacity>
             </View>
 
-            {lastMessage && (
-              <ActionSheet
-                visible={showReplySheet}
-                onClose={() => setShowReplySheet(false)}
-                threadId={threadId!}
-                emailBody={lastMessage.body || lastMessage.snippet || thread.snippet || ""}
-                emailFrom={lastMessage.from}
-                emailSubject={thread.subject}
-                toEmail={lastMessage.fromEmail || lastMessage.from}
-                subject={thread.subject}
-                accountEmail={accountEmail}
-                apiBaseUrl={apiBaseUrl}
-                getToken={getToken}
-                onActionDone={() => {
-                  qc.invalidateQueries({ queryKey: ["priority-inbox"] });
-                  qc.invalidateQueries({ queryKey: ["thread", threadId, accountEmail] });
-                  router.back();
-                }}
-              />
-            )}
+            <ActionSheet
+              visible={showReplySheet}
+              onClose={() => setShowReplySheet(false)}
+              threadId={threadId!}
+              emailBody={lastMessage?.body || lastMessage?.snippet || thread.snippet || ""}
+              emailFrom={lastMessage?.from ?? ""}
+              emailSubject={thread.subject}
+              toEmail={lastMessage?.fromEmail || lastMessage?.from || ""}
+              subject={thread.subject}
+              accountEmail={accountEmail}
+              apiBaseUrl={apiBaseUrl}
+              getToken={getToken}
+              onActionDone={() => {
+                qc.invalidateQueries({ queryKey: ["priority-inbox"] });
+                qc.invalidateQueries({ queryKey: ["thread", threadId, accountEmail] });
+                router.back();
+              }}
+            />
           </>
         ) : null}
       </View>

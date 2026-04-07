@@ -108,6 +108,7 @@ export default function ComposeScreen() {
 
   const toDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ccDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const allowBackRef = useRef(false);
 
   const hasContent =
     toRecipients.length > 0 ||
@@ -148,7 +149,7 @@ export default function ComposeScreen() {
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e: { preventDefault: () => void; data: { action: { type: string } } }) => {
-      if (!hasContent) return;
+      if (allowBackRef.current || !hasContent) return;
       e.preventDefault();
       confirmDiscard(() => navigation.dispatch(e.data.action));
     });
@@ -295,10 +296,8 @@ export default function ComposeScreen() {
         return;
       }
 
+      allowBackRef.current = true;
       router.back();
-      setTimeout(() => {
-        Alert.alert("Sent", "Your email was sent successfully.");
-      }, 300);
     } catch {
       Alert.alert("Error", "Could not send email. Check your connection and try again.");
     } finally {

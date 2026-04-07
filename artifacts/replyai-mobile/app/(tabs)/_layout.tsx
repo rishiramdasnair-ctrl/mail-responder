@@ -42,7 +42,7 @@ function ClassicTabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.foreground,
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
           position: "absolute",
@@ -70,11 +70,11 @@ function ClassicTabLayout() {
         name="index"
         options={{
           title: "Inbox",
-          tabBarIcon: ({ color }) =>
+          tabBarIcon: ({ focused }) =>
             isIOS ? (
-              <SymbolView name="tray" tintColor={color} size={24} />
+              <SymbolView name="tray" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
             ) : (
-              <Feather name="inbox" size={22} color={color} />
+              <Feather name="inbox" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
             ),
         }}
       />
@@ -82,11 +82,11 @@ function ClassicTabLayout() {
         name="calendar"
         options={{
           title: "Calendar",
-          tabBarIcon: ({ color }) =>
+          tabBarIcon: ({ focused }) =>
             isIOS ? (
-              <SymbolView name="calendar" tintColor={color} size={24} />
+              <SymbolView name="calendar" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
             ) : (
-              <Feather name="calendar" size={22} color={color} />
+              <Feather name="calendar" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
             ),
         }}
       />
@@ -94,11 +94,11 @@ function ClassicTabLayout() {
         name="agent"
         options={{
           title: "Agent",
-          tabBarIcon: ({ color }) =>
+          tabBarIcon: ({ focused }) =>
             isIOS ? (
-              <SymbolView name="sparkles" tintColor={color} size={24} />
+              <SymbolView name="sparkles" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
             ) : (
-              <Feather name="zap" size={22} color={color} />
+              <Feather name="zap" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
             ),
         }}
       />
@@ -106,11 +106,11 @@ function ClassicTabLayout() {
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color }) =>
+          tabBarIcon: ({ focused }) =>
             isIOS ? (
-              <SymbolView name="gear" tintColor={color} size={24} />
+              <SymbolView name="gear" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
             ) : (
-              <Feather name="settings" size={22} color={color} />
+              <Feather name="settings" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
             ),
         }}
       />

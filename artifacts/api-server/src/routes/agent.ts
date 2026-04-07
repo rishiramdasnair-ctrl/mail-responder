@@ -253,7 +253,7 @@ async function executeReadEmail(userId: string, args: { threadId: string }): Pro
     const from = getHeader(headers, "From");
     const subject = getHeader(headers, "Subject");
     const date = getHeader(headers, "Date");
-    const body = decodeBody(msg.payload).slice(0, 2000);
+    const body = decodeBody(msg.payload).body.slice(0, 2000);
     return `From: ${from}\nSubject: ${subject}\nDate: ${date}\n\n${body}`;
   });
   return parts.join("\n\n---\n\n");

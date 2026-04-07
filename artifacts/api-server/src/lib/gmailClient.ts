@@ -172,18 +172,18 @@ function findBodyByMime(part: any, mimeType: string): string {
   return "";
 }
 
-export function decodeBody(part: any): string {
-  if (!part) return "";
+export function decodeBody(part: any): { body: string; bodyType: "html" | "plain" } {
+  if (!part) return { body: "", bodyType: "plain" };
   // Always prefer HTML over plain text (mirrors what Gmail shows)
   const html = findBodyByMime(part, "text/html");
-  if (html) return html;
+  if (html) return { body: html, bodyType: "html" };
   const plain = findBodyByMime(part, "text/plain");
-  if (plain) return plain;
+  if (plain) return { body: plain, bodyType: "plain" };
   // Fallback: top-level body with no mime type
   if (part.body?.data) {
-    return Buffer.from(part.body.data, "base64url").toString("utf-8");
+    return { body: Buffer.from(part.body.data, "base64url").toString("utf-8"), bodyType: "plain" };
   }
-  return "";
+  return { body: "", bodyType: "plain" };
 }
 
 export interface EmailAttachment {

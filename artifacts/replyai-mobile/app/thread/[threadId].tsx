@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { ReplySheet } from "@/components/ReplySheet";
+import { EmailBodyRenderer } from "@/components/EmailBodyRenderer";
 
 interface EmailMessage {
   id: string;
@@ -27,6 +28,7 @@ interface EmailMessage {
   subject: string;
   snippet: string;
   body: string;
+  bodyType: "html" | "plain";
   date: string;
   isUnread: boolean;
   isStarred: boolean;
@@ -109,16 +111,10 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
       padding: 4,
     },
     bodyContainer: {
-      backgroundColor: colors.muted,
       borderRadius: 12,
-      padding: 14,
+      overflow: "hidden",
       marginLeft: 46,
-    },
-    bodyText: {
-      fontSize: 14,
-      color: colors.foreground,
-      fontFamily: "Inter_400Regular",
-      lineHeight: 22,
+      backgroundColor: colors.background,
     },
     collapsedSnippet: {
       marginLeft: 46,
@@ -151,9 +147,13 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
 
       {expanded ? (
         <View style={styles.bodyContainer}>
-          <Text style={styles.bodyText}>
-            {msg.body?.trim() || msg.snippet || "(no content)"}
-          </Text>
+          <EmailBodyRenderer
+            body={msg.body?.trim() || msg.snippet || ""}
+            bodyType={msg.bodyType ?? (msg.body?.includes("<") ? "html" : "plain")}
+            backgroundColor={colors.background}
+            textColor={colors.foreground}
+            mutedColor={colors.mutedForeground}
+          />
         </View>
       ) : (
         <TouchableOpacity style={styles.collapsedSnippet} onPress={() => setExpanded(true)}>

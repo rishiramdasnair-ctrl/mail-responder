@@ -256,7 +256,7 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
       const { name: fromName, email: fromEmail } = parseEmailAddress(fromRaw);
       const subject = getHeader(headers, "Subject");
       const date = getHeader(headers, "Date");
-      const body = decodeBody(msg.payload);
+      const { body, bodyType } = decodeBody(msg.payload);
       const isUnread = (msg.labelIds || []).includes("UNREAD");
       const attachments = extractAttachments(msg.payload);
 
@@ -270,6 +270,7 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
         subject,
         snippet: msg.snippet || "",
         body,
+        bodyType,
         date,
         isUnread,
         labelIds: msg.labelIds || [],

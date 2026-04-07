@@ -348,18 +348,10 @@ export default function AgentScreen() {
     setMessages([loadingMsg]);
     try {
       const headers = await authHeaders();
-      const inboxRes = await fetch(`${apiBaseUrl}/api/gmail/inbox?maxResults=30`, { headers });
-      const inboxData = inboxRes.ok ? (await inboxRes.json() as { threads?: Array<{ subject?: string; fromName?: string; snippet?: string; isUnread?: boolean }> }) : { threads: [] };
-      const threads = (inboxData.threads || []).map((t) => ({
-        subject: t.subject || "",
-        fromName: t.fromName || "",
-        snippet: t.snippet || "",
-        isUnread: t.isUnread ?? false,
-      }));
       const res = await fetch(`${apiBaseUrl}/api/ai/digest`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ threads }),
+        body: JSON.stringify({}),
       });
       const data = res.ok ? (await res.json() as { digest?: string }) : {};
       const digestText = data.digest || "No digest available right now.";

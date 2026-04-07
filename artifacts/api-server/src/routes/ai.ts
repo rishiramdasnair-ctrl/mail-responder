@@ -4,10 +4,13 @@ import { requireAuth } from "../lib/requireAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
 import { GenerateRepliesBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { usersTable, replyHistoryTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usersTable, replyHistoryTable, connectorsTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 import { openrouter as openai, FAST_MODEL, AGENT_MODEL } from "../lib/openrouter";
 import rateLimit from "express-rate-limit";
+import { getGmailClientForUser, getCalendarClientForUser, getHeader } from "../lib/gmailClient";
+import { getTeamsToken, teamsGet } from "../lib/teamsClient";
+import { google } from "googleapis";
 
 const router = Router();
 
@@ -345,57 +348,158 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
       return;
     }
 
-    const threads: Array<{ subject: string; fromName: string; snippet: string; isUnread: boolean }> = req.body?.threads || [];
+    const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    const sections: string[] = [];
 
-    if (!threads.length) {
-      res.json({ digest: "Your inbox is empty — enjoy the silence! 🌿" });
+    // --- Gmail unread ---
+    try {
+      const gmail = await getGmailClientForUser(userId);
+      const listRes = await gmail.users.threads.list({ userId: "me", q: "is:unread", maxResults: 15 });
+      const threads = listRes.data.threads || [];
+      if (threads.length) {
+        const items = await Promise.all(threads.slice(0, 15).map(async (t) => {
+          try {
+            const thread = await gmail.users.threads.get({ userId: "me", id: t.id!, format: "metadata", metadataHeaders: ["From", "Subject"] });
+            const msg = thread.data.messages?.[thread.data.messages.length - 1];
+            const headers = msg?.payload?.headers || [];
+            const from = getHeader(headers, "From").split("<")[0].trim().replace(/"/g, "") || "Unknown";
+            const subject = getHeader(headers, "Subject") || "(no subject)";
+            return `• ${from} — ${subject}`;
+          } catch { return null; }
+        }));
+        const valid = items.filter(Boolean);
+        if (valid.length) sections.push(`EMAIL (${valid.length} unread)\n${valid.join("\n")}`);
+      } else {
+        sections.push("EMAIL\nInbox is clear.");
+      }
+    } catch { /* Gmail not connected */ }
+
+    // --- Google Calendar upcoming events ---
+    try {
+      const calendar = await getCalendarClientForUser(userId);
+      const gcal = google.calendar({ version: "v3", auth: calendar });
+      const now = new Date();
+      const end = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+      const eventsRes = await gcal.events.list({
+        calendarId: "primary",
+        timeMin: now.toISOString(),
+        timeMax: end.toISOString(),
+        maxResults: 8,
+        singleEvents: true,
+        orderBy: "startTime",
+      });
+      const events = eventsRes.data.items || [];
+      if (events.length) {
+        const items = events.map((e) => {
+          const start = e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "All day";
+          return `• ${start} — ${e.summary || "Untitled event"}${e.attendees?.length ? ` (${e.attendees.length} attendees)` : ""}`;
+        });
+        sections.push(`CALENDAR (next 48h)\n${items.join("\n")}`);
+      } else {
+        sections.push("CALENDAR\nNo upcoming events in the next 48 hours.");
+      }
+    } catch { /* Calendar not connected */ }
+
+    // --- Slack unread ---
+    try {
+      const slackRows = await db.select({ config: connectorsTable.config })
+        .from(connectorsTable)
+        .where(and(eq(connectorsTable.userId, userId), eq(connectorsTable.connectorId, "slack"), eq(connectorsTable.status, "connected")))
+        .limit(1);
+
+      if (slackRows.length) {
+        const slackToken = (slackRows[0].config as { accessToken: string })?.accessToken;
+        if (slackToken) {
+          const chRes = await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel,im&limit=20&exclude_archived=true", {
+            headers: { Authorization: `Bearer ${slackToken}` },
+          });
+          const chData = await chRes.json() as { ok: boolean; channels?: Array<{ id: string; name?: string; is_im?: boolean; unread_count?: number }> };
+          const unreadChannels = (chData.channels || []).filter(c => (c.unread_count ?? 0) > 0).slice(0, 6);
+          if (unreadChannels.length) {
+            const msgItems = await Promise.all(unreadChannels.map(async (ch) => {
+              try {
+                const histRes = await fetch(`https://slack.com/api/conversations.history?channel=${ch.id}&limit=1`, {
+                  headers: { Authorization: `Bearer ${slackToken}` },
+                });
+                const hist = await histRes.json() as { messages?: Array<{ text?: string }> };
+                const preview = hist.messages?.[0]?.text?.slice(0, 80).replace(/\n/g, " ") || "";
+                const name = ch.is_im ? "DM" : `#${ch.name}`;
+                return `• ${name}: ${preview}`;
+              } catch { return null; }
+            }));
+            const valid = msgItems.filter(Boolean);
+            if (valid.length) sections.push(`SLACK (${unreadChannels.length} channels with unread)\n${valid.join("\n")}`);
+          } else {
+            sections.push("SLACK\nNo unread messages.");
+          }
+        }
+      }
+    } catch { /* Slack not connected */ }
+
+    // --- Teams recent chats ---
+    try {
+      const teamsToken = await getTeamsToken(userId);
+      if (teamsToken) {
+        const chatsData = await teamsGet<{ value: Array<{ id: string; chatType: string; topic?: string; lastMessagePreview?: { body?: { content?: string }; from?: { user?: { displayName?: string } } } }> }>(
+          teamsToken, "/me/chats?$expand=lastMessagePreview&$top=10"
+        );
+        const chats = (chatsData.value || []).filter(c => c.lastMessagePreview?.body?.content).slice(0, 5);
+        if (chats.length) {
+          const items = chats.map(c => {
+            const from = c.lastMessagePreview?.from?.user?.displayName || "Someone";
+            const preview = (c.lastMessagePreview?.body?.content || "").replace(/<[^>]*>/g, "").slice(0, 80);
+            const name = c.topic || (c.chatType === "oneOnOne" ? `Chat with ${from}` : "Group chat");
+            return `• ${name}: ${preview}`;
+          });
+          sections.push(`TEAMS\n${items.join("\n")}`);
+        } else {
+          sections.push("TEAMS\nNo recent messages.");
+        }
+      }
+    } catch { /* Teams not connected */ }
+
+    if (!sections.length) {
+      res.json({ digest: "No connected accounts yet. Connect Gmail, Calendar, Slack, or Teams in Settings to get your daily briefing." });
       return;
     }
 
-    const unread = threads.filter((t) => t.isUnread).slice(0, 20);
-    const allItems = (unread.length ? unread : threads.slice(0, 20)).map((t) =>
-      `• "${t.subject}" from ${t.fromName}: ${t.snippet?.slice(0, 120) || ""}`
-    ).join("\n");
-
-    const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    const systemsSnapshot = sections.join("\n\n");
 
     const completion = await openai.chat.completions.create({
       model: AGENT_MODEL,
-      max_tokens: 700,
+      max_tokens: 600,
       messages: [
         {
           role: "system",
-          content: `You are ReplyAI, an AI secretary. Generate a structured Daily Briefing from the inbox snapshot below.
+          content: `You are ReplyAI, an AI chief of staff. Generate a cross-system briefing from the data below.
 
-Use this exact format (plain text, no markdown syntax like ** or ##):
+Use this exact format (plain text only — no asterisks, no pound signs, no markdown):
 
-Daily Briefing — ${today}
+Daily Brief — ${today}
 
-INBOX STATUS
-One calm, direct sentence on the overall inbox state.
+EMAIL
+One or two sentences on inbox state and the most urgent email.
 
-REPLY NOW  (blocking someone or time-sensitive)
-• [Sender] — [Subject]: one-line action needed
-(Omit this section if none)
+CALENDAR
+One sentence on what's coming up.
 
-REPLY TODAY
-• [Sender] — [Subject]: one-line action needed
-(List 2-4 items max)
+COMMS
+One or two sentences covering Slack/Teams highlights if any.
 
-FYI / ARCHIVE
-• [Sender] — [Subject]: why it can wait
-(List 1-3 items max)
-
-HEADS UP
-One sentence flagging any deadlines, travel, or prep needed based on the emails.
+ACTION ITEMS
+• [Most critical thing to do]
+• [Second priority]
+• [Third priority if needed]
+(Max 3 bullets. Omit section if nothing urgent.)
 
 Rules:
-- BLUF: bottom line up front in every bullet
-- Each bullet must be specific to an actual email, not generic
-- Max 180 words total
-- Plain text only — no asterisks, no pound signs, no markdown`,
+- Be concise and direct — max 200 words total
+- Only reference actual data from the snapshot
+- Omit any section header if that system is not in the snapshot
+- Plain text only — no asterisks, no pound signs, no markdown
+- Sound like a smart, calm chief of staff giving a morning briefing`,
         },
-        { role: "user", content: `Inbox snapshot (${threads.length} threads, ${unread.length} unread):\n${allItems}` },
+        { role: "user", content: `Notifications snapshot:\n\n${systemsSnapshot}` },
       ],
     });
 

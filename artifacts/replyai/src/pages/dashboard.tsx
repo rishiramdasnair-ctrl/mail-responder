@@ -1796,7 +1796,7 @@ export default function Dashboard() {
               </div>
             ) : isInboxError ? (
               <div className="p-8 text-center flex flex-col items-center justify-center gap-3">
-                <AlertTriangle className="w-8 h-8 text-amber-500 opacity-70" />
+                <AlertTriangle className="w-8 h-8 text-violet-500 opacity-70" />
                 <div>
                   <p className="font-medium text-sm">Couldn't load your inbox</p>
                   <p className="text-xs text-muted-foreground mt-1">Your Gmail connection may have expired.</p>
@@ -1834,7 +1834,7 @@ export default function Dashboard() {
                         selectedThreadId === thread.threadId
                           ? "bg-secondary border-l-primary"
                           : isUnifiedInbox
-                          ? "border-l-amber-400 bg-amber-50/40 dark:bg-amber-950/10 hover:bg-amber-50/70 dark:hover:bg-amber-950/20"
+                          ? "border-l-violet-500 bg-violet-50/40 dark:bg-violet-950/10 hover:bg-violet-50/70 dark:hover:bg-violet-950/20"
                           : "border-l-transparent hover:bg-secondary/50"
                       }`}
                     >

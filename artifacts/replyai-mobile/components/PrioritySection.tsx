@@ -7,10 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+
+const SIRI_GRADIENT = ["#5856D6", "#AF52DE", "#FF2D55"] as const;
+const URGENT_GRADIENT = ["#FF2D55", "#FF6B35", "#AF52DE"] as const;
 
 export interface PriorityEmail {
   id: string;
@@ -58,148 +62,164 @@ function formatShortDate(dateStr: string): string {
   }
 }
 
+const cardStyles = StyleSheet.create({
+  card: {
+    width: 240,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(175,82,222,0.3)",
+    backgroundColor: "transparent",
+    overflow: "hidden",
+  },
+  cardBg: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: 13,
+    opacity: 0.07,
+  },
+  cardInner: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  accentBar: {
+    width: 4,
+    alignSelf: "stretch",
+  },
+  cardInnerPadded: {
+    flex: 1,
+    padding: 14,
+    gap: 8,
+  },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  dateText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  subject: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    lineHeight: 18,
+  },
+  summary: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 17,
+  },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 4,
+    marginTop: 2,
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    gap: 4,
+    overflow: "hidden",
+  },
+  actionBtnGradient: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: 20,
+  },
+  actionText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    color: "#fff",
+  },
+  urgentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+});
+
 function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
   const initials = getInitials(item.fromName, item.fromEmail);
   const displayName = item.fromName || item.fromEmail;
   const isUrgent = item.suggestedAction === "Urgent Reply";
-
-  const accentColor = isUrgent ? "#f43f5e" : "#f59e0b";
-  const accentBg = isUrgent ? "rgba(244,63,94,0.07)" : "rgba(245,158,11,0.07)";
-
-  const styles = StyleSheet.create({
-    card: {
-      width: 240,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: isUrgent ? "#f43f5e" : "#f59e0b",
-      backgroundColor: colors.card,
-      overflow: "hidden",
-    },
-    cardInner: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "stretch",
-    },
-    accentBar: {
-      width: 4,
-      alignSelf: "stretch",
-      backgroundColor: accentColor,
-      borderTopLeftRadius: 14,
-      borderBottomLeftRadius: 14,
-    },
-    cardInnerPadded: {
-      flex: 1,
-      padding: 14,
-      gap: 8,
-    },
-    topRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    avatar: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: item.isUnread ? colors.foreground : colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: {
-      fontSize: 10,
-      fontFamily: "Inter_600SemiBold",
-      color: item.isUnread ? colors.primaryForeground : colors.mutedForeground,
-    },
-    senderName: {
-      flex: 1,
-      fontSize: 13,
-      fontFamily: "Inter_600SemiBold",
-      color: colors.foreground,
-    },
-    dateText: {
-      fontSize: 11,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-    },
-    subject: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
-      color: colors.foreground,
-      lineHeight: 18,
-    },
-    summary: {
-      fontSize: 12,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-      lineHeight: 17,
-    },
-    actionRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingTop: 4,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
-      marginTop: 2,
-    },
-    actionBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.foreground,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 20,
-      gap: 4,
-    },
-    actionText: {
-      fontSize: 12,
-      fontFamily: "Inter_600SemiBold",
-      color: colors.primaryForeground,
-    },
-    urgentDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.foreground,
-    },
-  });
+  const gradient = isUrgent ? URGENT_GRADIENT : SIRI_GRADIENT;
 
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: accentBg }]}
+      style={[cardStyles.card, { backgroundColor: colors.card }]}
       onPress={() => onPress(item.threadId, item.accountEmail)}
       activeOpacity={0.75}
     >
-      <View style={styles.cardInner}>
-        <View style={styles.accentBar} />
-        <View style={styles.cardInnerPadded}>
-          <View style={styles.topRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
+      <LinearGradient
+        colors={gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={cardStyles.cardBg}
+      />
+      <View style={cardStyles.cardInner}>
+        <LinearGradient
+          colors={gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={cardStyles.accentBar}
+        />
+        <View style={cardStyles.cardInnerPadded}>
+          <View style={cardStyles.topRow}>
+            <View style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: item.isUnread ? colors.foreground : colors.muted,
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <Text style={{
+                fontSize: 10,
+                fontFamily: "Inter_600SemiBold",
+                color: item.isUnread ? colors.primaryForeground : colors.mutedForeground,
+              }}>{initials}</Text>
             </View>
-            <Text style={styles.senderName} numberOfLines={1}>
+            <Text style={[{ flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground }]} numberOfLines={1}>
               {displayName}
             </Text>
-            <Text style={styles.dateText}>{formatShortDate(item.date)}</Text>
+            <Text style={[cardStyles.dateText, { color: colors.mutedForeground }]}>{formatShortDate(item.date)}</Text>
           </View>
 
-          <Text style={styles.subject} numberOfLines={1}>
+          <Text style={[cardStyles.subject, { color: colors.foreground }]} numberOfLines={1}>
             {item.subject || "(no subject)"}
           </Text>
 
-          <Text style={styles.summary} numberOfLines={2}>
+          <Text style={[cardStyles.summary, { color: colors.mutedForeground }]} numberOfLines={2}>
             {item.summary}
           </Text>
 
-          <View style={styles.actionRow}>
-            {isUrgent && <View style={[styles.urgentDot, { backgroundColor: accentColor }]} />}
+          <View style={[cardStyles.actionRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+            {isUrgent && (
+              <LinearGradient
+                colors={gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[cardStyles.urgentDot]}
+              />
+            )}
             <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: accentColor }]}
+              style={cardStyles.actionBtn}
               onPress={() => onAction(item)}
               activeOpacity={0.8}
             >
-              <Text style={styles.actionText}>{item.suggestedAction}</Text>
-              <Feather name="arrow-right" size={11} color={colors.primaryForeground} />
+              <LinearGradient
+                colors={gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={cardStyles.actionBtnGradient}
+              />
+              <Text style={cardStyles.actionText}>{item.suggestedAction}</Text>
+              <Feather name="arrow-right" size={11} color="#fff" />
             </TouchableOpacity>
           </View>
         </View>

@@ -894,7 +894,7 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Theme</Text>
             <View style={[styles.card, { padding: 16 }]}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 12 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 12, flexGrow: 1, justifyContent: "center" }}>
                 {THEMES.map((theme) => {
                   const isActive = themeId === theme.id;
                   return (

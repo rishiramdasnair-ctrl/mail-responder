@@ -106,8 +106,8 @@ function ConnectorAvatar({
     >
       <View style={{ width: size, height: size, position: "relative" }}>
         {(() => {
-          const imgSrc = getConnectorLogoImage(def.id);
-          if (imgSrc) {
+          const imgCfg = getConnectorLogoImage(def.id);
+          if (imgCfg) {
             return (
               <View
                 style={{
@@ -116,12 +116,16 @@ function ConnectorAvatar({
                   borderRadius: size / 2,
                   overflow: "hidden",
                   opacity: connected ? 1 : 0.45,
+                  backgroundColor: imgCfg.backgroundColor,
+                  padding: imgCfg.padding,
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
                 <Image
-                  source={imgSrc}
-                  style={{ width: size, height: size }}
-                  resizeMode="cover"
+                  source={imgCfg.source}
+                  style={{ width: size - imgCfg.padding * 2, height: size - imgCfg.padding * 2 }}
+                  resizeMode={imgCfg.resizeMode}
                 />
               </View>
             );
@@ -345,10 +349,10 @@ function ConnectorDetailSheet({
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.topRow}>
-              <View style={[styles.avatar, getConnectorLogoImage(def.id) ? { backgroundColor: "transparent", padding: 0, overflow: "hidden" } : {}]}>
+              <View style={[styles.avatar, getConnectorLogoImage(def.id) ? { overflow: "hidden", backgroundColor: getConnectorLogoImage(def.id)!.backgroundColor, padding: getConnectorLogoImage(def.id)!.padding, alignItems: "center", justifyContent: "center" } : {}]}>
                 {(() => {
-                  const imgSrc = getConnectorLogoImage(def.id);
-                  if (imgSrc) return <Image source={imgSrc} style={{ width: 52, height: 52 }} resizeMode="cover" />;
+                  const imgCfg = getConnectorLogoImage(def.id);
+                  if (imgCfg) return <Image source={imgCfg.source} style={{ width: 52 - imgCfg.padding * 2, height: 52 - imgCfg.padding * 2 }} resizeMode={imgCfg.resizeMode} />;
                   const Logo = getConnectorLogo(def.id);
                   if (Logo) return <Logo size={28} color={def.textColor} />;
                   return <Text style={styles.avatarText}>{def.initials}</Text>;

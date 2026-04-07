@@ -137,10 +137,20 @@ export function getConnectorLogo(connectorId: string): React.ComponentType<LogoP
   }
 }
 
-export function getConnectorLogoImage(connectorId: string): number | null {
+export interface ConnectorLogoImage {
+  source: number;
+  resizeMode: "cover" | "contain";
+  backgroundColor: string;
+  padding: number;
+}
+
+export function getConnectorLogoImage(connectorId: string): ConnectorLogoImage | null {
   switch (connectorId) {
-    case "slack": return require("../assets/images/slack.png");
-    case "hubspot": return require("../assets/images/hubspot.png");
-    default: return null;
+    case "slack":
+      return { source: require("../assets/images/slack.png"), resizeMode: "cover", backgroundColor: "#000", padding: 0 };
+    case "hubspot":
+      return { source: require("../assets/images/hubspot.png"), resizeMode: "contain", backgroundColor: "#fff", padding: 4 };
+    default:
+      return null;
   }
 }

@@ -894,7 +894,7 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Theme</Text>
             <View style={[styles.card, { padding: 16 }]}>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 12 }}>
                 {THEMES.map((theme) => {
                   const isActive = themeId === theme.id;
                   return (
@@ -938,7 +938,7 @@ export default function SettingsScreen() {
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
             </View>
           </View>
 

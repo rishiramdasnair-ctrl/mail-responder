@@ -39,6 +39,22 @@ interface CalendarDraft {
   attendees?: string[];
 }
 
+interface SlackChannelItem {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  memberCount: number;
+}
+
+interface CalendlyEventTypeItem {
+  uri: string;
+  name: string;
+  duration: number;
+  schedulingUrl: string;
+  slug: string;
+  description: string | null;
+}
+
 interface ActionSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -174,6 +190,21 @@ export function ActionSheet({
   const [calDraft, setCalDraft] = useState<CalendarDraft | null>(null);
   const [calTitle, setCalTitle] = useState("");
 
+  const [showSlackSection, setShowSlackSection] = useState(false);
+  const [slackChannels, setSlackChannels] = useState<SlackChannelItem[]>([]);
+  const [isLoadingSlack, setIsLoadingSlack] = useState(false);
+  const [selectedSlackChannel, setSelectedSlackChannel] = useState<SlackChannelItem | null>(null);
+  const [slackPendingChannel, setSlackPendingChannel] = useState<SlackChannelItem | null>(null);
+  const [slackPreviewSummary, setSlackPreviewSummary] = useState("");
+  const [isGeneratingSlackSummary, setIsGeneratingSlackSummary] = useState(false);
+  const [slackConnected, setSlackConnected] = useState(false);
+  const [isSendingSlack, setIsSendingSlack] = useState(false);
+
+  const [showCalendlySection, setShowCalendlySection] = useState(false);
+  const [calendlyEventTypes, setCalendlyEventTypes] = useState<CalendlyEventTypeItem[]>([]);
+  const [isLoadingCalendly, setIsLoadingCalendly] = useState(false);
+  const [calendlyConnected, setCalendlyConnected] = useState(false);
+
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken();
     return {
@@ -215,6 +246,36 @@ export function ActionSheet({
     }
   }, [threadId, emailBody, emailFrom, emailSubject, accountEmail, apiBaseUrl, authHeaders]);
 
+  const loadSlackChannels = useCallback(async () => {
+    setIsLoadingSlack(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/slack/channels`, { headers });
+      const data = await res.json() as { connected: boolean; channels?: SlackChannelItem[] };
+      setSlackConnected(data.connected);
+      setSlackChannels(data.channels ?? []);
+    } catch {
+      setSlackConnected(false);
+    } finally {
+      setIsLoadingSlack(false);
+    }
+  }, [apiBaseUrl, authHeaders]);
+
+  const loadCalendlyEventTypes = useCallback(async () => {
+    setIsLoadingCalendly(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/calendly/event-types`, { headers });
+      const data = await res.json() as { connected: boolean; eventTypes?: CalendlyEventTypeItem[] };
+      setCalendlyConnected(data.connected);
+      setCalendlyEventTypes(data.eventTypes ?? []);
+    } catch {
+      setCalendlyConnected(false);
+    } finally {
+      setIsLoadingCalendly(false);
+    }
+  }, [apiBaseUrl, authHeaders]);
+
   useEffect(() => {
     if (!visible) return;
     setPhase("loading");
@@ -226,6 +287,11 @@ export function ActionSheet({
     setForwardTo("");
     setCalDraft(null);
     setCalTitle("");
+    setShowSlackSection(false);
+    setShowCalendlySection(false);
+    setSelectedSlackChannel(null);
+    setSlackPendingChannel(null);
+    setSlackPreviewSummary("");
 
     fetchActions().then((result) => {
       if (result) {
@@ -235,6 +301,9 @@ export function ActionSheet({
         setPhase("actions");
       }
     });
+
+    loadSlackChannels();
+    loadCalendlyEventTypes();
   }, [visible]);
 
   const handleExecute = useCallback((action: ProposedAction) => {
@@ -363,6 +432,65 @@ export function ActionSheet({
       setPhase("confirm");
     }
   }, [calDraft, calTitle, accountEmail, apiBaseUrl, authHeaders, onActionDone, onClose]);
+
+  const initiateSlackPreview = useCallback(async (channel: SlackChannelItem) => {
+    setSlackPendingChannel(channel);
+    setIsGeneratingSlackSummary(true);
+    setSlackPreviewSummary(`Thread: ${emailSubject}`);
+    try {
+      const headers = await authHeaders();
+      const summarizeRes = await fetch(`${apiBaseUrl}/api/slack/summarize`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          subject: emailSubject,
+          messages: [{ from: emailFrom, date: new Date().toISOString(), body: emailBody }],
+        }),
+      });
+      if (summarizeRes.ok) {
+        const sd = await summarizeRes.json() as { summary?: string };
+        if (sd.summary) setSlackPreviewSummary(sd.summary);
+      }
+    } catch {
+      // keep fallback summary
+    } finally {
+      setIsGeneratingSlackSummary(false);
+    }
+  }, [emailSubject, emailFrom, emailBody, apiBaseUrl, authHeaders]);
+
+  const confirmSendToSlack = useCallback(async () => {
+    const channel = slackPendingChannel;
+    if (!channel) return;
+    setIsSendingSlack(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/slack/send`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          channelId: channel.id,
+          channelName: channel.name,
+          summary: slackPreviewSummary,
+          threadSubject: emailSubject,
+        }),
+      });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (!data.success) {
+        Alert.alert("Slack error", data.error || "Failed to send to Slack");
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Sent!", `Posted to #${channel.name}`);
+        setShowSlackSection(false);
+        setSelectedSlackChannel(null);
+        setSlackPendingChannel(null);
+        setSlackPreviewSummary("");
+      }
+    } catch {
+      Alert.alert("Slack error", "Network error. Please try again.");
+    } finally {
+      setIsSendingSlack(false);
+    }
+  }, [slackPendingChannel, slackPreviewSummary, emailSubject, apiBaseUrl, authHeaders]);
 
   const archiveThread = useCallback(async () => {
     setPhase("executing");
@@ -784,6 +912,209 @@ export function ActionSheet({
           </TouchableOpacity>
         </View>
       </View>
+
+      {slackConnected && (
+        <View style={[styles.customSection, { marginTop: 4 }]}>
+          <TouchableOpacity
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+            onPress={() => setShowSlackSection(!showSlackSection)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.customLabel}>Send to Slack</Text>
+            <Feather
+              name={showSlackSection ? "chevron-up" : "chevron-down"}
+              size={14}
+              color={colors.mutedForeground}
+            />
+          </TouchableOpacity>
+          {showSlackSection && (
+            isLoadingSlack ? (
+              <ActivityIndicator color={colors.mutedForeground} size="small" style={{ marginTop: 8 }} />
+            ) : slackChannels.length === 0 ? (
+              <Text style={[styles.customLabel, { fontSize: 13, textTransform: "none", letterSpacing: 0, marginTop: 4 }]}>
+                No channels available
+              </Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginTop: 8 }}
+                contentContainerStyle={{ gap: 6 }}
+              >
+                {slackChannels.slice(0, 20).map(ch => (
+                  <TouchableOpacity
+                    key={ch.id}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: selectedSlackChannel?.id === ch.id ? colors.foreground : colors.background,
+                    }}
+                    onPress={() => {
+                      setSelectedSlackChannel(ch);
+                      initiateSlackPreview(ch);
+                    }}
+                    disabled={isSendingSlack || isGeneratingSlackSummary}
+                  >
+                    <Text style={{
+                      fontSize: 13,
+                      color: selectedSlackChannel?.id === ch.id ? colors.primaryForeground : colors.foreground,
+                      fontFamily: "Inter_400Regular",
+                    }}>
+                      #{ch.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )
+          )}
+          {slackPendingChannel && showSlackSection && (
+            <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+              <Text style={[styles.customLabel, { marginBottom: 6 }]}>
+                Preview — #{slackPendingChannel.name}
+              </Text>
+              {isGeneratingSlackSummary ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <ActivityIndicator color={colors.mutedForeground} size="small" />
+                  <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                    Generating AI summary…
+                  </Text>
+                </View>
+              ) : (
+                <TextInput
+                  style={{
+                    fontSize: 13,
+                    color: colors.foreground,
+                    fontFamily: "Inter_400Regular",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    padding: 8,
+                    minHeight: 64,
+                    textAlignVertical: "top",
+                    backgroundColor: colors.background,
+                    marginBottom: 8,
+                  }}
+                  value={slackPreviewSummary}
+                  onChangeText={setSlackPreviewSummary}
+                  multiline
+                  scrollEnabled={false}
+                />
+              )}
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 9,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    alignItems: "center",
+                  }}
+                  onPress={() => {
+                    setSlackPendingChannel(null);
+                    setSlackPreviewSummary("");
+                    setSelectedSlackChannel(null);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 14, color: colors.foreground, fontFamily: "Inter_400Regular" }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flex: 2,
+                    paddingVertical: 9,
+                    borderRadius: 10,
+                    backgroundColor: colors.foreground,
+                    alignItems: "center",
+                    opacity: isSendingSlack || isGeneratingSlackSummary ? 0.5 : 1,
+                  }}
+                  onPress={confirmSendToSlack}
+                  disabled={isSendingSlack || isGeneratingSlackSummary}
+                  activeOpacity={0.8}
+                >
+                  {isSendingSlack ? (
+                    <ActivityIndicator color={colors.primaryForeground} size="small" />
+                  ) : (
+                    <Text style={{ fontSize: 14, color: colors.primaryForeground, fontFamily: "Inter_500Medium" }}>
+                      Send to Slack
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
+      {calendlyConnected && (
+        <View style={[styles.customSection, { marginTop: 4 }]}>
+          <TouchableOpacity
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+            onPress={() => setShowCalendlySection(!showCalendlySection)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.customLabel}>Insert scheduling link</Text>
+            <Feather
+              name={showCalendlySection ? "chevron-up" : "chevron-down"}
+              size={14}
+              color={colors.mutedForeground}
+            />
+          </TouchableOpacity>
+          {showCalendlySection && (
+            isLoadingCalendly ? (
+              <ActivityIndicator color={colors.mutedForeground} size="small" style={{ marginTop: 8 }} />
+            ) : calendlyEventTypes.length === 0 ? (
+              <Text style={[styles.customLabel, { fontSize: 13, textTransform: "none", letterSpacing: 0, marginTop: 4 }]}>
+                No active event types found
+              </Text>
+            ) : (
+              <View style={{ marginTop: 8, gap: 6 }}>
+                {calendlyEventTypes.map(et => (
+                  <TouchableOpacity
+                    key={et.uri}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    }}
+                    onPress={() => {
+                      setPhase("confirm");
+                      setSelectedAction({
+                        id: "calendly-insert",
+                        label: `Schedule: ${et.name}`,
+                        description: `Insert your ${et.name} link into a reply`,
+                        type: "reply",
+                        draftContent: `\n\nSchedule a time with me: ${et.schedulingUrl}`,
+                      });
+                      setDraftText(`\n\nSchedule a time with me: ${et.schedulingUrl}`);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <View>
+                      <Text style={{ fontSize: 14, color: colors.foreground, fontFamily: "Inter_500Medium" }}>
+                        {et.name}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                        {et.duration} min
+                      </Text>
+                    </View>
+                    <Feather name="link" size={14} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 

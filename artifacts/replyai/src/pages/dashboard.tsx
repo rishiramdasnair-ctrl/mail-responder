@@ -891,6 +891,338 @@ function CalendarPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+interface LinkedInProfile {
+  id: string | null;
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  photoUrl: string | null;
+  email: string | null;
+  headline: string | null;
+  company: string | null;
+  linkedinUrl: string | null;
+}
+
+function useLinkedInProfile(email: string | null | undefined, name?: string | null) {
+  return useQuery<{ connected: boolean; profile: LinkedInProfile | null; searchUrl?: string }>({
+    queryKey: ["linkedin-profile", email],
+    queryFn: async () => {
+      if (!email) return { connected: false, profile: null };
+      const params = new URLSearchParams();
+      if (email) params.set("email", email);
+      if (name) params.set("name", name);
+      const res = await fetch(`/api/linkedin/profile?${params}`, { credentials: "include" });
+      if (!res.ok) return { connected: false, profile: null };
+      return res.json();
+    },
+    enabled: !!email,
+    staleTime: 300_000,
+  });
+}
+
+function LinkedInProfilePanel({ senderEmail, senderName }: { senderEmail: string; senderName?: string }) {
+  const { data, isLoading } = useLinkedInProfile(senderEmail, senderName);
+
+  if (isLoading || !data?.connected) return null;
+
+  const { profile, searchUrl } = data;
+  const initials = senderName
+    ? senderName.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase()
+    : senderEmail[0].toUpperCase();
+
+  return (
+    <div className="mx-0 mt-3 rounded-lg border bg-card p-3 text-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-5 h-5 rounded bg-[#0A66C2] flex items-center justify-center shrink-0">
+          <span className="text-white text-[10px] font-bold">in</span>
+        </div>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">LinkedIn</span>
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          {profile?.photoUrl ? (
+            <img src={profile.photoUrl} alt={profile.name ?? ""} className="w-7 h-7 rounded-full object-cover shrink-0" />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-[#0A66C2]/10 flex items-center justify-center shrink-0">
+              <span className="text-[#0A66C2] text-xs font-bold">{initials}</span>
+            </div>
+          )}
+          <div className="min-w-0">
+            {profile?.name && <p className="font-medium text-sm leading-tight">{profile.name}</p>}
+            <p className="text-xs text-muted-foreground truncate">{senderEmail}</p>
+          </div>
+        </div>
+        {profile?.headline && (
+          <p className="text-xs text-muted-foreground pl-9">{profile.headline}</p>
+        )}
+        {profile?.company && (
+          <div className="flex items-center gap-2 pl-0.5">
+            <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground">{profile.company}</span>
+          </div>
+        )}
+        {searchUrl && (
+          <a
+            href={searchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-[#0A66C2] hover:underline mt-1 pl-0.5"
+          >
+            <ExternalLink className="w-3 h-3" />
+            {profile?.name ? "View on LinkedIn" : `Search "${senderName || senderEmail}" on LinkedIn`}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface SlackChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  memberCount: number;
+}
+
+interface SlackDialogMessage {
+  from: string;
+  date: string;
+  body: string;
+}
+
+function SlackSendDialog({
+  open,
+  onOpenChange,
+  threadSubject,
+  threadId,
+  messages,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  threadSubject: string;
+  threadId: string;
+  messages: SlackDialogMessage[];
+}) {
+  const { toast } = useToast();
+  const [selectedChannel, setSelectedChannel] = useState<SlackChannel | null>(null);
+  const [editedSummary, setEditedSummary] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const { data: channelsData, isLoading: isLoadingChannels } = useQuery<{ connected: boolean; channels: SlackChannel[] }>({
+    queryKey: ["slack-channels"],
+    queryFn: async () => {
+      const res = await fetch("/api/slack/channels", { credentials: "include" });
+      if (!res.ok) return { connected: false, channels: [] };
+      return res.json();
+    },
+    staleTime: 60_000,
+    enabled: open,
+  });
+
+  const generateSummary = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/slack/summarize", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: threadSubject, messages }),
+      });
+      if (!res.ok) throw new Error("Failed to generate summary");
+      const data = await res.json() as { summary?: string };
+      if (data.summary) {
+        setEditedSummary(data.summary);
+      }
+    } catch {
+      toast({ title: "Could not generate summary", description: "You can type a summary manually.", variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const summary = editedSummary.trim() || `Thread: ${threadSubject}`;
+
+  const handleSend = async () => {
+    if (!selectedChannel) return;
+    setIsSending(true);
+    try {
+      const res = await fetch("/api/slack/send", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channelId: selectedChannel.id,
+          channelName: selectedChannel.name,
+          summary,
+          threadSubject,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error || "Failed to send");
+      }
+      toast({ title: "Sent to Slack", description: `Posted to #${selectedChannel.name}` });
+      onOpenChange(false);
+      setSelectedChannel(null);
+      setEditedSummary("");
+    } catch (err: any) {
+      toast({ title: "Failed to send", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const channels = channelsData?.channels ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <svg viewBox="0 0 48 48" className="w-5 h-5" fill="none">
+              <rect x="4" y="4" width="40" height="40" rx="8" fill="white" />
+              <path d="M18 12a4 4 0 1 0 0 8h4v-4a4 4 0 0 0-4-4z" fill="#E01E5A" />
+              <path d="M30 12a4 4 0 1 0 0 8h4a4 4 0 0 0-4-4z" fill="#36C5F0" />
+              <path d="M18 36a4 4 0 1 0 0-8h-4a4 4 0 0 0 0 8z" fill="#2EB67D" />
+              <path d="M30 36a4 4 0 1 0 0-8h-4v4a4 4 0 0 0 4 4z" fill="#ECB22E" />
+            </svg>
+            Send to Slack
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Channel</label>
+            {isLoadingChannels ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Loading channels…</span>
+              </div>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between font-normal">
+                    {selectedChannel ? `#${selectedChannel.name}` : "Select a channel…"}
+                    <ChevronDown className="w-4 h-4 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[400px] max-h-56 overflow-y-auto">
+                  {channels.map(ch => (
+                    <DropdownMenuItem
+                      key={ch.id}
+                      onClick={() => setSelectedChannel(ch)}
+                      className="gap-2"
+                    >
+                      <span className="text-muted-foreground">#</span>
+                      <span>{ch.name}</span>
+                      {ch.memberCount > 0 && (
+                        <span className="ml-auto text-xs text-muted-foreground">{ch.memberCount}</span>
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">Message preview</label>
+              <button
+                className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                onClick={generateSummary}
+                disabled={isGenerating || messages.length === 0}
+              >
+                {isGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                {isGenerating ? "Generating…" : "AI summary"}
+              </button>
+            </div>
+            <textarea
+              className="w-full text-sm border rounded-md px-3 py-2 bg-background text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px]"
+              value={editedSummary}
+              onChange={e => setEditedSummary(e.target.value)}
+              placeholder={`Thread: ${threadSubject}`}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSend} disabled={!selectedChannel || isSending}>
+            {isSending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Send
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface CalendlyEventType {
+  uri: string;
+  name: string;
+  duration: number;
+  schedulingUrl: string;
+  slug: string;
+  description: string | null;
+}
+
+function CalendlyPickerPopover({
+  open,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (url: string) => void;
+}) {
+  const { data, isLoading } = useQuery<{ connected: boolean; eventTypes: CalendlyEventType[] }>({
+    queryKey: ["calendly-event-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/calendly/event-types", { credentials: "include" });
+      if (!res.ok) return { connected: false, eventTypes: [] };
+      return res.json();
+    },
+    staleTime: 120_000,
+    enabled: open,
+  });
+
+  if (!open) return null;
+
+  const eventTypes = data?.eventTypes ?? [];
+
+  return (
+    <div className="absolute bottom-full right-0 mb-2 z-50 bg-popover border rounded-lg shadow-lg w-64 overflow-hidden">
+      <div className="px-3 py-2 border-b flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Calendly Links</span>
+        <button onClick={onClose} className="p-1 hover:bg-secondary rounded">
+          <X className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 px-3 py-3 text-muted-foreground text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Loading…</span>
+        </div>
+      ) : eventTypes.length === 0 ? (
+        <div className="px-3 py-3 text-xs text-muted-foreground">No active event types found.</div>
+      ) : (
+        <div className="max-h-48 overflow-y-auto">
+          {eventTypes.map(et => (
+            <button
+              key={et.uri}
+              onClick={() => { onSelect(et.schedulingUrl); onClose(); }}
+              className="w-full text-left px-3 py-2.5 hover:bg-secondary/60 transition-colors"
+            >
+              <p className="text-sm font-medium leading-tight">{et.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{et.duration} min</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function isMeetingEmail(subject: string, body: string): boolean {
   const text = `${subject} ${body}`.toLowerCase();
   const strongSignals = /\b(meeting|appointment|schedule a call|book a call|zoom|google meet|microsoft teams|teams call|conference call|video call|phone call|catch up|catchup)\b/;
@@ -1008,6 +1340,9 @@ export default function Dashboard() {
   const [showCalendar, setShowCalendar] = useState(true);
   const [showAddToCalendar, setShowAddToCalendar] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
+  const [showSlackDialog, setShowSlackDialog] = useState(false);
+  const [showCalendlyPicker, setShowCalendlyPicker] = useState<string | null>(null);
+  const [calendlyDrafts, setCalendlyDrafts] = useState<Record<string, string>>({});
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [selectedThreadAccount, setSelectedThreadAccount] = useState<string | null>(null);
 
@@ -1187,6 +1522,9 @@ export default function Dashboard() {
   const driveConnected = connectorsData?.connectors.some(c => c.connectorId === "google-drive") ?? false;
   const hubspotConnected = connectorsData?.connectors.some(c => c.connectorId === "hubspot") ?? false;
   const contactsConnected = connectorsData?.connectors.some(c => c.connectorId === "google-contacts") ?? false;
+  const linkedinConnected = connectorsData?.connectors.some(c => c.connectorId === "linkedin") ?? false;
+  const slackConnected = connectorsData?.connectors.some(c => c.connectorId === "slack") ?? false;
+  const calendlyConnected = connectorsData?.connectors.some(c => c.connectorId === "calendly") ?? false;
 
   const generateReplies = useGenerateReplies();
   const sendReplyMutation = useMutation({
@@ -1659,6 +1997,22 @@ export default function Dashboard() {
                               Calendar
                             </Button>
                           )}
+                          {slackConnected && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs hidden sm:flex"
+                              onClick={() => setShowSlackDialog(true)}
+                            >
+                              <svg viewBox="0 0 48 48" className="w-3.5 h-3.5" fill="none">
+                                <path d="M18 12a4 4 0 1 0 0 8h4v-4a4 4 0 0 0-4-4z" fill="#E01E5A" />
+                                <path d="M30 12a4 4 0 1 0 0 8h4a4 4 0 0 0-4-4z" fill="#36C5F0" />
+                                <path d="M18 36a4 4 0 1 0 0-8h-4a4 4 0 0 0 0 8z" fill="#2EB67D" />
+                                <path d="M30 36a4 4 0 1 0 0-8h-4v4a4 4 0 0 0 4 4z" fill="#ECB22E" />
+                              </svg>
+                              Send to Slack
+                            </Button>
+                          )}
                         </>
                       );
                     })()}
@@ -1691,6 +2045,12 @@ export default function Dashboard() {
                         )}
                         {hubspotConnected && threadOriginatorEmail && (
                           <HubSpotContactPanel senderEmail={threadOriginatorEmail} />
+                        )}
+                        {linkedinConnected && threadOriginatorEmail && (
+                          <LinkedInProfilePanel
+                            senderEmail={threadOriginatorEmail}
+                            senderName={firstMsg.fromName || undefined}
+                          />
                         )}
                       </>
                     );
@@ -1730,29 +2090,69 @@ export default function Dashboard() {
                       </div>
                     ) : generateReplies.data?.suggestions ? (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4">
-                        {generateReplies.data.suggestions.map((suggestion, idx) => (
+                        {generateReplies.data.suggestions.map((suggestion, idx) => {
+                          const cardKey = `${threadData?.id ?? ""}-${idx}`;
+                          return (
                           <Card key={idx} className="flex flex-col border-border/50 hover:border-primary/50 transition-colors shadow-sm bg-background">
                             <div className="px-4 py-2 border-b bg-secondary/30 flex justify-between items-center">
                               <span className="text-xs font-semibold uppercase tracking-wider">{suggestion.tone}</span>
+                              {calendlyConnected && (
+                                <div className="relative">
+                                  <button
+                                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                    onClick={() => setShowCalendlyPicker(showCalendlyPicker === cardKey ? null : cardKey)}
+                                  >
+                                    <svg viewBox="0 0 48 48" className="w-3.5 h-3.5" fill="none">
+                                      <rect x="4" y="4" width="40" height="40" rx="8" fill="#006BFF" />
+                                      <rect x="14" y="16" width="20" height="18" rx="3" fill="white" />
+                                      <line x1="14" y1="22" x2="34" y2="22" stroke="#006BFF" strokeWidth="1.5" />
+                                      <line x1="18" y1="10" x2="18" y2="18" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+                                      <line x1="30" y1="10" x2="30" y2="18" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+                                    </svg>
+                                    Schedule
+                                  </button>
+                                  <CalendlyPickerPopover
+                                    open={showCalendlyPicker === cardKey}
+                                    onClose={() => setShowCalendlyPicker(null)}
+                                    onSelect={(url) => {
+                                      const base = calendlyDrafts[cardKey] ?? suggestion.content;
+                                      setCalendlyDrafts(prev => ({
+                                        ...prev,
+                                        [cardKey]: base + `\n\nSchedule a time with me: ${url}`,
+                                      }));
+                                      setShowCalendlyPicker(null);
+                                    }}
+                                  />
+                                </div>
+                              )}
                             </div>
                             <CardContent className="p-4 flex-1 flex flex-col">
-                              <div className="text-sm flex-1 whitespace-pre-wrap mb-4 text-foreground/90 leading-relaxed font-sans">
-                                {suggestion.content}
-                              </div>
+                              {calendlyDrafts[cardKey] !== undefined ? (
+                                <textarea
+                                  className="text-sm flex-1 whitespace-pre-wrap mb-4 text-foreground/90 leading-relaxed font-sans w-full min-h-[120px] bg-transparent border border-border rounded p-2 resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+                                  value={calendlyDrafts[cardKey]}
+                                  onChange={e => setCalendlyDrafts(prev => ({ ...prev, [cardKey]: e.target.value }))}
+                                />
+                              ) : (
+                                <div className="text-sm flex-1 whitespace-pre-wrap mb-4 text-foreground/90 leading-relaxed font-sans">
+                                  {suggestion.content}
+                                </div>
+                              )}
                               <div className="text-xs text-muted-foreground bg-secondary/50 p-2 rounded mb-4 italic">
                                 "{suggestion.reasoning}"
                               </div>
                               <Button
                                 className="w-full mt-auto"
                                 size="sm"
-                                onClick={() => handleSend(suggestion.content, suggestion.tone)}
+                                onClick={() => handleSend(calendlyDrafts[cardKey] ?? suggestion.content, suggestion.tone)}
                                 disabled={sendReplyMutation.isPending}
                               >
                                 {sendReplyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-3 h-3 mr-2" /> Send Reply</>}
                               </Button>
                             </CardContent>
                           </Card>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="text-center py-8">
@@ -1785,6 +2185,21 @@ export default function Dashboard() {
           subject={threadData.subject}
           body={lastMessage.body || lastMessage.snippet || ""}
           from={lastMessage.from}
+        />
+      )}
+
+      {/* Slack Send Dialog */}
+      {threadData && selectedThreadId && (
+        <SlackSendDialog
+          open={showSlackDialog}
+          onOpenChange={setShowSlackDialog}
+          threadSubject={threadData.subject}
+          threadId={selectedThreadId}
+          messages={threadData.messages.map((m: { from: string; date: string; body: string }) => ({
+            from: m.from,
+            date: m.date,
+            body: m.body,
+          }))}
         />
       )}
 

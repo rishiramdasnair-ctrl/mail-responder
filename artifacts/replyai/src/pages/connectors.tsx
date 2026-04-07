@@ -132,6 +132,65 @@ const INTEGRATION_CATALOG: Integration[] = [
     features: ["Contact lookup in thread view", "Deal stage visibility", "Create contacts from inbox"],
     connectorKey: "hubspot",
   },
+  {
+    id: "linkedin",
+    title: "LinkedIn",
+    description: "See sender profile info — photo, title, and company — directly in the email thread sidebar.",
+    logo: (
+      <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
+        <rect x="4" y="4" width="40" height="40" rx="6" fill="#0A66C2" />
+        <rect x="12" y="20" width="6" height="16" fill="white" />
+        <circle cx="15" cy="14" r="3.5" fill="white" />
+        <path d="M22 20h5.5v2.2s1.5-2.5 5.5-2.5c4.5 0 6 2.8 6 7.5V36h-6v-8c0-2-.3-4-2.5-4-2.5 0-3 2-3 4v8H22V20z" fill="white" />
+      </svg>
+    ),
+    connectPath: "/api/auth/linkedin/start",
+    disconnect: { kind: "connectors-api", connectorIds: ["linkedin"] },
+    features: ["Sender profile photo, title, and company", "Quick link to LinkedIn profile", "Manual search fallback"],
+    connectorKey: "linkedin",
+  },
+  {
+    id: "slack",
+    title: "Slack",
+    description: "Send an AI-generated thread summary to any Slack channel directly from your inbox.",
+    logo: (
+      <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
+        <rect x="4" y="4" width="40" height="40" rx="8" fill="white" />
+        <path d="M18 12a4 4 0 1 0 0 8h4v-4a4 4 0 0 0-4-4z" fill="#E01E5A" />
+        <path d="M12 18a4 4 0 1 0 8 0v-4a4 4 0 0 0-8 0z" fill="#E01E5A" opacity=".5" />
+        <path d="M30 12a4 4 0 1 0 0 8h4a4 4 0 0 0-4-4z" fill="#36C5F0" />
+        <path d="M36 18a4 4 0 1 0-8 0v4h4a4 4 0 0 0 4-4z" fill="#36C5F0" opacity=".5" />
+        <path d="M18 36a4 4 0 1 0 0-8h-4a4 4 0 0 0 0 8z" fill="#2EB67D" />
+        <path d="M12 30a4 4 0 1 0 8 0v-4a4 4 0 0 0-8 0z" fill="#2EB67D" opacity=".5" />
+        <path d="M30 36a4 4 0 1 0 0-8h-4v4a4 4 0 0 0 4 4z" fill="#ECB22E" />
+        <path d="M36 30a4 4 0 1 0-8 0v4h4a4 4 0 0 0 4-4z" fill="#ECB22E" opacity=".5" />
+      </svg>
+    ),
+    connectPath: "/api/auth/slack/start",
+    disconnect: { kind: "connectors-api", connectorIds: ["slack"] },
+    features: ["Send thread summaries to any channel", "Channel picker in thread toolbar", "AI-generated summaries"],
+    connectorKey: "slack",
+  },
+  {
+    id: "calendly",
+    title: "Calendly",
+    description: "Insert your Calendly scheduling links into replies with one click — no copy-pasting required.",
+    logo: (
+      <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
+        <rect x="4" y="4" width="40" height="40" rx="8" fill="#006BFF" />
+        <rect x="14" y="16" width="20" height="18" rx="3" fill="white" />
+        <line x1="14" y1="22" x2="34" y2="22" stroke="#006BFF" strokeWidth="1.5" />
+        <line x1="18" y1="10" x2="18" y2="18" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="30" y1="10" x2="30" y2="18" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="20" cy="27" r="2" fill="#006BFF" />
+        <circle cx="28" cy="27" r="2" fill="#006BFF" />
+      </svg>
+    ),
+    connectPath: "/api/auth/calendly/start",
+    disconnect: { kind: "connectors-api", connectorIds: ["calendly"] },
+    features: ["Insert scheduling links into replies", "Pick from your active event types", "No copy-paste needed"],
+    connectorKey: "calendly",
+  },
 ];
 
 function useConnectors() {
@@ -184,6 +243,21 @@ export default function ConnectorsPage() {
       hubspot_missing_params: "OAuth response was incomplete. Please try again.",
       hubspot_token_failed: "Failed to exchange HubSpot token. Please try again.",
       hubspot_callback_failed: "Something went wrong connecting HubSpot. Please try again.",
+      linkedin_not_configured: "LinkedIn OAuth credentials are not yet configured on the server.",
+      linkedin_denied: "You denied LinkedIn access. Please try again.",
+      linkedin_missing_params: "OAuth response was incomplete. Please try again.",
+      linkedin_token_failed: "Failed to exchange LinkedIn token. Please try again.",
+      linkedin_callback_failed: "Something went wrong connecting LinkedIn. Please try again.",
+      slack_not_configured: "Slack OAuth credentials are not yet configured on the server.",
+      slack_denied: "You denied Slack access. Please try again.",
+      slack_missing_params: "OAuth response was incomplete. Please try again.",
+      slack_token_failed: "Failed to exchange Slack token. Please try again.",
+      slack_callback_failed: "Something went wrong connecting Slack. Please try again.",
+      calendly_not_configured: "Calendly OAuth credentials are not yet configured on the server.",
+      calendly_denied: "You denied Calendly access. Please try again.",
+      calendly_missing_params: "OAuth response was incomplete. Please try again.",
+      calendly_token_failed: "Failed to exchange Calendly token. Please try again.",
+      calendly_callback_failed: "Something went wrong connecting Calendly. Please try again.",
       google_extend_denied: "You denied Google access. Please try again.",
       google_extend_callback_failed: "Something went wrong extending Google access. Please try again.",
       google_extend_not_linked: "Please connect Gmail first before enabling Google Drive and Contacts.",
@@ -200,6 +274,24 @@ export default function ConnectorsPage() {
 
     if (params.get("hubspot_connected") === "true") {
       toast({ title: "HubSpot connected", description: "Your HubSpot account is now connected." });
+      qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connector-ids"] });
+      window.history.replaceState({}, "", "/connectors");
+    }
+    if (params.get("linkedin_connected") === "true") {
+      toast({ title: "LinkedIn connected", description: "Your LinkedIn account is now connected." });
+      qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connector-ids"] });
+      window.history.replaceState({}, "", "/connectors");
+    }
+    if (params.get("slack_connected") === "true") {
+      toast({ title: "Slack connected", description: "Your Slack workspace is now connected." });
+      qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connector-ids"] });
+      window.history.replaceState({}, "", "/connectors");
+    }
+    if (params.get("calendly_connected") === "true") {
+      toast({ title: "Calendly connected", description: "Your Calendly account is now connected." });
       qc.invalidateQueries({ queryKey: ["connectors"] });
       qc.invalidateQueries({ queryKey: ["connector-ids"] });
       window.history.replaceState({}, "", "/connectors");
@@ -236,6 +328,12 @@ export default function ConnectorsPage() {
           ? "Gmail"
           : spec.connectorIds.includes("hubspot")
           ? "HubSpot"
+          : spec.connectorIds.includes("linkedin")
+          ? "LinkedIn"
+          : spec.connectorIds.includes("slack")
+          ? "Slack"
+          : spec.connectorIds.includes("calendly")
+          ? "Calendly"
           : "Google extensions";
       toast({ title: `${label} disconnected` });
     },

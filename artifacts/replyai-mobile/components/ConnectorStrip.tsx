@@ -14,6 +14,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+import { getConnectorLogo } from "./ConnectorLogos";
 
 export interface ConnectorDef {
   id: string;
@@ -125,16 +126,24 @@ function ConnectorAvatar({
           position: "relative",
         }}
       >
-        <Text
-          style={{
-            fontSize: size <= 28 ? 9 : 11,
-            fontFamily: "Inter_700Bold",
-            color: connected ? def.textColor : colors.mutedForeground,
-            letterSpacing: -0.3,
-          }}
-        >
-          {def.initials}
-        </Text>
+        {(() => {
+          const Logo = getConnectorLogo(def.id);
+          const logoSize = Math.round(size * 0.58);
+          const logoColor = connected ? def.textColor : colors.mutedForeground;
+          if (Logo) return <Logo size={logoSize} color={logoColor} />;
+          return (
+            <Text
+              style={{
+                fontSize: size <= 28 ? 9 : 11,
+                fontFamily: "Inter_700Bold",
+                color: logoColor,
+                letterSpacing: -0.3,
+              }}
+            >
+              {def.initials}
+            </Text>
+          );
+        })()}
         {connected && (
           <View
             style={{
@@ -322,7 +331,11 @@ function ConnectorDetailSheet({
             <View style={styles.handle} />
             <View style={styles.topRow}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{def.initials}</Text>
+                {(() => {
+                  const Logo = getConnectorLogo(def.id);
+                  if (Logo) return <Logo size={28} color={def.textColor} />;
+                  return <Text style={styles.avatarText}>{def.initials}</Text>;
+                })()}
               </View>
               <View>
                 <Text style={styles.label}>{def.label}</Text>

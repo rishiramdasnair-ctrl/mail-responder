@@ -13,8 +13,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 
-const SIRI_GRADIENT = ["#5856D6", "#AF52DE", "#FF2D55"] as const;
-const URGENT_GRADIENT = ["#FF2D55", "#FF6B35", "#AF52DE"] as const;
+const SIRI_GRADIENT = ["#007AFF", "#0055FF", "#00AAFF"] as const;
+const URGENT_GRADIENT = ["#FF2D55", "#FF6B35", "#007AFF"] as const;
 
 export interface PriorityEmail {
   id: string;
@@ -67,7 +67,7 @@ const cardStyles = StyleSheet.create({
     width: 240,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(175,82,222,0.3)",
+    borderColor: "rgba(0,122,255,0.25)",
     backgroundColor: "transparent",
     overflow: "hidden",
   },
@@ -186,7 +186,7 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
               <View style={[cardStyles.urgentDot, { backgroundColor: "#FF2D55" }]} />
             )}
             <TouchableOpacity
-              style={[cardStyles.actionBtn, { backgroundColor: isUrgent ? "#FF2D55" : "#AF52DE" }]}
+              style={[cardStyles.actionBtn, { backgroundColor: isUrgent ? "#FF2D55" : "#007AFF" }]}
               onPress={() => onAction(item)}
               activeOpacity={0.8}
             >

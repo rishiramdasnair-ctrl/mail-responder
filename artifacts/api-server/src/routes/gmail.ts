@@ -133,6 +133,121 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
   }
 });
 
+// AI-powered priority analysis of inbox emails
+router.get("/gmail/ai-priority", requireAuth, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const accounts = await getConnectedGmailAccounts(userId);
+    if (accounts.length === 0) {
+      res.json({ priority: [] });
+      return;
+    }
+
+    // Fetch 20 recent threads from each account (max 2 accounts for speed)
+    const allEmails: any[] = [];
+    for (const account of accounts.slice(0, 2)) {
+      try {
+        const gmail = await getGmailClientForUser(userId, account.email);
+        const listRes = await gmail.users.threads.list({
+          userId: "me",
+          labelIds: ["INBOX"],
+          maxResults: 20,
+        });
+        const threads = listRes.data.threads || [];
+        const emailResults = await Promise.allSettled(
+          threads.slice(0, 20).map((t: any) => fetchThreadMeta(gmail, t.id!, account.email))
+        );
+        allEmails.push(
+          ...emailResults
+            .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value !== null)
+            .map(r => r.value)
+        );
+      } catch { /* skip account on error */ }
+    }
+
+    if (allEmails.length === 0) {
+      res.json({ priority: [] });
+      return;
+    }
+
+    // Build AI prompt with email metadata
+    const emailList = allEmails.slice(0, 25).map((e, i) =>
+      `[${i}] From: ${e.fromName || e.fromEmail} <${e.fromEmail}> | Subject: ${e.subject || "(no subject)"} | ${e.isUnread ? "UNREAD" : "read"} | Date: ${e.date} | Preview: ${(e.snippet || "").slice(0, 200)}`
+    ).join("\n");
+
+    const prompt = `You are an expert email assistant. Analyze these inbox emails and identify the 3-5 most important ones that need attention.
+
+Emails:
+${emailList}
+
+Selection criteria (in order of importance):
+- Requires a decision or response from the user
+- Time-sensitive or has a deadline
+- From an important person (boss, client, key stakeholder)
+- Contains a question, request, or action item
+- SKIP: newsletters, marketing, automated notifications, receipts, unsubscribe emails
+
+For each selected priority email, return:
+{
+  "priority": [
+    {
+      "index": <integer - the [index] from the list above>,
+      "priorityScore": <integer 0-100, higher = more urgent>,
+      "summary": "<one crisp sentence: what is needed and from whom>",
+      "action": "<exactly one of: Reply, Review, Approve, Schedule, Follow Up, Urgent Reply>"
+    }
+  ]
+}
+
+Return valid JSON only. If no emails genuinely need attention, return {"priority": []}.`;
+
+    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://replyai.app",
+        "X-Title": "ReplyAI",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-001",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        max_tokens: 600,
+        temperature: 0.2,
+      }),
+    });
+
+    const aiData = await aiRes.json() as any;
+    const content = aiData.choices?.[0]?.message?.content || "{}";
+
+    let parsed: { priority?: Array<{ index: number; priorityScore: number; summary: string; action: string }> } = {};
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      parsed = { priority: [] };
+    }
+
+    const priorityItems = (parsed.priority || [])
+      .filter(p => typeof p.index === "number" && p.index >= 0 && p.index < allEmails.length)
+      .sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0))
+      .slice(0, 5)
+      .map(p => ({
+        ...allEmails[p.index],
+        priorityScore: p.priorityScore,
+        summary: p.summary,
+        suggestedAction: p.action,
+      }));
+
+    res.json({ priority: priorityItems });
+  } catch (err: any) {
+    req.log.error({ err }, "Error fetching AI priority inbox");
+    res.json({ priority: [] }); // fail gracefully
+  }
+});
+
 router.get("/gmail/status", requireAuth, async (req, res) => {
   try {
     const { userId } = getAuth(req);

@@ -16,6 +16,7 @@ import { Feather } from "@expo/vector-icons";
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmailRow, EmailThread } from "@/components/EmailRow";
+import { PrioritySection, type PriorityEmail } from "@/components/PrioritySection";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 
@@ -107,6 +108,24 @@ export default function InboxScreen() {
       params: {
         threadId: email.threadId,
         ...(email.accountEmail ? { accountEmail: email.accountEmail } : {}),
+      },
+    });
+  };
+
+  const onPressPriority = (threadId: string, accountEmail?: string) => {
+    router.push({
+      pathname: "/thread/[threadId]",
+      params: { threadId, ...(accountEmail ? { accountEmail } : {}) },
+    });
+  };
+
+  const onPressAction = (item: PriorityEmail) => {
+    router.push({
+      pathname: "/thread/[threadId]",
+      params: {
+        threadId: item.threadId,
+        ...(item.accountEmail ? { accountEmail: item.accountEmail } : {}),
+        action: item.suggestedAction,
       },
     });
   };
@@ -432,6 +451,14 @@ export default function InboxScreen() {
         data={visibleThreads}
         keyExtractor={(item) => item.threadId || item.id}
         renderItem={({ item }) => <EmailRow email={item} onPress={onPressEmail} />}
+        ListHeaderComponent={
+          !activeQuery ? (
+            <PrioritySection
+              onPressEmail={onPressPriority}
+              onPressAction={onPressAction}
+            />
+          ) : null
+        }
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
         onEndReached={() => {

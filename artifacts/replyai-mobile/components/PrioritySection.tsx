@@ -181,9 +181,7 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
           </Text>
 
           <View style={[cardStyles.actionRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-            {isUrgent && (
-              <View style={[cardStyles.urgentDot, { backgroundColor: "#FF2D55" }]} />
-            )}
+            <View style={[cardStyles.urgentDot, { backgroundColor: isUrgent ? "#FF2D55" : "transparent" }]} />
             <TouchableOpacity
               style={[cardStyles.actionBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
               onPress={() => onAction(item)}

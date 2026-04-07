@@ -19,6 +19,7 @@ import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { useApiClient } from "@/hooks/useApiClient";
 
 type FeatherName = ComponentProps<typeof Feather>["name"];
 
@@ -65,8 +66,6 @@ interface ActionSheetProps {
   toEmail: string;
   subject: string;
   accountEmail?: string;
-  apiBaseUrl: string;
-  getToken: () => Promise<string | null>;
   onActionDone?: () => void;
 }
 
@@ -171,12 +170,11 @@ export function ActionSheet({
   toEmail,
   subject,
   accountEmail,
-  apiBaseUrl,
-  getToken,
   onActionDone,
 }: ActionSheetProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { apiBaseUrl, authHeaders } = useApiClient();
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [actions, setActions] = useState<ProposedAction[]>([]);
@@ -205,14 +203,6 @@ export function ActionSheet({
   const [isLoadingCalendly, setIsLoadingCalendly] = useState(false);
   const [calendlyConnected, setCalendlyConnected] = useState(false);
 
-  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const token = await getToken();
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-  }, [getToken]);
-
   const fetchActions = useCallback(async (instruction?: string) => {
     if (!instruction) setPhase("loading");
     setError(null);
@@ -239,7 +229,8 @@ export function ActionSheet({
         return null;
       }
       return data.actions as ProposedAction[];
-    } catch {
+    } catch (err) {
+      console.error("[ActionSheet] fetchActions error:", err, "apiBaseUrl:", apiBaseUrl);
       setError("Network error. Please try again.");
       setPhase("actions");
       return null;
@@ -527,6 +518,7 @@ export function ActionSheet({
       backgroundColor: colors.card,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
+      minHeight: SCREEN_HEIGHT * 0.45,
       maxHeight: SCREEN_HEIGHT * 0.88,
       paddingBottom: insets.bottom || 16,
     },

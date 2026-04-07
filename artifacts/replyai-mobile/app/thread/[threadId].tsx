@@ -212,7 +212,7 @@ export default function ThreadScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
-  const { apiBaseUrl, authHeaders, getToken } = useApiClient();
+  const { apiBaseUrl, authHeaders } = useApiClient();
   const [showReplySheet, setShowReplySheet] = useState(false);
   const autoOpenedRef = React.useRef(false);
 
@@ -432,8 +432,6 @@ export default function ThreadScreen() {
               toEmail={lastMessage?.fromEmail || lastMessage?.from || ""}
               subject={thread.subject}
               accountEmail={accountEmail}
-              apiBaseUrl={apiBaseUrl}
-              getToken={getToken}
               onActionDone={() => {
                 qc.invalidateQueries({ queryKey: ["priority-inbox"] });
                 qc.invalidateQueries({ queryKey: ["thread", threadId, accountEmail] });

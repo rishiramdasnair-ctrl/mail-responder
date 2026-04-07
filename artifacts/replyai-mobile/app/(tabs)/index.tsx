@@ -449,7 +449,7 @@ export default function InboxScreen() {
     },
   });
 
-  const unreadCount = allThreads.filter((t) => t.isUnread).length;
+  const unreadCount = visibleThreads.filter((t) => t.isUnread).length;
 
   const renderFooter = () => {
     if (!isFetchingNextPage) return null;

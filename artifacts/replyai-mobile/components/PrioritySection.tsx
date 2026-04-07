@@ -63,16 +63,32 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
   const displayName = item.fromName || item.fromEmail;
   const isUrgent = item.suggestedAction === "Urgent Reply";
 
+  const accentColor = isUrgent ? "#f43f5e" : "#f59e0b";
+  const accentBg = isUrgent ? "rgba(244,63,94,0.07)" : "rgba(245,158,11,0.07)";
+
   const styles = StyleSheet.create({
     card: {
       width: 240,
       borderRadius: 14,
       borderWidth: 1,
-      borderColor: isUrgent ? colors.foreground : colors.border,
+      borderColor: isUrgent ? "#f43f5e" : "#f59e0b",
       backgroundColor: colors.card,
       overflow: "hidden",
     },
     cardInner: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "stretch",
+    },
+    accentBar: {
+      width: 4,
+      alignSelf: "stretch",
+      backgroundColor: accentColor,
+      borderTopLeftRadius: 14,
+      borderBottomLeftRadius: 14,
+    },
+    cardInnerPadded: {
+      flex: 1,
       padding: 14,
       gap: 8,
     },
@@ -150,39 +166,42 @@ function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
 
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, { backgroundColor: accentBg }]}
       onPress={() => onPress(item.threadId, item.accountEmail)}
       activeOpacity={0.75}
     >
       <View style={styles.cardInner}>
-        <View style={styles.topRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
+        <View style={styles.accentBar} />
+        <View style={styles.cardInnerPadded}>
+          <View style={styles.topRow}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+            <Text style={styles.senderName} numberOfLines={1}>
+              {displayName}
+            </Text>
+            <Text style={styles.dateText}>{formatShortDate(item.date)}</Text>
           </View>
-          <Text style={styles.senderName} numberOfLines={1}>
-            {displayName}
+
+          <Text style={styles.subject} numberOfLines={1}>
+            {item.subject || "(no subject)"}
           </Text>
-          <Text style={styles.dateText}>{formatShortDate(item.date)}</Text>
-        </View>
 
-        <Text style={styles.subject} numberOfLines={1}>
-          {item.subject || "(no subject)"}
-        </Text>
+          <Text style={styles.summary} numberOfLines={2}>
+            {item.summary}
+          </Text>
 
-        <Text style={styles.summary} numberOfLines={2}>
-          {item.summary}
-        </Text>
-
-        <View style={styles.actionRow}>
-          {isUrgent && <View style={styles.urgentDot} />}
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => onAction(item)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.actionText}>{item.suggestedAction}</Text>
-            <Feather name="arrow-right" size={11} color={colors.primaryForeground} />
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            {isUrgent && <View style={[styles.urgentDot, { backgroundColor: accentColor }]} />}
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: accentColor }]}
+              onPress={() => onAction(item)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.actionText}>{item.suggestedAction}</Text>
+              <Feather name="arrow-right" size={11} color={colors.primaryForeground} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </TouchableOpacity>

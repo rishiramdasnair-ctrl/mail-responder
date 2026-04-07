@@ -1831,7 +1831,11 @@ export default function Dashboard() {
                     <div
                       key={thread.threadId}
                       className={`w-full text-left transition-colors group relative border-l-2 ${
-                        selectedThreadId === thread.threadId ? "bg-secondary border-l-primary" : "border-l-transparent hover:bg-secondary/50"
+                        selectedThreadId === thread.threadId
+                          ? "bg-secondary border-l-primary"
+                          : isUnifiedInbox
+                          ? "border-l-amber-400 bg-amber-50/40 dark:bg-amber-950/10 hover:bg-amber-50/70 dark:hover:bg-amber-950/20"
+                          : "border-l-transparent hover:bg-secondary/50"
                       }`}
                     >
                       <button

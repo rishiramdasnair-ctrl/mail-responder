@@ -1,4 +1,4 @@
-export type ThemeId = "default" | "midnight" | "ocean" | "sage" | "blush" | "sand" | "slate";
+export type ThemeId = "default" | "midnight" | "ocean" | "sage" | "blush" | "sand";
 
 export interface ColorPalette {
   background: string;
@@ -178,31 +178,6 @@ export const THEMES: ThemeDef[] = [
       destructiveForeground: "#ffffff",
       border: "#e8d5bf",
       input: "#e8d5bf",
-      radius: BASE_RADIUS,
-    },
-  },
-  {
-    id: "slate",
-    label: "Slate",
-    swatch: "#3b5998",
-    dark: false,
-    palette: {
-      background: "#f4f7fb",
-      foreground: "#1b2740",
-      card: "#ffffff",
-      cardForeground: "#1b2740",
-      primary: "#3b5998",
-      primaryForeground: "#ffffff",
-      secondary: "#e2e9f4",
-      secondaryForeground: "#253555",
-      muted: "#e2e9f4",
-      mutedForeground: "#5a6f8a",
-      accent: "#e2e9f4",
-      accentForeground: "#1b2740",
-      destructive: "#dc2626",
-      destructiveForeground: "#ffffff",
-      border: "#c8d5e8",
-      input: "#c8d5e8",
       radius: BASE_RADIUS,
     },
   },

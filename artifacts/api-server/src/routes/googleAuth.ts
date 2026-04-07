@@ -36,6 +36,7 @@ const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/contacts.other.readonly",
 ];
 
 const GSUITE_EXTENSION_CONNECTORS = ["google-drive", "google-contacts"];

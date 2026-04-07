@@ -82,6 +82,28 @@ router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
   }
 });
 
+function extractPeopleResults(
+  results: Array<{ person?: { names?: Array<{ displayName?: string | null }> | null; emailAddresses?: Array<{ value?: string | null }> | null; organizations?: Array<{ name?: string | null }> | null; photos?: Array<{ url?: string | null }> | null } | null }>,
+): Array<{ name: string | null; email: string; organization: string | null; photoUrl: string | null }> {
+  return results
+    .flatMap((r) => {
+      const person = r.person;
+      if (!person) return [];
+      const nameObj = person.names?.[0];
+      const orgObj = person.organizations?.[0];
+      const photoObj = person.photos?.[0];
+      const name = nameObj?.displayName ?? null;
+      const emails = person.emailAddresses || [];
+      return emails.map((e) => ({
+        name,
+        email: e.value ?? "",
+        organization: orgObj?.name ?? null,
+        photoUrl: photoObj?.url ?? null,
+      }));
+    })
+    .filter((r) => r.email);
+}
+
 router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
   const { userId } = getAuth(req);
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -96,31 +118,38 @@ router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
     const oauth2Client = await getOAuth2ClientForUser(userId);
     const people = google.people({ version: "v1", auth: oauth2Client });
 
-    const searchRes = await people.people.searchContacts({
-      query: q,
-      readMask: "names,emailAddresses,organizations,photos",
-      pageSize: 8,
+    const [savedRes, otherRes] = await Promise.allSettled([
+      people.people.searchContacts({
+        query: q,
+        readMask: "names,emailAddresses,organizations,photos",
+        pageSize: 8,
+      }),
+      people.otherContacts.search({
+        query: q,
+        readMask: "names,emailAddresses,photos",
+        pageSize: 8,
+      }),
+    ]);
+
+    const savedResults = savedRes.status === "fulfilled"
+      ? extractPeopleResults(savedRes.value.data.results || [])
+      : [];
+
+    const otherResults = otherRes.status === "fulfilled"
+      ? extractPeopleResults(
+          (otherRes.value.data.otherContacts || []).map((p) => ({ person: p }))
+        )
+      : [];
+
+    const seen = new Set<string>();
+    const merged = [...savedResults, ...otherResults].filter((r) => {
+      const key = r.email.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 
-    const results = (searchRes.data.results || [])
-      .flatMap((r) => {
-        const person = r.person;
-        if (!person) return [];
-        const nameObj = person.names?.[0];
-        const orgObj = person.organizations?.[0];
-        const photoObj = person.photos?.[0];
-        const name = nameObj?.displayName ?? null;
-        const emails = person.emailAddresses || [];
-        return emails.map((e) => ({
-          name,
-          email: e.value ?? "",
-          organization: orgObj?.name ?? null,
-          photoUrl: photoObj?.url ?? null,
-        }));
-      })
-      .filter((r) => r.email);
-
-    res.json({ results });
+    res.json({ results: merged.slice(0, 10) });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : "";
     if (errMsg.includes("insufficient") || errMsg.includes("403") || errMsg.includes("scope")) {

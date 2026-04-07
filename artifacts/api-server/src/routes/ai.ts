@@ -6,7 +6,7 @@ import { GenerateRepliesBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { usersTable, replyHistoryTable, connectorsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
-import { openrouter as openai, FAST_MODEL, AGENT_MODEL } from "../lib/openrouter";
+import { openrouter as openai, FAST_MODEL } from "../lib/openrouter";
 import rateLimit from "express-rate-limit";
 import { getGmailClientForUser, getCalendarClientForUser, getHeader } from "../lib/gmailClient";
 import { getTeamsToken, teamsGet } from "../lib/teamsClient";
@@ -14,6 +14,9 @@ import { getFathomToken } from "./fathom";
 import { google } from "googleapis";
 
 const router = Router();
+
+// In-memory digest cache — keyed by userId, expires after 15 minutes
+const digestCache = new Map<string, { digest: string; expiresAt: number }>();
 
 const aiRateLimit = rateLimit({
   windowMs: 60_000,
@@ -76,11 +79,11 @@ Respond ONLY with a valid JSON object in this exact format:
     const userMessage = `Email from: ${body.emailFrom}
 Subject: ${body.emailSubject}
 Message:
-${body.emailBody}`;
+${(body.emailBody || "").slice(0, 1500)}`;
 
     const completion = await openai.chat.completions.create({
       model: FAST_MODEL,
-      max_tokens: 2048,
+      max_tokens: 900,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -227,7 +230,7 @@ Respond ONLY with a valid JSON object in this exact format:
 
     const completion = await openai.chat.completions.create({
       model: FAST_MODEL,
-      max_tokens: 2048,
+      max_tokens: 1000,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -349,16 +352,23 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
       return;
     }
 
+    // Serve cached digest if still fresh (15 min)
+    const cached = digestCache.get(userId);
+    if (cached && Date.now() < cached.expiresAt) {
+      res.json({ digest: cached.digest, cached: true });
+      return;
+    }
+
     const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
     const sections: string[] = [];
 
     // --- Gmail unread ---
     try {
       const gmail = await getGmailClientForUser(userId);
-      const listRes = await gmail.users.threads.list({ userId: "me", q: "is:unread", maxResults: 15 });
+      const listRes = await gmail.users.threads.list({ userId: "me", q: "is:unread", maxResults: 10 });
       const threads = listRes.data.threads || [];
       if (threads.length) {
-        const items = await Promise.all(threads.slice(0, 15).map(async (t) => {
+        const items = await Promise.all(threads.slice(0, 10).map(async (t) => {
           try {
             const thread = await gmail.users.threads.get({ userId: "me", id: t.id!, format: "metadata", metadataHeaders: ["From", "Subject"] });
             const msg = thread.data.messages?.[thread.data.messages.length - 1];
@@ -525,8 +535,8 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
     const systemsSnapshot = sections.join("\n\n");
 
     const completion = await openai.chat.completions.create({
-      model: AGENT_MODEL,
-      max_tokens: 600,
+      model: FAST_MODEL,
+      max_tokens: 550,
       messages: [
         {
           role: "system",
@@ -564,6 +574,10 @@ Rules:
     });
 
     const digest = completion.choices[0]?.message?.content?.trim() || "";
+
+    // Cache for 15 minutes
+    digestCache.set(userId, { digest, expiresAt: Date.now() + 15 * 60 * 1000 });
+
     res.json({ digest });
   } catch (err) {
     req.log.error({ err }, "Error generating digest");

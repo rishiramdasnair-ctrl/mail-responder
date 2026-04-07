@@ -597,7 +597,7 @@ Be concise but informative. Explain what you found and what actions you took, in
         iteration++;
         const completion = await openai.chat.completions.create({
           model: AGENT_MODEL,
-          max_tokens: 2048,
+          max_tokens: 1200,
           messages,
           tools: TOOLS,
           tool_choice: "auto",

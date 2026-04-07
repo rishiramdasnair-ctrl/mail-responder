@@ -10,6 +10,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
@@ -549,36 +551,41 @@ export default function AgentScreen() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         {isEmpty ? (
-          <View style={{ flex: 1 }}>
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>
-                {getGreeting()}{firstName ? `, ${firstName}` : ""}
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                What can I help you with?
-              </Text>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyTitle}>
+                  {getGreeting()}{firstName ? `, ${firstName}` : ""}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  What can I help you with?
+                </Text>
+              </View>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            style={styles.messageList}
-            contentContainerStyle={styles.messageListContent}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <MessageBubble
-                msg={item}
-                onApproveEmail={handleApproveEmail}
-                onDismissEmail={handleDismissEmail}
-                onApproveEvent={handleApproveEvent}
-                onDismissEvent={handleDismissEvent}
-                isActing={isActing}
-              />
-            )}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={scrollToBottom}
-          />
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              style={styles.messageList}
+              contentContainerStyle={styles.messageListContent}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <MessageBubble
+                  msg={item}
+                  onApproveEmail={handleApproveEmail}
+                  onDismissEmail={handleDismissEmail}
+                  onApproveEvent={handleApproveEvent}
+                  onDismissEvent={handleDismissEvent}
+                  isActing={isActing}
+                />
+              )}
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={scrollToBottom}
+              keyboardShouldPersistTaps="handled"
+            />
+          </TouchableWithoutFeedback>
         )}
 
         <ConnectorStrip gmailConnected={gmailConnected} />

@@ -8,13 +8,14 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Image,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
-import { getConnectorLogo } from "./ConnectorLogos";
+import { getConnectorLogo, getConnectorLogoImage } from "./ConnectorLogos";
 
 export interface ConnectorDef {
   id: string;
@@ -78,6 +79,16 @@ export const ALL_CONNECTORS: ConnectorDef[] = [
     oauthPath: "/api/auth/slack/start",
   },
   {
+    id: "hubspot",
+    label: "HubSpot",
+    description: "Access your CRM contacts, deals, and pipeline data.",
+    capabilities: ["Search contacts", "Read deals", "Create contacts", "Pipeline view"],
+    color: "#FF7A59",
+    textColor: "#fff",
+    initials: "HS",
+    oauthPath: "/api/auth/hubspot/start",
+  },
+  {
     id: "notion",
     label: "Notion",
     description: "Read and create Notion pages and databases.",
@@ -113,35 +124,59 @@ function ConnectorAvatar({
       activeOpacity={0.75}
       style={{ alignItems: "center", gap: 3 }}
     >
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: connected ? def.color : colors.muted,
-          alignItems: "center",
-          justifyContent: "center",
-          borderWidth: connected ? 0 : 1,
-          borderColor: colors.border,
-          position: "relative",
-        }}
-      >
+      <View style={{ width: size, height: size, position: "relative" }}>
         {(() => {
+          const imgSrc = getConnectorLogoImage(def.id);
+          if (imgSrc) {
+            return (
+              <View
+                style={{
+                  width: size,
+                  height: size,
+                  borderRadius: size / 2,
+                  overflow: "hidden",
+                  opacity: connected ? 1 : 0.45,
+                }}
+              >
+                <Image
+                  source={imgSrc}
+                  style={{ width: size, height: size }}
+                  resizeMode="cover"
+                />
+              </View>
+            );
+          }
           const Logo = getConnectorLogo(def.id);
           const logoSize = Math.round(size * 0.58);
           const logoColor = connected ? def.textColor : colors.mutedForeground;
-          if (Logo) return <Logo size={logoSize} color={logoColor} />;
           return (
-            <Text
+            <View
               style={{
-                fontSize: size <= 28 ? 9 : 11,
-                fontFamily: "Inter_700Bold",
-                color: logoColor,
-                letterSpacing: -0.3,
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: connected ? def.color : colors.muted,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: connected ? 0 : 1,
+                borderColor: colors.border,
               }}
             >
-              {def.initials}
-            </Text>
+              {Logo ? (
+                <Logo size={logoSize} color={logoColor} />
+              ) : (
+                <Text
+                  style={{
+                    fontSize: size <= 28 ? 9 : 11,
+                    fontFamily: "Inter_700Bold",
+                    color: logoColor,
+                    letterSpacing: -0.3,
+                  }}
+                >
+                  {def.initials}
+                </Text>
+              )}
+            </View>
           );
         })()}
         {connected && (
@@ -330,8 +365,10 @@ function ConnectorDetailSheet({
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.topRow}>
-              <View style={styles.avatar}>
+              <View style={[styles.avatar, getConnectorLogoImage(def.id) ? { backgroundColor: "transparent", padding: 0, overflow: "hidden" } : {}]}>
                 {(() => {
+                  const imgSrc = getConnectorLogoImage(def.id);
+                  if (imgSrc) return <Image source={imgSrc} style={{ width: 52, height: 52 }} resizeMode="cover" />;
                   const Logo = getConnectorLogo(def.id);
                   if (Logo) return <Logo size={28} color={def.textColor} />;
                   return <Text style={styles.avatarText}>{def.initials}</Text>;

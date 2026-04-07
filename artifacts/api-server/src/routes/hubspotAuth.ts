@@ -22,6 +22,27 @@ function getHubSpotRedirectUri() {
   return `https://${domain}/api/auth/hubspot/callback`;
 }
 
+router.get("/auth/hubspot/mobile-url", requireAuth, (req, res) => {
+  const clientId = process.env.HUBSPOT_CLIENT_ID;
+  if (!clientId) {
+    return res.status(400).json({ error: "HubSpot not configured" });
+  }
+  const auth = getAuth(req);
+  const userId = auth.userId!;
+  try {
+    const state = createOAuthState(userId, false, "mobile");
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: getHubSpotRedirectUri(),
+      scope: HUBSPOT_SCOPES,
+      state,
+    });
+    res.json({ url: `https://app.hubspot.com/oauth/authorize?${params}` });
+  } catch {
+    res.status(500).json({ error: "Failed to generate auth URL" });
+  }
+});
+
 router.get("/auth/hubspot/start", requireAuth, (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;

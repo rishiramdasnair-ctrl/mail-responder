@@ -90,33 +90,6 @@ export function LinearLogo({ size, color }: LogoProps) {
   );
 }
 
-export function SlackLogo({ size, color }: LogoProps) {
-  const r = size * 0.11;
-  const w = size * 0.22;
-  return (
-    <Svg width={size} height={size} viewBox="0 0 54 54">
-      <Path
-        fill={color}
-        d="M19.712.133a5.381 5.381 0 00-5.376 5.387 5.381 5.381 0 005.376 5.386h5.376V5.52A5.381 5.381 0 0019.712.133zm0 14.365H5.376A5.381 5.381 0 000 19.884a5.381 5.381 0 005.376 5.387h14.336a5.381 5.381 0 005.376-5.387 5.381 5.381 0 00-5.376-5.386z"
-      />
-      <Path
-        fill={color}
-        fillOpacity={0.75}
-        d="M53.76 19.884a5.381 5.381 0 00-5.376-5.386 5.381 5.381 0 00-5.376 5.386v5.387h5.376a5.381 5.381 0 005.376-5.387zm-14.336 0V5.52A5.381 5.381 0 0034.048.133a5.381 5.381 0 00-5.376 5.387v14.364a5.381 5.381 0 005.376 5.387 5.381 5.381 0 005.376-5.387z"
-      />
-      <Path
-        fill={color}
-        fillOpacity={0.5}
-        d="M34.048 54a5.381 5.381 0 005.376-5.387 5.381 5.381 0 00-5.376-5.386h-5.376v5.386A5.381 5.381 0 0034.048 54zm0-14.365h14.336a5.381 5.381 0 005.376-5.386 5.381 5.381 0 00-5.376-5.387H34.048a5.381 5.381 0 00-5.376 5.387 5.381 5.381 0 005.376 5.386z"
-      />
-      <Path
-        fill={color}
-        fillOpacity={0.25}
-        d="M0 34.249a5.381 5.381 0 005.376 5.386 5.381 5.381 0 005.376-5.386v-5.387H5.376A5.381 5.381 0 000 34.25zm14.336 0v14.364A5.381 5.381 0 0019.712 54a5.381 5.381 0 005.376-5.387V34.25a5.381 5.381 0 00-5.376-5.387 5.381 5.381 0 00-5.376 5.387z"
-      />
-    </Svg>
-  );
-}
 
 export function NotionLogo({ size, color }: LogoProps) {
   return (
@@ -157,10 +130,17 @@ export function getConnectorLogo(connectorId: string): React.ComponentType<LogoP
     case "calendar": return CalendarLogo;
     case "github": return GitHubLogo;
     case "linear": return LinearLogo;
-    case "slack": return SlackLogo;
     case "notion": return NotionLogo;
     case "linkedin": return LinkedInLogo;
     case "calendly": return CalendlyLogo;
+    default: return null;
+  }
+}
+
+export function getConnectorLogoImage(connectorId: string): number | null {
+  switch (connectorId) {
+    case "slack": return require("../assets/images/slack.png");
+    case "hubspot": return require("../assets/images/hubspot.png");
     default: return null;
   }
 }

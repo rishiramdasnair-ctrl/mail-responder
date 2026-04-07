@@ -3,113 +3,116 @@ import { requireAuth } from "../lib/requireAuth";
 import { getAuth } from "@clerk/express";
 import { google } from "googleapis";
 import { db } from "@workspace/db";
-import { usersTable, connectorsTable } from "@workspace/db/schema";
-import { and, eq } from "drizzle-orm";
+import { usersTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { Readable } from "stream";
 
 const router = Router();
 
-async function getGoogleClientForUser(userId: string) {
+async function getDriveClient(userId: string) {
   const [user] = await db
-    .select({
-      googleAccessToken: usersTable.googleAccessToken,
-      googleRefreshToken: usersTable.googleRefreshToken,
-    })
+    .select({ googleAccessToken: usersTable.googleAccessToken, googleRefreshToken: usersTable.googleRefreshToken })
     .from(usersTable)
     .where(eq(usersTable.id, userId))
     .limit(1);
 
-  if (!user?.googleAccessToken) {
-    throw new Error("No Google token for user");
-  }
+  if (!user?.googleAccessToken) throw new Error("Google account not connected");
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) throw new Error("Google credentials not configured");
-
-  const auth = new google.auth.OAuth2(clientId, clientSecret);
-  auth.setCredentials({
-    access_token: user.googleAccessToken,
-    refresh_token: user.googleRefreshToken ?? undefined,
-  });
-  return auth;
+  const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+  auth.setCredentials({ access_token: user.googleAccessToken, refresh_token: user.googleRefreshToken ?? undefined });
+  return { drive: google.drive({ version: "v3", auth }), gmail: google.gmail({ version: "v1", auth }) };
 }
 
+router.get("/drive/list", requireAuth, async (req, res): Promise<void> => {
+  const { userId } = getAuth(req);
+  const pageSize = Math.min(Number(req.query.pageSize) || 20, 50);
+  const pageToken = req.query.pageToken as string | undefined;
+
+  try {
+    const { drive } = await getDriveClient(userId!);
+    const resp = await drive.files.list({
+      pageSize,
+      pageToken,
+      orderBy: "modifiedTime desc",
+      fields: "nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,iconLink,size,owners)",
+    });
+    res.json({ files: resp.data.files ?? [], nextPageToken: resp.data.nextPageToken });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to list Drive files";
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/drive/search", requireAuth, async (req, res): Promise<void> => {
+  const { userId } = getAuth(req);
+  const query = req.query.q as string;
+  if (!query) { res.status(400).json({ error: "q is required" }); return; }
+
+  try {
+    const { drive } = await getDriveClient(userId!);
+    const resp = await drive.files.list({
+      q: `name contains '${query.replace(/'/g, "\\'")}' and trashed = false`,
+      pageSize: 20,
+      orderBy: "modifiedTime desc",
+      fields: "files(id,name,mimeType,modifiedTime,webViewLink,iconLink,size,owners)",
+    });
+    res.json({ files: resp.data.files ?? [] });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to search Drive";
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/drive/file/:fileId", requireAuth, async (req, res): Promise<void> => {
+  const { userId } = getAuth(req);
+  try {
+    const { drive } = await getDriveClient(userId!);
+    const meta = await drive.files.get({
+      fileId: req.params.fileId,
+      fields: "id,name,mimeType,modifiedTime,webViewLink,description,size,owners",
+    });
+
+    const isGoogleDoc = meta.data.mimeType?.startsWith("application/vnd.google-apps");
+    let text: string | null = null;
+    if (isGoogleDoc) {
+      try {
+        const exported = await drive.files.export({ fileId: req.params.fileId, mimeType: "text/plain" });
+        text = typeof exported.data === "string" ? exported.data.slice(0, 8000) : null;
+      } catch { /* not exportable */ }
+    }
+    res.json({ file: meta.data, text });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to get file";
+    res.status(500).json({ error: msg });
+  }
+});
+
 router.post("/drive/save", requireAuth, async (req, res): Promise<void> => {
-  const authInfo = getAuth(req);
-  const userId = authInfo.userId!;
-
+  const { userId } = getAuth(req);
   const { messageId, attachmentId, filename, mimeType } = req.body as {
-    messageId: string;
-    attachmentId: string;
-    filename: string;
-    mimeType: string;
+    messageId: string; attachmentId: string; filename: string; mimeType: string;
   };
-
   if (!messageId || !attachmentId || !filename) {
     res.status(400).json({ error: "messageId, attachmentId, and filename are required" });
     return;
   }
-
-  const [driveConnector] = await db
-    .select({ id: connectorsTable.id })
-    .from(connectorsTable)
-    .where(and(
-      eq(connectorsTable.userId, userId),
-      eq(connectorsTable.connectorId, "google-drive"),
-      eq(connectorsTable.status, "connected"),
-    ))
-    .limit(1);
-
-  if (!driveConnector) {
-    res.status(403).json({ error: "Google Drive is not connected. Please connect it in Connectors settings." });
-    return;
-  }
-
   try {
-    const authClient = await getGoogleClientForUser(userId);
-    const gmail = google.gmail({ version: "v1", auth: authClient });
-    const drive = google.drive({ version: "v3", auth: authClient });
-
-    const attachment = await gmail.users.messages.attachments.get({
-      userId: "me",
-      messageId,
-      id: attachmentId,
-    });
-
+    const { gmail, drive } = await getDriveClient(userId!);
+    const attachment = await gmail.users.messages.attachments.get({ userId: "me", messageId, id: attachmentId });
     const data = attachment.data.data;
-    if (!data) {
-      res.status(404).json({ error: "Attachment data not found" });
-      return;
-    }
+    if (!data) { res.status(404).json({ error: "Attachment data not found" }); return; }
 
     const buffer = Buffer.from(data, "base64url");
-    const stream = Readable.from(buffer);
-
     const driveFile = await drive.files.create({
-      requestBody: {
-        name: filename,
-        mimeType: mimeType || "application/octet-stream",
-      },
-      media: {
-        mimeType: mimeType || "application/octet-stream",
-        body: stream,
-      },
+      requestBody: { name: filename, mimeType: mimeType || "application/octet-stream" },
+      media: { mimeType: mimeType || "application/octet-stream", body: Readable.from(buffer) },
       fields: "id,name,webViewLink",
     });
-
-    res.json({
-      success: true,
-      file: {
-        id: driveFile.data.id,
-        name: driveFile.data.name,
-        url: driveFile.data.webViewLink,
-      },
-    });
+    res.json({ success: true, file: { id: driveFile.data.id, name: driveFile.data.name, url: driveFile.data.webViewLink } });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to save to Drive";
+    const msg = err instanceof Error ? err.message : "Failed to save to Drive";
     console.error("[drive/save] error:", err);
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: msg });
   }
 });
 

@@ -237,6 +237,47 @@ const TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "drive_search",
+      description: "Search the user's Google Drive for files by name.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search term to find files by name" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "drive_list",
+      description: "List the user's most recently modified Google Drive files.",
+      parameters: {
+        type: "object",
+        properties: {
+          pageSize: { type: "number", description: "Number of files to return (default 20, max 50)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "drive_read",
+      description: "Read the content of a Google Drive file (works best for Google Docs, Sheets, Slides, and text files).",
+      parameters: {
+        type: "object",
+        properties: {
+          fileId: { type: "string", description: "The Google Drive file ID" },
+        },
+        required: ["fileId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "teams_list_chats",
       description: "List the user's recent Microsoft Teams chats and direct message conversations.",
       parameters: { type: "object", properties: {} },
@@ -763,6 +804,49 @@ Be concise but informative. Explain what you found and what actions you took, in
                       status = "error";
                     }
                   }
+                }
+              } else if (toolName === "drive_search") {
+                const a = args as { query: string };
+                const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
+                const r = await fetch(`https://${domain}/api/drive/search?q=${encodeURIComponent(a.query)}`, {
+                  headers: { Cookie: req.headers.cookie ?? "", Authorization: req.headers.authorization ?? "" },
+                });
+                if (!r.ok) {
+                  toolOutput = "Google Drive search failed. Make sure Google is connected.";
+                } else {
+                  const data = await r.json() as { files?: Array<{ id: string; name: string; mimeType: string; modifiedTime: string; webViewLink: string }> };
+                  const files = data.files ?? [];
+                  toolOutput = files.length
+                    ? files.map(f => `ID: ${f.id} | Name: ${f.name} | Type: ${f.mimeType} | Modified: ${f.modifiedTime} | URL: ${f.webViewLink}`).join("\n")
+                    : "No files found matching that query.";
+                }
+              } else if (toolName === "drive_list") {
+                const a = args as { pageSize?: number };
+                const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
+                const r = await fetch(`https://${domain}/api/drive/list?pageSize=${a.pageSize ?? 20}`, {
+                  headers: { Cookie: req.headers.cookie ?? "", Authorization: req.headers.authorization ?? "" },
+                });
+                if (!r.ok) {
+                  toolOutput = "Could not list Drive files. Make sure Google is connected.";
+                } else {
+                  const data = await r.json() as { files?: Array<{ id: string; name: string; mimeType: string; modifiedTime: string; webViewLink: string }> };
+                  const files = data.files ?? [];
+                  toolOutput = files.length
+                    ? files.map(f => `ID: ${f.id} | Name: ${f.name} | Type: ${f.mimeType} | Modified: ${f.modifiedTime} | URL: ${f.webViewLink}`).join("\n")
+                    : "No files found.";
+                }
+              } else if (toolName === "drive_read") {
+                const a = args as { fileId: string };
+                const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
+                const r = await fetch(`https://${domain}/api/drive/file/${encodeURIComponent(a.fileId)}`, {
+                  headers: { Cookie: req.headers.cookie ?? "", Authorization: req.headers.authorization ?? "" },
+                });
+                if (!r.ok) {
+                  toolOutput = "Could not read that Drive file.";
+                } else {
+                  const data = await r.json() as { file?: { name: string; mimeType: string; modifiedTime: string; webViewLink: string }; text?: string | null };
+                  const f = data.file;
+                  toolOutput = f ? `File: ${f.name}\nType: ${f.mimeType}\nModified: ${f.modifiedTime}\nURL: ${f.webViewLink}\n${data.text ? `\nContent:\n${data.text}` : "(binary file — content not readable as text)"}` : "File not found.";
                 }
               } else if (toolName === "teams_list_chats") {
                 const token = await getTeamsToken(userId);

@@ -51,6 +51,15 @@ export const ALL_CONNECTORS: ConnectorDef[] = [
     initials: "C",
   },
   {
+    id: "google-drive",
+    label: "Google Drive",
+    description: "Search, read, and save files in Google Drive.",
+    capabilities: ["Search files", "Read documents", "Save to Drive", "List recent files"],
+    color: "#4285F4",
+    textColor: "#fff",
+    initials: "GD",
+  },
+  {
     id: "slack",
     label: "Slack",
     description: "Read messages and send replies to Slack channels.",
@@ -476,7 +485,7 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
 
   const isConnected = useCallback(
     (id: string) => {
-      if (id === "gmail" || id === "calendar") return gmailConnected;
+      if (id === "gmail" || id === "calendar" || id === "google-drive") return gmailConnected;
       return connected.some((c) => c.connectorId === id && c.status === "connected");
     },
     [gmailConnected, connected]

@@ -152,6 +152,8 @@ export function getConnectorLogoImage(connectorId: string): ConnectorLogoImage |
       return { source: require("../assets/images/hubspot.png"), resizeMode: "contain", backgroundColor: "#fff", padding: 6 };
     case "teams":
       return { source: require("../assets/images/teams.png"), resizeMode: "contain", backgroundColor: "transparent", padding: 2 };
+    case "google-drive":
+      return { source: require("../assets/images/googledrive.png"), resizeMode: "contain", backgroundColor: "transparent", padding: 2 };
     default:
       return null;
   }

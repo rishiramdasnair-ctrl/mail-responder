@@ -188,8 +188,13 @@ function MessageBubble({
           <Text style={s.bodyText} numberOfLines={8}>{email.body}</Text>
           {msg.resolved ? (
             <View style={s.resolvedBadge}>
-              <Feather name={msg.resolvedLabel === "dismissed" ? "x-circle" : "check-circle"} size={13} color={colors.mutedForeground} />
-              <Text style={s.resolvedText}>{msg.resolvedLabel === "dismissed" ? "Dismissed" : "Email sent"}</Text>
+              <Feather
+                name={msg.resolvedLabel === "dismissed" || msg.resolvedLabel === "error" ? "x-circle" : "check-circle"}
+                size={13} color={colors.mutedForeground}
+              />
+              <Text style={s.resolvedText}>
+                {msg.resolvedLabel === "dismissed" ? "Dismissed" : msg.resolvedLabel === "error" ? "Failed to send" : "Email sent"}
+              </Text>
             </View>
           ) : (
             <View style={s.actions}>
@@ -225,8 +230,13 @@ function MessageBubble({
           {ev.attendees?.length ? (<><Text style={s.fieldLabel}>Attendees</Text><Text style={s.fieldValue}>{ev.attendees.join(", ")}</Text></>) : null}
           {msg.resolved ? (
             <View style={s.resolvedBadge}>
-              <Feather name={msg.resolvedLabel === "dismissed" ? "x-circle" : "check-circle"} size={13} color={colors.mutedForeground} />
-              <Text style={s.resolvedText}>{msg.resolvedLabel === "dismissed" ? "Dismissed" : "Event created"}</Text>
+              <Feather
+                name={msg.resolvedLabel === "dismissed" || msg.resolvedLabel === "error" ? "x-circle" : "check-circle"}
+                size={13} color={colors.mutedForeground}
+              />
+              <Text style={s.resolvedText}>
+                {msg.resolvedLabel === "dismissed" ? "Dismissed" : msg.resolvedLabel === "error" ? "Failed to create" : "Event created"}
+              </Text>
             </View>
           ) : (
             <View style={s.actions}>

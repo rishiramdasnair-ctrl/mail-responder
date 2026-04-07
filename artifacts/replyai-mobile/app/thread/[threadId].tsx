@@ -79,7 +79,7 @@ function MessageBubble({
   authHeaders: () => Promise<Record<string, string>>;
 }) {
   const colors = useColors();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const initials = getInitials(msg.fromName, msg.fromEmail);
 
   const styles = StyleSheet.create({
@@ -134,16 +134,30 @@ function MessageBubble({
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    collapsedSnippet: {
-      paddingHorizontal: 16,
-      paddingVertical: 10,
+    summaryContainer: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 4,
     },
-    snippetText: {
-      fontSize: 13,
-      color: colors.mutedForeground,
+    summaryText: {
+      fontSize: 14,
+      color: colors.foreground,
       fontFamily: "Inter_400Regular",
+      lineHeight: 21,
+    },
+    viewFullBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingVertical: 10,
+      marginTop: 4,
+    },
+    viewFullText: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+      color: colors.mutedForeground,
     },
     divider: {
       height: StyleSheet.hairlineWidth,
@@ -198,9 +212,19 @@ function MessageBubble({
           )}
         </View>
       ) : (
-        <TouchableOpacity style={styles.collapsedSnippet} onPress={() => setExpanded(true)}>
-          <Text style={styles.snippetText} numberOfLines={2}>{msg.snippet}</Text>
-        </TouchableOpacity>
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryText} numberOfLines={5}>
+            {msg.snippet}
+          </Text>
+          <TouchableOpacity
+            style={styles.viewFullBtn}
+            onPress={() => setExpanded(true)}
+            activeOpacity={0.6}
+          >
+            <Text style={styles.viewFullText}>View full email</Text>
+            <Feather name="chevron-down" size={13} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
       )}
 
       <View style={styles.divider} />

@@ -196,7 +196,7 @@ For each selected priority email, return:
       "index": <integer - the [index] from the list above>,
       "priorityScore": <integer 0-100, higher = more urgent>,
       "summary": "<one crisp sentence: what is needed and from whom>",
-      "action": "<exactly one of: Reply, Review, Approve, Schedule, Follow Up, Urgent Reply>"
+      "action": "<short contextual action label, 2-4 words, starts with a verb, specific to this email — e.g. 'Reply to Sarah', 'Approve budget', 'Schedule meeting', 'Review proposal', 'Confirm attendance', 'Send update', 'Follow up now'. For genuinely urgent emails prefix with 'Urgent: '. Max 22 chars.>"
     }
   ]
 }

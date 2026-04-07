@@ -140,7 +140,7 @@ const cardStyles = StyleSheet.create({
 function PriorityCard({ item, onPress, onAction, colors }: PriorityCardProps) {
   const initials = getInitials(item.fromName, item.fromEmail);
   const displayName = item.fromName || item.fromEmail;
-  const isUrgent = item.suggestedAction === "Urgent Reply";
+  const isUrgent = item.suggestedAction?.toLowerCase().startsWith("urgent");
   const gradient = isUrgent ? URGENT_GRADIENT : SIRI_GRADIENT;
 
   return (

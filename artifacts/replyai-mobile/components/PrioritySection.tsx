@@ -108,8 +108,9 @@ const cardStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 4,
-    marginTop: 2,
+    paddingTop: 10,
+    paddingBottom: 2,
+    marginTop: 4,
   },
   actionBtn: {
     flexDirection: "row",

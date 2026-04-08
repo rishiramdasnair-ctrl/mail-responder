@@ -27,6 +27,18 @@ import { useInboxSheet } from "@/contexts/InboxSheetContext";
 
 const PAGE_SIZE = 50;
 
+const CATEGORY_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"]> = {
+  All: "inbox",
+  Work: "briefcase",
+  Finance: "dollar-sign",
+  Newsletters: "rss",
+  Personal: "heart",
+  Travel: "map-pin",
+  Promotions: "tag",
+  Updates: "bell",
+  Other: "more-horizontal",
+};
+
 interface InboxPage {
   threads: EmailThread[];
   nextPageToken?: string;
@@ -474,15 +486,6 @@ export default function InboxScreen() {
     categoryTabActive: {
       borderBottomColor: colors.foreground,
     },
-    categoryTabText: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-    },
-    categoryTabTextActive: {
-      fontFamily: "Inter_600SemiBold",
-      color: colors.foreground,
-    },
   });
 
   const unreadCount = visibleThreads.filter((t) => t.isUnread).length;
@@ -684,19 +687,20 @@ export default function InboxScreen() {
           <View style={styles.categoryTabsRow}>
             {categoryTabItems.map((cat) => {
               const isActive = activeCategory === cat;
+              const iconName = CATEGORY_ICONS[cat] ?? "circle";
               return (
                 <TouchableOpacity
                   key={cat}
                   style={[styles.categoryTab, isActive && styles.categoryTabActive]}
                   onPress={() => setActiveCategory(cat)}
                   activeOpacity={0.7}
+                  accessibilityLabel={cat}
                 >
-                  <Text
-                    style={[styles.categoryTabText, isActive && styles.categoryTabTextActive]}
-                    numberOfLines={1}
-                  >
-                    {cat}
-                  </Text>
+                  <Feather
+                    name={iconName}
+                    size={18}
+                    color={isActive ? colors.foreground : colors.mutedForeground}
+                  />
                 </TouchableOpacity>
               );
             })}

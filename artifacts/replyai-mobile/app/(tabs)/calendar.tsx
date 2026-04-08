@@ -241,18 +241,25 @@ export default function CalendarScreen() {
       fontFamily: "Inter_500Medium",
       color: colors.primary,
     },
+    accountPillsScroll: {
+      backgroundColor: colors.background,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
     accountPillsRow: {
       flexDirection: "row",
       gap: 8,
-      paddingBottom: 2,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
     },
     accountPill: {
-      paddingHorizontal: 12,
-      paddingVertical: 5,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
       borderRadius: 20,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.background,
+      flexShrink: 0,
     },
     accountPillText: {
       fontSize: 13,
@@ -514,28 +521,30 @@ export default function CalendarScreen() {
   );
 
   const renderTopHeader = () => (
-    <View style={s.headerWrap}>
-      <View style={s.headerRow}>
-        <Text style={s.headerDateText}>{formatTodayHeader(today)}</Text>
-        <TouchableOpacity
-          style={s.newEventBtn}
-          onPress={() => router.push("/create-event")}
-          activeOpacity={0.7}
-        >
-          <Feather name="plus" size={16} color={colors.primary} />
-          <Text style={s.newEventText}>New Event</Text>
-        </TouchableOpacity>
+    <>
+      <View style={s.headerWrap}>
+        <View style={s.headerRow}>
+          <Text style={s.headerDateText}>{formatTodayHeader(today)}</Text>
+          <TouchableOpacity
+            style={s.newEventBtn}
+            onPress={() => router.push("/create-event")}
+            activeOpacity={0.7}
+          >
+            <Feather name="plus" size={16} color={colors.primary} />
+            <Text style={s.newEventText}>New Event</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       {accounts.length > 1 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.accountPillsRow}
-          style={{ marginTop: 8 }}
+          style={s.accountPillsScroll}
         >
           {[{ email: "all", isPrimary: false }, ...accounts].map((acct) => {
             const isActive = selectedAccount === acct.email;
-            const label = acct.email === "all" ? "All" : acct.email.split("@")[0];
+            const label = acct.email === "all" ? "All" : acct.email;
             return (
               <TouchableOpacity
                 key={acct.email}
@@ -549,7 +558,8 @@ export default function CalendarScreen() {
                 <Text
                   style={[
                     s.accountPillText,
-                    { color: isActive ? colors.background : colors.foreground },
+                    { color: isActive ? colors.background : colors.mutedForeground },
+                    isActive && { color: colors.background },
                   ]}
                   numberOfLines={1}
                 >
@@ -560,7 +570,7 @@ export default function CalendarScreen() {
           })}
         </ScrollView>
       )}
-    </View>
+    </>
   );
 
   const renderSectionHeader = (sectionKey: string) => {

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
-import { getCalendarClientForUser, getGmailClientForUser } from "../lib/gmailClient";
+import { getCalendarClientForUser, getGmailClientForUser, getConnectedGmailAccounts } from "../lib/gmailClient";
 import { openrouter, FAST_MODEL } from "../lib/openrouter";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
@@ -232,12 +232,9 @@ router.get("/calendar/events", requireAuth, async (req, res) => {
     const auth = getAuth(req);
     const userId = auth.userId!;
     const accountEmail = req.query.account as string | undefined;
-    const calendar = await getCalendarClientForUser(userId, accountEmail);
 
     const now = new Date();
     const defaultEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    // Allow callers to pass an explicit window (ISO strings or YYYY-MM-DD)
     const timeMin = req.query.start
       ? new Date(req.query.start as string).toISOString()
       : now.toISOString();
@@ -245,30 +242,54 @@ router.get("/calendar/events", requireAuth, async (req, res) => {
       ? new Date(req.query.end as string).toISOString()
       : defaultEnd.toISOString();
 
-    const response = await calendar.events.list({
-      calendarId: "primary",
-      timeMin,
-      timeMax,
-      singleEvents: true,
-      orderBy: "startTime",
-      maxResults: 500,
-    });
+    const fetchForAccount = async (email?: string) => {
+      const calendar = await getCalendarClientForUser(userId, email);
+      const response = await calendar.events.list({
+        calendarId: "primary",
+        timeMin,
+        timeMax,
+        singleEvents: true,
+        orderBy: "startTime",
+        maxResults: 500,
+      });
+      return (response.data.items || []).map((event) => ({
+        id: event.id,
+        title: event.summary || "(No title)",
+        start: event.start?.dateTime || event.start?.date,
+        end: event.end?.dateTime || event.end?.date,
+        isAllDay: !event.start?.dateTime,
+        location: event.location || null,
+        attendees: (event.attendees || []).map((a) => ({
+          email: a.email || "",
+          name: a.displayName || "",
+          responseStatus: a.responseStatus || "needsAction",
+        })),
+        htmlLink: event.htmlLink || null,
+        description: event.description || null,
+        calendarAccount: email,
+      }));
+    };
 
-    const events = (response.data.items || []).map((event) => ({
-      id: event.id,
-      title: event.summary || "(No title)",
-      start: event.start?.dateTime || event.start?.date,
-      end: event.end?.dateTime || event.end?.date,
-      isAllDay: !event.start?.dateTime,
-      location: event.location || null,
-      attendees: (event.attendees || []).map((a) => ({
-        email: a.email || "",
-        name: a.displayName || "",
-        responseStatus: a.responseStatus || "needsAction",
-      })),
-      htmlLink: event.htmlLink || null,
-      description: event.description || null,
-    }));
+    let events: Awaited<ReturnType<typeof fetchForAccount>>;
+
+    if (!accountEmail) {
+      // All accounts — fetch from each and merge
+      const connectedAccounts = await getConnectedGmailAccounts(userId);
+      const results = await Promise.allSettled(
+        connectedAccounts.map((acct) => fetchForAccount(acct.email))
+      );
+      events = results
+        .filter((r): r is PromiseFulfilledResult<typeof events> => r.status === "fulfilled")
+        .flatMap((r) => r.value);
+      // Sort merged events by start time
+      events.sort((a, b) => {
+        const ta = a.start ? new Date(a.start).getTime() : 0;
+        const tb = b.start ? new Date(b.start).getTime() : 0;
+        return ta - tb;
+      });
+    } else {
+      events = await fetchForAccount(accountEmail);
+    }
 
     res.json({ events });
   } catch (err: any) {

@@ -11,15 +11,19 @@ const API_BASE = (() => {
 })();
 
 export function useApiClient() {
-  const { getToken } = useAuth();
+  const { getToken, signOut } = useAuth();
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken();
+    if (!token) {
+      signOut();
+      throw new Error("Session expired. Please sign in again.");
+    }
     return {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     };
-  }, [getToken]);
+  }, [getToken, signOut]);
 
   const getTokenStable = useCallback(async () => getToken(), [getToken]);
 

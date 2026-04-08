@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -125,7 +125,7 @@ function MarkdownBrief({ text, colors }: { text: string; colors: ReturnType<type
 }
 
 export default function EventDetailScreen() {
-  const { eventId } = useLocalSearchParams<{ eventId: string }>();
+  const { eventId, eventData } = useLocalSearchParams<{ eventId: string; eventData?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
@@ -134,6 +134,11 @@ export default function EventDetailScreen() {
   const [brief, setBrief] = useState<string | null>(null);
   const [generatingBrief, setGeneratingBrief] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
+
+  const parsedPlaceholder = useMemo<CalendarEvent | undefined>(() => {
+    if (!eventData) return undefined;
+    try { return JSON.parse(eventData as string) as CalendarEvent; } catch { return undefined; }
+  }, [eventData]);
 
   const { data: event, isLoading, isError, error } = useQuery<CalendarEvent>({
     queryKey: ["calendar-event", eventId],
@@ -148,6 +153,7 @@ export default function EventDetailScreen() {
     },
     enabled: !!eventId,
     staleTime: 60_000,
+    placeholderData: parsedPlaceholder,
   });
 
   const generateBrief = async () => {
@@ -236,7 +242,7 @@ export default function EventDetailScreen() {
     errorText: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#ef4444", textAlign: "center", marginBottom: 14 },
   });
 
-  if (isLoading) {
+  if (isLoading && !event) {
     return (
       <View style={[s.container, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color={colors.foreground} size="large" />

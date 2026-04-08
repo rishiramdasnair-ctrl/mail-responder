@@ -15,7 +15,13 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.replyai.mobile"
+      "bundleIdentifier": "com.replyai.mobile",
+      "infoPlist": {
+        "NSUserNotificationUsageDescription": "ReplyAI sends you notifications for important emails and replies.",
+        "NSCalendarsUsageDescription": "ReplyAI accesses your calendar to help schedule meetings from emails.",
+        "NSCalendarsWriteOnlyAccessUsageDescription": "ReplyAI creates calendar events from emails.",
+        "NSRemindersUsageDescription": "ReplyAI may create reminders for follow-up emails."
+      }
     },
     "android": {
       "package": "com.replyai.mobile"

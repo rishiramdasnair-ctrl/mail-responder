@@ -69,7 +69,12 @@ function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function shortEmail(email: string): string {
+  return email.split("@")[0];
+}
+
 const DAY_ABBREVS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const DAY_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 function getWeekSunday(baseDate: Date, weekOffset: number): Date {
@@ -100,6 +105,8 @@ function getAttendeeColor(i: number) { return ATTENDEE_COLORS[i % ATTENDEE_COLOR
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 
+type ViewMode = "day" | "week";
+
 export default function CalendarScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -115,6 +122,8 @@ export default function CalendarScreen() {
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
   const [accounts, setAccounts] = useState<GmailAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -241,6 +250,11 @@ export default function CalendarScreen() {
     return `${MONTHS[firstDay.getMonth()].slice(0, 3)} – ${MONTHS[lastDay.getMonth()].slice(0, 3)} ${lastDay.getFullYear()}`;
   }, [weekDays]);
 
+  const accountLabel = useMemo(() => {
+    if (selectedAccount === "all" || accounts.length <= 1) return null;
+    return shortEmail(selectedAccount);
+  }, [selectedAccount, accounts]);
+
   const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     headerWrap: {
@@ -255,65 +269,135 @@ export default function CalendarScreen() {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginBottom: 10,
+      marginBottom: 8,
+    },
+    headerLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      flex: 1,
     },
     monthLabel: {
-      fontSize: 17,
+      fontSize: 16,
       fontFamily: "Inter_700Bold",
       color: colors.foreground,
       letterSpacing: -0.3,
     },
-    headerRight: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
     navBtn: {
-      width: 32,
-      height: 32,
+      width: 28,
+      height: 28,
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: 16,
-      backgroundColor: colors.muted,
+      borderRadius: 14,
     },
-    newEventBtn: {
+    headerActions: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 16,
-      backgroundColor: colors.muted,
+      gap: 6,
     },
-    newEventText: {
-      fontSize: 13,
+    viewToggle: {
+      flexDirection: "row",
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    viewToggleBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    viewToggleBtnActive: {
+      backgroundColor: colors.foreground,
+    },
+    viewToggleText: {
+      fontSize: 12,
+      fontFamily: "Inter_500Medium",
+      color: colors.mutedForeground,
+    },
+    viewToggleTextActive: {
+      color: colors.background,
+    },
+    newEventBtn: {
+      width: 28,
+      height: 28,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 14,
+      backgroundColor: colors.foreground,
+    },
+    accountChipWrap: {
+      position: "relative",
+    },
+    accountChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.muted,
+      maxWidth: 100,
+    },
+    accountChipText: {
+      fontSize: 11,
       fontFamily: "Inter_500Medium",
       color: colors.foreground,
+      flexShrink: 1,
+    },
+    accountMenu: {
+      position: "absolute",
+      top: 32,
+      right: 0,
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      minWidth: 180,
+      zIndex: 100,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    accountMenuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      gap: 10,
+    },
+    accountMenuItemText: {
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+      flex: 1,
     },
     weekStrip: {
       flexDirection: "row",
-      paddingBottom: 4,
     },
     dayCell: {
       flex: 1,
       alignItems: "center",
-      paddingVertical: 4,
+      paddingVertical: 2,
     },
     dayAbbrev: {
-      fontSize: 10,
+      fontSize: 9,
       fontFamily: "Inter_500Medium",
       letterSpacing: 0.5,
-      marginBottom: 4,
+      marginBottom: 3,
     },
     dayNumWrap: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       alignItems: "center",
       justifyContent: "center",
     },
     dayNum: {
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: "Inter_600SemiBold",
     },
     todayDot: {
@@ -328,36 +412,12 @@ export default function CalendarScreen() {
       borderRadius: 2,
       marginTop: 2,
     },
-    accountPillsScroll: {
-      backgroundColor: colors.background,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    accountPillsRow: {
-      flexDirection: "row",
-      gap: 8,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-    },
-    accountPill: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
-      flexShrink: 0,
-    },
-    accountPillText: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
-    },
     eventsArea: {
       flex: 1,
       overflow: "hidden",
     },
     dayHeaderWrap: {
-      paddingTop: 20,
+      paddingTop: 16,
       paddingBottom: 8,
       paddingHorizontal: 20,
       flexDirection: "row",
@@ -365,14 +425,14 @@ export default function CalendarScreen() {
       gap: 8,
     },
     dayHeaderNum: {
-      fontSize: 38,
+      fontSize: 34,
       fontFamily: "Inter_700Bold",
       color: colors.foreground,
       letterSpacing: -1,
-      lineHeight: 42,
+      lineHeight: 38,
     },
     dayHeaderWeekday: {
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
     },
@@ -412,7 +472,7 @@ export default function CalendarScreen() {
       paddingVertical: 10,
     },
     allDayTitle: {
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: "Inter_600SemiBold",
       letterSpacing: -0.1,
     },
@@ -422,18 +482,18 @@ export default function CalendarScreen() {
       marginTop: 2,
     },
     eventTitle: {
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
       letterSpacing: -0.1,
-      lineHeight: 21,
+      lineHeight: 20,
     },
     timeChip: {
       alignSelf: "flex-start",
-      marginTop: 4,
-      paddingHorizontal: 7,
+      marginTop: 3,
+      paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: 6,
+      borderRadius: 5,
       backgroundColor: colors.muted,
     },
     timeChipText: {
@@ -445,30 +505,30 @@ export default function CalendarScreen() {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      marginTop: 6,
+      marginTop: 5,
     },
     locationText: {
-      fontSize: 12,
+      fontSize: 11,
       fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
       flex: 1,
     },
     attendeeRow: {
       flexDirection: "row",
-      marginTop: 8,
+      marginTop: 7,
       alignItems: "center",
     },
     attendeeCircle: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
       alignItems: "center",
       justifyContent: "center",
       borderWidth: 1.5,
       borderColor: colors.background,
     },
     attendeeCircleText: {
-      fontSize: 8,
+      fontSize: 7,
       fontFamily: "Inter_600SemiBold",
       color: "#fff",
     },
@@ -525,71 +585,79 @@ export default function CalendarScreen() {
       gap: 6,
     },
     emptyDayText: {
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
     },
     listFooter: { height: bottomPad + 40 },
+    weekSectionHeader: {
+      paddingHorizontal: 20,
+      paddingTop: 20,
+      paddingBottom: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    weekSectionDateCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    weekSectionDateNum: {
+      fontSize: 15,
+      fontFamily: "Inter_700Bold",
+    },
+    weekSectionDay: {
+      fontSize: 14,
+      fontFamily: "Inter_500Medium",
+    },
+    weekSectionEmpty: {
+      paddingHorizontal: 20,
+      paddingBottom: 10,
+      paddingLeft: 76,
+    },
+    weekSectionEmptyText: {
+      fontSize: 12,
+      fontFamily: "Inter_400Regular",
+      color: colors.border,
+    },
+    weekEventRow: {
+      flexDirection: "row",
+      paddingHorizontal: 20,
+      paddingLeft: 76,
+      marginBottom: 8,
+    },
+    weekEventBlock: {
+      flex: 1,
+      backgroundColor: colors.muted,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.foreground,
+    },
+    weekEventTitle: {
+      fontSize: 13,
+      fontFamily: "Inter_600SemiBold",
+      color: colors.foreground,
+      lineHeight: 18,
+    },
+    weekEventTime: {
+      fontSize: 11,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+      marginTop: 2,
+    },
+    weekDivider: {
+      marginHorizontal: 20,
+      marginLeft: 66,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      marginBottom: 4,
+    },
   });
-
-  const renderWeekStrip = () => (
-    <View style={s.weekStrip}>
-      {weekDays.map((day, i) => {
-        const dk = dateKey(day);
-        const isToday = dk === todayKey;
-        const isSelected = dk === selectedDateKey;
-        const hasEvents = (eventsByDay.get(dk)?.length ?? 0) > 0;
-
-        return (
-          <TouchableOpacity
-            key={dk}
-            style={s.dayCell}
-            onPress={() => setSelectedDateKey(dk)}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                s.dayAbbrev,
-                { color: isSelected ? colors.primary : colors.mutedForeground },
-              ]}
-            >
-              {DAY_ABBREVS[i]}
-            </Text>
-            <View
-              style={[
-                s.dayNumWrap,
-                isSelected && { backgroundColor: colors.foreground },
-                !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.foreground },
-              ]}
-            >
-              <Text
-                style={[
-                  s.dayNum,
-                  {
-                    color: isSelected
-                      ? colors.background
-                      : isToday
-                      ? colors.foreground
-                      : colors.foreground,
-                  },
-                ]}
-              >
-                {day.getDate()}
-              </Text>
-            </View>
-            {isToday && !isSelected && (
-              <View style={[s.todayDot, { backgroundColor: colors.primary }]} />
-            )}
-            {!isToday && hasEvents && (
-              <View style={[s.eventDot, { backgroundColor: colors.border }]} />
-            )}
-            {isToday && !isSelected && !hasEvents && <View style={[s.todayDot, { opacity: 0 }]} />}
-            {(!isToday || isSelected) && !hasEvents && <View style={[s.eventDot, { opacity: 0 }]} />}
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
 
   const renderEvent = (evt: CalendarEvent, isLast: boolean) => {
     const past = isPastEvent(evt);
@@ -644,7 +712,7 @@ export default function CalendarScreen() {
                   key={i}
                   style={[
                     s.attendeeCircle,
-                    { backgroundColor: getAttendeeColor(i), marginLeft: i === 0 ? 0 : -6, zIndex: 5 - i },
+                    { backgroundColor: getAttendeeColor(i), marginLeft: i === 0 ? 0 : -5, zIndex: 5 - i },
                   ]}
                 >
                   <Text style={s.attendeeCircleText}>{getInitials(a.name, a.email)}</Text>
@@ -661,71 +729,210 @@ export default function CalendarScreen() {
   };
 
   const selectedDay = toLocalDate(selectedDateKey);
-  const dayHeaderText = `${DAY_ABBREVS[selectedDay.getDay()].charAt(0) + DAY_ABBREVS[selectedDay.getDay()].slice(1).toLowerCase().replace(/^[A-Z]/, c => c)}`;
 
   const renderDayHeader = () => (
     <View style={s.dayHeaderWrap}>
       <Text style={s.dayHeaderNum}>{selectedDay.getDate()}</Text>
-      <Text style={s.dayHeaderWeekday}>
-        {["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][selectedDay.getDay()]}
-      </Text>
+      <Text style={s.dayHeaderWeekday}>{DAY_FULL[selectedDay.getDay()]}</Text>
+    </View>
+  );
+
+  const renderWeekView = () => {
+    const allEvents = data?.events ?? [];
+    return (
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: bottomPad + 40 }}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.foreground} />}
+      >
+        {weekDays.map((day, i) => {
+          const dk = dateKey(day);
+          const isToday = dk === todayKey;
+          const dayEvts = (eventsByDay.get(dk) ?? []).slice().sort((a, b) => {
+            if (a.isAllDay && !b.isAllDay) return -1;
+            if (!a.isAllDay && b.isAllDay) return 1;
+            return toLocalDate(a.start).getTime() - toLocalDate(b.start).getTime();
+          });
+          return (
+            <TouchableOpacity
+              key={dk}
+              activeOpacity={0.85}
+              onPress={() => { setSelectedDateKey(dk); setViewMode("day"); }}
+            >
+              <View style={s.weekSectionHeader}>
+                <View style={[
+                  s.weekSectionDateCircle,
+                  isToday && { backgroundColor: colors.foreground },
+                  !isToday && { backgroundColor: colors.muted },
+                ]}>
+                  <Text style={[s.weekSectionDateNum, { color: isToday ? colors.background : colors.foreground }]}>
+                    {day.getDate()}
+                  </Text>
+                </View>
+                <Text style={[s.weekSectionDay, { color: isToday ? colors.foreground : colors.mutedForeground }]}>
+                  {DAY_ABBREVS[i]}
+                </Text>
+                {dayEvts.length > 0 && (
+                  <Text style={[s.timeChipText, { marginLeft: "auto" as any }]}>
+                    {dayEvts.length} event{dayEvts.length !== 1 ? "s" : ""}
+                  </Text>
+                )}
+              </View>
+              {dayEvts.length === 0 ? (
+                <View style={s.weekSectionEmpty}>
+                  <Text style={s.weekSectionEmptyText}>No events</Text>
+                </View>
+              ) : (
+                dayEvts.map((evt) => {
+                  const past = isPastEvent(evt);
+                  return (
+                    <TouchableOpacity
+                      key={evt.id}
+                      style={[s.weekEventRow, { opacity: past ? 0.45 : 1 }]}
+                      activeOpacity={0.75}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id, eventData: JSON.stringify(evt) } });
+                      }}
+                    >
+                      <View style={s.weekEventBlock}>
+                        <Text style={s.weekEventTitle} numberOfLines={2}>{evt.title}</Text>
+                        <Text style={s.weekEventTime}>{formatEventTime(evt)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+              {i < 6 && <View style={s.weekDivider} />}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    );
+  };
+
+  const renderWeekStrip = () => (
+    <View style={s.weekStrip}>
+      {weekDays.map((day, i) => {
+        const dk = dateKey(day);
+        const isToday = dk === todayKey;
+        const isSelected = dk === selectedDateKey && viewMode === "day";
+        const hasEvents = (eventsByDay.get(dk)?.length ?? 0) > 0;
+
+        return (
+          <TouchableOpacity
+            key={dk}
+            style={s.dayCell}
+            onPress={() => { setSelectedDateKey(dk); setViewMode("day"); }}
+            activeOpacity={0.7}
+          >
+            <Text style={[s.dayAbbrev, { color: isSelected ? colors.primary : colors.mutedForeground }]}>
+              {DAY_ABBREVS[i]}
+            </Text>
+            <View style={[
+              s.dayNumWrap,
+              isSelected && { backgroundColor: colors.foreground },
+              !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.foreground },
+            ]}>
+              <Text style={[s.dayNum, { color: isSelected ? colors.background : colors.foreground }]}>
+                {day.getDate()}
+              </Text>
+            </View>
+            {isToday && !isSelected && <View style={[s.todayDot, { backgroundColor: colors.primary }]} />}
+            {!isToday && hasEvents && <View style={[s.eventDot, { backgroundColor: colors.border }]} />}
+            {((!isToday && !hasEvents) || (isToday && isSelected)) && <View style={[s.eventDot, { opacity: 0 }]} />}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 
   const header = (
     <View style={s.headerWrap}>
       <View style={s.headerRow}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={s.headerLeft}>
           <TouchableOpacity style={s.navBtn} onPress={goToPrevWeek} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="chevron-left" size={18} color={colors.foreground} />
+            <Feather name="chevron-left" size={16} color={colors.foreground} />
           </TouchableOpacity>
           <Text style={s.monthLabel}>{monthLabel}</Text>
           <TouchableOpacity style={s.navBtn} onPress={goToNextWeek} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="chevron-right" size={18} color={colors.foreground} />
+            <Feather name="chevron-right" size={16} color={colors.foreground} />
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={s.newEventBtn} onPress={() => router.push("/create-event")} activeOpacity={0.7}>
-          <Feather name="plus" size={14} color={colors.foreground} />
-          <Text style={s.newEventText}>New Event</Text>
-        </TouchableOpacity>
+
+        <View style={s.headerActions}>
+          {accounts.length > 1 && (
+            <View style={s.accountChipWrap}>
+              <TouchableOpacity
+                style={s.accountChip}
+                onPress={() => setShowAccountMenu((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Feather name="user" size={10} color={colors.mutedForeground} />
+                <Text style={s.accountChipText} numberOfLines={1}>
+                  {selectedAccount === "all" ? "All" : shortEmail(selectedAccount)}
+                </Text>
+                <Feather name="chevron-down" size={10} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              {showAccountMenu && (
+                <View style={s.accountMenu}>
+                  {[{ email: "all" as const }, ...accounts].map((acct) => (
+                    <TouchableOpacity
+                      key={acct.email}
+                      style={s.accountMenuItem}
+                      onPress={() => { setSelectedAccount(acct.email); setShowAccountMenu(false); }}
+                      activeOpacity={0.7}
+                    >
+                      {selectedAccount === acct.email && (
+                        <Feather name="check" size={14} color={colors.foreground} />
+                      )}
+                      <Text
+                        style={[
+                          s.accountMenuItemText,
+                          selectedAccount === acct.email && { fontFamily: "Inter_600SemiBold" },
+                          selectedAccount !== acct.email && { paddingLeft: 22 },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {acct.email === "all" ? "All accounts" : acct.email}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          <View style={s.viewToggle}>
+            <TouchableOpacity
+              style={[s.viewToggleBtn, viewMode === "day" && s.viewToggleBtnActive]}
+              onPress={() => setViewMode("day")}
+              activeOpacity={0.8}
+            >
+              <Text style={[s.viewToggleText, viewMode === "day" && s.viewToggleTextActive]}>Day</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.viewToggleBtn, viewMode === "week" && s.viewToggleBtnActive]}
+              onPress={() => setViewMode("week")}
+              activeOpacity={0.8}
+            >
+              <Text style={[s.viewToggleText, viewMode === "week" && s.viewToggleTextActive]}>Week</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={s.newEventBtn} onPress={() => router.push("/create-event")} activeOpacity={0.7}>
+            <Feather name="plus" size={16} color={colors.background} />
+          </TouchableOpacity>
+        </View>
       </View>
       {renderWeekStrip()}
     </View>
   );
 
-  const accountPills = accounts.length > 1 ? (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={s.accountPillsRow}
-      style={s.accountPillsScroll}
-    >
-      {[{ email: "all", isPrimary: false }, ...accounts].map((acct) => {
-        const isActive = selectedAccount === acct.email;
-        return (
-          <TouchableOpacity
-            key={acct.email}
-            style={[s.accountPill, isActive && { backgroundColor: colors.foreground, borderColor: colors.foreground }]}
-            onPress={() => setSelectedAccount(acct.email)}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[s.accountPillText, { color: isActive ? colors.background : colors.mutedForeground }]}
-              numberOfLines={1}
-            >
-              {acct.email === "all" ? "All" : acct.email}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
-  ) : null;
-
   if (isLoading) {
     return (
-      <View style={[s.container]}>
+      <View style={s.container}>
         {header}
-        {accountPills}
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
           <ActivityIndicator color={colors.foreground} size="large" />
         </View>
@@ -742,7 +949,6 @@ export default function CalendarScreen() {
     return (
       <View style={s.container}>
         {header}
-        {accountPills}
         <View style={s.emptyContainer}>
           <Feather name="calendar" size={40} color={colors.border} />
           <Text style={s.emptyTitle}>
@@ -772,36 +978,38 @@ export default function CalendarScreen() {
   return (
     <View style={s.container}>
       {header}
-      {accountPills}
-      <Animated.View
-        style={[s.eventsArea, { transform: [{ translateX: slideAnim }] }]}
-        {...swipeHandlers.panHandlers}
-      >
-        <FlatList
-          ref={listRef}
-          data={selectedDayEvents}
-          keyExtractor={(evt) => evt.id ?? Math.random().toString()}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={() => refetch()}
-              tintColor={colors.foreground}
-            />
-          }
-          ListHeaderComponent={renderDayHeader}
-          renderItem={({ item, index }) =>
-            renderEvent(item, index === selectedDayEvents.length - 1)
-          }
-          ListEmptyComponent={
-            <View style={s.emptyDayContainer}>
-              <Feather name="sun" size={28} color={colors.border} />
-              <Text style={s.emptyDayText}>No events today</Text>
-            </View>
-          }
-          ListFooterComponent={<View style={s.listFooter} />}
-          showsVerticalScrollIndicator={false}
-        />
-      </Animated.View>
+      {viewMode === "week" ? (
+        <Animated.View style={[s.eventsArea, { transform: [{ translateX: slideAnim }] }]} {...swipeHandlers.panHandlers}>
+          {renderWeekView()}
+        </Animated.View>
+      ) : (
+        <Animated.View style={[s.eventsArea, { transform: [{ translateX: slideAnim }] }]} {...swipeHandlers.panHandlers}>
+          <FlatList
+            ref={listRef}
+            data={selectedDayEvents}
+            keyExtractor={(evt) => evt.id ?? Math.random().toString()}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={() => refetch()}
+                tintColor={colors.foreground}
+              />
+            }
+            ListHeaderComponent={renderDayHeader}
+            renderItem={({ item, index }) =>
+              renderEvent(item, index === selectedDayEvents.length - 1)
+            }
+            ListEmptyComponent={
+              <View style={s.emptyDayContainer}>
+                <Feather name="sun" size={28} color={colors.border} />
+                <Text style={s.emptyDayText}>No events today</Text>
+              </View>
+            }
+            ListFooterComponent={<View style={s.listFooter} />}
+            showsVerticalScrollIndicator={false}
+          />
+        </Animated.View>
+      )}
     </View>
   );
 }

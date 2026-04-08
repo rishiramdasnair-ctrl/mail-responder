@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
+import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
 
@@ -68,6 +69,20 @@ router.get("/debug/gmail-token", async (_req, res) => {
   } catch (err: any) {
     res.json({ error: err.message, hasIdentity, hasRenewal });
   }
+});
+
+router.get("/debug/auth-check", (req, res) => {
+  const auth = getAuth(req);
+  const hasAuthHeader = !!req.headers.authorization;
+  const authPrefix = req.headers.authorization?.substring(0, 30) ?? null;
+  res.json({
+    hasAuthHeader,
+    authPrefix,
+    userId: auth?.userId ?? null,
+    sessionId: auth?.sessionId ?? null,
+    hasClerkSecretKey: !!process.env.CLERK_SECRET_KEY,
+    clerkKeyPrefix: process.env.CLERK_SECRET_KEY?.substring(0, 10) ?? null,
+  });
 });
 
 export default router;

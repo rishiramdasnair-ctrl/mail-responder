@@ -48,6 +48,11 @@ const tokenCache = {
       await SecureStore.setItemAsync(key, value);
     } catch {}
   },
+  async deleteToken(key: string) {
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch {}
+  },
 };
 
 const SIGN_IN_ROUTE = "/(auth)/sign-in" as const;
@@ -56,33 +61,25 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
   const segments = useSegments();
-  const [onboardingState, setOnboardingState] = React.useState<"checking" | "needed" | "done">("checking");
 
   usePushToken();
 
   useEffect(() => {
-    SecureStore.getItemAsync("onboarding_complete").then((val) => {
-      setOnboardingState(val ? "done" : "needed");
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!isLoaded || onboardingState === "checking") return;
+    if (!isLoaded) return;
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "onboarding";
 
-    if (!isSignedIn && !inAuthGroup) {
-      router.replace(SIGN_IN_ROUTE);
-    } else if (isSignedIn && inAuthGroup) {
-      if (onboardingState === "needed") {
+    SecureStore.getItemAsync("onboarding_complete").then((val) => {
+      const onboardingDone = !!val;
+      if (!isSignedIn && !inAuthGroup) {
+        router.replace(SIGN_IN_ROUTE);
+      } else if (isSignedIn && inAuthGroup) {
+        router.replace(onboardingDone ? "/" : ("/onboarding" as any));
+      } else if (isSignedIn && !inAuthGroup && !inOnboarding && !onboardingDone) {
         router.replace("/onboarding" as any);
-      } else {
-        router.replace("/");
       }
-    } else if (isSignedIn && !inAuthGroup && !inOnboarding && onboardingState === "needed") {
-      router.replace("/onboarding" as any);
-    }
-  }, [isSignedIn, isLoaded, segments, onboardingState]);
+    });
+  }, [isSignedIn, isLoaded, segments]);
 
   return <>{children}</>;
 }

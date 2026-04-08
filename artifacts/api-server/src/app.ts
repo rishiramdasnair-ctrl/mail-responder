@@ -107,7 +107,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Clerk middleware MUST run before any limiter that calls getAuth()
-app.use(clerkMiddleware());
+app.use(clerkMiddleware({
+  secretKey: process.env.CLERK_SECRET_KEY,
+  publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+}));
 
 // --- Rate limiting (tiered, applied after Clerk auth context is available) ---
 

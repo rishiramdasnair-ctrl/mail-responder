@@ -10,20 +10,27 @@ const API_BASE = (() => {
   throw new Error("EXPO_PUBLIC_API_URL is required in production");
 })();
 
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export function useApiClient() {
-  const { getToken, signOut } = useAuth();
+  const { getToken } = useAuth();
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const token = await getToken();
+    let token = await getToken();
     if (!token) {
-      signOut();
-      throw new Error("Session expired. Please sign in again.");
+      await sleep(600);
+      token = await getToken();
+    }
+    if (!token) {
+      throw new Error("Session unavailable. Please sign out and sign in again.");
     }
     return {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     };
-  }, [getToken, signOut]);
+  }, [getToken]);
 
   const getTokenStable = useCallback(async () => getToken(), [getToken]);
 

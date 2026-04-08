@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+import { useAuth } from "@clerk/clerk-expo";
 
 type FeatherName = ComponentProps<typeof Feather>["name"];
 
@@ -45,9 +46,11 @@ export default function OnboardingScreen() {
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
 
+  const { signOut } = useAuth();
   const [stepIndex, setStepIndex] = useState(0);
   const [gmailStatus, setGmailStatus] = useState<"idle" | "loading" | "connected" | "error">("idle");
   const [gmailError, setGmailError] = useState("");
+  const [gmailErrorHint, setGmailErrorHint] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState<ToneOption>("professional");
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -102,13 +105,19 @@ export default function OnboardingScreen() {
   const connectGmail = useCallback(async () => {
     setGmailStatus("loading");
     setGmailError("");
+    setGmailErrorHint(null);
     try {
       const headers = await authHeaders();
       const res = await fetch(`${apiBaseUrl}/api/auth/google/mobile-url`, { headers });
       if (!res.ok) {
-        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        const d = (await res.json().catch(() => ({}))) as { error?: string; hint?: string };
         setGmailStatus("error");
-        setGmailError(d.error || "Failed to start Gmail authorization.");
+        setGmailError(
+          res.status === 401
+            ? "Session issue — please sign out and sign back in."
+            : d.error || "Failed to start Gmail authorization."
+        );
+        setGmailErrorHint(d.hint ?? null);
         return;
       }
       const { url: oauthUrl } = (await res.json()) as { url: string };
@@ -447,7 +456,16 @@ export default function OnboardingScreen() {
               </View>
             )}
             {gmailStatus === "error" && (
-              <Text style={s.errorText}>{gmailError}</Text>
+              <View style={{ alignItems: "center", gap: 12 }}>
+                <Text style={s.errorText}>{gmailError}</Text>
+                <TouchableOpacity
+                  style={[s.primaryBtn, { backgroundColor: colors.destructive, paddingVertical: 12 }]}
+                  onPress={() => signOut()}
+                >
+                  <Feather name="log-out" size={15} color="#fff" />
+                  <Text style={[s.primaryBtnText, { color: "#fff" }]}>Sign out &amp; try again</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </>
         )}

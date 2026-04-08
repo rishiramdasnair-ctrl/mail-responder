@@ -125,7 +125,7 @@ function MarkdownBrief({ text, colors }: { text: string; colors: ReturnType<type
 }
 
 export default function EventDetailScreen() {
-  const { eventId, eventData } = useLocalSearchParams<{ eventId: string; eventData?: string }>();
+  const { eventId, eventData, calendarAccount } = useLocalSearchParams<{ eventId: string; eventData?: string; calendarAccount?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
@@ -141,10 +141,12 @@ export default function EventDetailScreen() {
   }, [eventData]);
 
   const { data: event, isLoading, isError, error } = useQuery<CalendarEvent>({
-    queryKey: ["calendar-event", eventId],
+    queryKey: ["calendar-event", eventId, calendarAccount ?? "primary"],
     queryFn: async () => {
       const headers = await authHeaders();
-      const res = await fetch(`${apiBaseUrl}/api/calendar/events/${eventId}`, { headers });
+      const account = calendarAccount || (parsedPlaceholder as any)?.calendarAccount;
+      const params = account ? `?account=${encodeURIComponent(account)}` : "";
+      const res = await fetch(`${apiBaseUrl}/api/calendar/events/${eventId}${params}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(d.error || "Failed to fetch event");

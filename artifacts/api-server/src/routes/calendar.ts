@@ -424,7 +424,8 @@ router.get("/calendar/events/:eventId", requireAuth, async (req, res) => {
     const auth = getAuth(req);
     const userId = auth.userId!;
     const eventId = String(req.params.eventId);
-    const calendar = await getCalendarClientForUser(userId);
+    const accountEmail = req.query.account as string | undefined;
+    const calendar = await getCalendarClientForUser(userId, accountEmail);
     const eventResp = await (calendar.events.get as any)({ calendarId: "primary", eventId });
     const e = eventResp.data as any;
     res.json({

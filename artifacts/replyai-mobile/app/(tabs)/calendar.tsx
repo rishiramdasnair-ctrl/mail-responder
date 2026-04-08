@@ -726,7 +726,7 @@ export default function CalendarScreen() {
       return (
         <TouchableOpacity
           key={evt.id}
-          onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id, eventData: JSON.stringify(evt) } })}
+          onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id, eventData: JSON.stringify(evt), calendarAccount: evt.calendarAccount ?? "" } })}
           activeOpacity={0.75}
           style={{ paddingHorizontal: 20, marginBottom: isLast ? 0 : 10, opacity }}
         >
@@ -743,7 +743,7 @@ export default function CalendarScreen() {
     return (
       <TouchableOpacity
         key={evt.id}
-        onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id, eventData: JSON.stringify(evt) } })}
+        onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id, eventData: JSON.stringify(evt), calendarAccount: evt.calendarAccount ?? "" } })}
         activeOpacity={0.75}
         style={[s.timelineRow, { opacity }]}
       >
@@ -849,7 +849,7 @@ export default function CalendarScreen() {
                       activeOpacity={0.75}
                       onPress={(e) => {
                         e.stopPropagation?.();
-                        router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id, eventData: JSON.stringify(evt) } });
+                        router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id, eventData: JSON.stringify(evt), calendarAccount: evt.calendarAccount ?? "" } });
                       }}
                     >
                       <View style={s.weekEventBlock}>

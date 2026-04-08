@@ -60,7 +60,7 @@
     "@react-native-community/datetimepicker": "8.4.4",
     "expo-auth-session": "^7.0.10",
     "expo-document-picker": "^55.0.11",
-    "expo-file-system": "^55.0.14",
+    "expo-file-system": "^19.0.21",
     "expo-notifications": "~0.32.16",
     "expo-secure-store": "^15.0.8",
     "react-native-webview": "13.15.0"

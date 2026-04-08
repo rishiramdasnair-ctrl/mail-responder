@@ -10,6 +10,7 @@ import {
   extractAttachments,
   getConnectedGmailAccounts,
 } from "../lib/gmailClient";
+import { resolveLabelNameToId } from "../lib/emailClassifier";
 import { SendReplyBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { emailSnoozesTable, gmailAccountsTable } from "@workspace/db/schema";
@@ -27,6 +28,12 @@ const emailSendRateLimit = rateLimit({
     res.status(429).json({ error: "Too many email send requests. Please wait a moment.", code: "RATE_LIMITED" });
   },
 });
+
+// System Gmail labels are referenced by name; user labels must use their ID.
+// Category labels follow the pattern "ReplyAI/<Category>".
+function isCategoryLabel(label: string): boolean {
+  return label.startsWith("ReplyAI/");
+}
 
 interface SignatureData {
   text?: string;
@@ -159,6 +166,8 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
     const q = req.query.q as string | undefined;
     const pageTokensRaw = req.query.pageToken as string | undefined;
     const pageTokens: Record<string, string> = pageTokensRaw ? JSON.parse(pageTokensRaw) : {};
+    // Allow category label override (e.g. "ReplyAI/Work") - defaults to INBOX
+    const labelFilter = (req.query.label as string) || "INBOX";
 
     if (accounts.length === 0) {
       res.status(400).json({ error: "Gmail not connected", notConnected: true });
@@ -170,9 +179,22 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
     const accountResults = await Promise.allSettled(
       accounts.map(async (account) => {
         const gmail = await getGmailClientForUser(userId, account.email);
+
+        // Resolve category label name → label ID (required for user-created labels)
+        // IDs are per-account, so accountEmail must be part of the lookup key.
+        let resolvedLabel = labelFilter;
+        if (isCategoryLabel(labelFilter)) {
+          const labelId = await resolveLabelNameToId(gmail, userId, account.email, labelFilter);
+          if (!labelId) {
+            // Label doesn't exist for this account — no emails classified yet, return empty
+            return { emails: [], nextPageToken: undefined, email: account.email };
+          }
+          resolvedLabel = labelId;
+        }
+
         const listRes = await gmail.users.threads.list({
           userId: "me",
-          labelIds: ["INBOX"],
+          labelIds: [resolvedLabel],
           maxResults: perAccount,
           ...(q ? { q } : {}),
           ...(pageTokens[account.email] ? { pageToken: pageTokens[account.email] } : {}),
@@ -370,10 +392,23 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
 
     const account = getAccount(req);
     const gmail = await getGmailClientForUser(userId, account);
-    const label = (req.query.label as string) || "INBOX";
+    const labelInput = (req.query.label as string) || "INBOX";
     const maxResults = parseInt((req.query.maxResults as string) || "50");
     const pageToken = req.query.pageToken as string | undefined;
     const q = req.query.q as string | undefined;
+
+    // Resolve category label name → label ID (user-created labels need ID, not name).
+    // IDs are per-account, so accountEmail is required for correct cache lookup.
+    let label = labelInput;
+    if (isCategoryLabel(labelInput)) {
+      const labelId = await resolveLabelNameToId(gmail, userId, account || "", labelInput);
+      if (!labelId) {
+        // Label doesn't exist yet — no emails classified into this category
+        res.json({ threads: [], nextPageToken: undefined, resultSizeEstimate: 0 });
+        return;
+      }
+      label = labelId;
+    }
 
     const listRes = await gmail.users.threads.list({
       userId: "me",
@@ -420,6 +455,7 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
           isUnread,
           isStarred,
           labelIds: lastMsg.labelIds || [],
+          accountEmail: account || "",
         };
       } catch {
         return null;

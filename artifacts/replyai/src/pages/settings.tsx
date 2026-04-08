@@ -13,9 +13,9 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { useGetSettings, useUpdateSettings, getGetSettingsQueryKey } from "@workspace/api-client-react";
-import { Loader2, Mail, CheckCircle2, AlertCircle, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Loader2, Mail, CheckCircle2, AlertCircle, Plus, Trash2, AlertTriangle, Tag } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useClerk } from "@clerk/react";
 
 interface GmailAccount {
@@ -35,6 +35,11 @@ type SettingsFormValues = z.infer<typeof settingsSchema>;
 
 const DELETE_CONFIRMATION_PHRASE = "delete my account";
 
+interface EmailCategory {
+  category: string;
+  enabled: boolean;
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const { setTheme } = useTheme();
@@ -43,9 +48,61 @@ export default function Settings() {
   const [showDeleteSection, setShowDeleteSection] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [classifyingInbox, setClassifyingInbox] = useState(false);
   
   const { data: settings, isLoading: isLoadingSettings } = useGetSettings();
   const updateSettings = useUpdateSettings();
+
+  const { data: categoriesData, refetch: refetchCategories } = useQuery({
+    queryKey: ["email-categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/gmail/categories", { credentials: "include" });
+      if (!res.ok) return { categories: [] as EmailCategory[] };
+      return res.json() as Promise<{ categories: EmailCategory[] }>;
+    },
+  });
+  const categories = categoriesData?.categories ?? [];
+
+  const updateCategories = useMutation({
+    mutationFn: async (cats: EmailCategory[]) => {
+      const res = await fetch("/api/gmail/categories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ categories: cats }),
+      });
+      if (!res.ok) throw new Error("Failed to update categories");
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchCategories();
+      queryClient.invalidateQueries({ queryKey: ["email-categories"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update categories.", variant: "destructive" });
+    },
+  });
+
+  const toggleCategory = (category: string, enabled: boolean) => {
+    const updated = categories.map(c => c.category === category ? { ...c, enabled } : c);
+    updateCategories.mutate(updated);
+  };
+
+  const classifyInbox = async () => {
+    setClassifyingInbox(true);
+    try {
+      const res = await fetch("/api/gmail/categories/classify-inbox", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Classification started", description: "Your inbox is being labeled in the background. Check back in a moment." });
+    } catch {
+      toast({ title: "Error", description: "Failed to start inbox classification.", variant: "destructive" });
+    } finally {
+      setClassifyingInbox(false);
+    }
+  };
 
   const { data: gmailAccountsData, isLoading: isLoadingAccounts, refetch: refetchAccounts } = useQuery({
     queryKey: ["gmail-accounts"],
@@ -252,6 +309,40 @@ export default function Settings() {
                 )}
               </div>
             )}
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold mb-1 pb-2 border-b">Email Categories</h2>
+            <p className="text-sm text-muted-foreground mb-4">AI automatically labels incoming emails with these categories. Toggle to enable or disable each one.</p>
+
+            <div className="space-y-2">
+              {categories.map((cat) => (
+                <div key={cat.category} className="flex items-center justify-between rounded-lg border p-3 bg-card">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{cat.category}</span>
+                  </div>
+                  <Switch
+                    checked={cat.enabled}
+                    onCheckedChange={(checked) => toggleCategory(cat.category, checked)}
+                    disabled={updateCategories.isPending}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <Button
+              variant="outline"
+              className="mt-4 gap-2"
+              onClick={classifyInbox}
+              disabled={classifyingInbox}
+            >
+              {classifyingInbox ? <Loader2 className="w-4 h-4 animate-spin" /> : <Tag className="w-4 h-4" />}
+              Label my inbox now
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2">
+              Classifies your 100 most recent emails and applies ReplyAI/ labels in Gmail.
+            </p>
           </section>
 
           <section>

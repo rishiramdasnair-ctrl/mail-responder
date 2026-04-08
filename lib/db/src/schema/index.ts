@@ -7,3 +7,4 @@ export * from "./emailSnooze";
 export * from "./scheduledEmails";
 export * from "./gmailWatches";
 export * from "./expoPushTokens";
+export * from "./emailCategories";

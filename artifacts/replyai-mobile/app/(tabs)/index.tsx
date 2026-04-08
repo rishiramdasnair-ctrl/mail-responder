@@ -50,6 +50,8 @@ export default function InboxScreen() {
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
   const [activeFolder, setActiveFolder] = useState<"INBOX" | "STARRED" | "TRASH">("INBOX");
   const [folderPickerVisible, setFolderPickerVisible] = useState(false);
+  const [categories, setCategories] = useState<Array<{ category: string; enabled: boolean }>>([]);
+  const [activeCategory, setActiveCategory] = useState<string>("All");
 
   useEffect(() => {
     (async () => {
@@ -64,26 +66,60 @@ export default function InboxScreen() {
     })();
   }, [apiBaseUrl, authHeaders]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/gmail/categories`, { headers });
+        if (res.ok) {
+          const data = (await res.json()) as { categories: Array<{ category: string; enabled: boolean }> };
+          setCategories(data.categories);
+        }
+      } catch {}
+    })();
+  }, [apiBaseUrl, authHeaders]);
+
+  const categoryLabel = activeCategory !== "All" ? `ReplyAI/${activeCategory}` : null;
+
   const fetchInbox = useCallback(
     async ({ pageParam }: { pageParam: unknown }) => {
       const token = pageParam as string | undefined;
+      const headers = await authHeaders();
+      const isAllAccounts = selectedAccount === "all";
+
+      if (isAllAccounts && activeFolder === "INBOX") {
+        // All-accounts mode: always use priority-inbox (supports ?label= for category filtering)
+        const params = new URLSearchParams({
+          maxResults: String(PAGE_SIZE),
+          ...(token ? { pageToken: token } : {}),
+          ...(activeQuery ? { q: activeQuery } : {}),
+          ...(categoryLabel ? { label: categoryLabel } : {}),
+        });
+        const res = await fetch(`${apiBaseUrl}/api/gmail/priority-inbox?${params}`, { headers });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(d.error || "Failed to load inbox");
+        }
+        return res.json() as Promise<InboxPage>;
+      }
+
+      // Single-account mode or non-inbox folder
+      const label = categoryLabel || activeFolder;
       const params = new URLSearchParams({
         maxResults: String(PAGE_SIZE),
-        label: activeFolder,
+        label,
         ...(token ? { pageToken: token } : {}),
         ...(activeQuery ? { q: activeQuery } : {}),
+        ...(selectedAccount !== "all" ? { account: selectedAccount } : {}),
       });
-      const headers = await authHeaders();
-      const res = await fetch(`${apiBaseUrl}/api/gmail/priority-inbox?${params}`, {
-        headers,
-      });
+      const res = await fetch(`${apiBaseUrl}/api/gmail/inbox?${params}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(d.error || "Failed to load inbox");
       }
       return res.json() as Promise<InboxPage>;
     },
-    [apiBaseUrl, activeQuery, activeFolder, authHeaders]
+    [apiBaseUrl, activeQuery, activeFolder, activeCategory, categoryLabel, selectedAccount, authHeaders]
   );
 
   const {
@@ -97,7 +133,7 @@ export default function InboxScreen() {
     refetch,
     isRefetching,
   } = useInfiniteQuery<InboxPage, Error, InfiniteData<InboxPage>, readonly unknown[], unknown>({
-    queryKey: ["priority-inbox", activeQuery, activeFolder] as const,
+    queryKey: ["priority-inbox", activeQuery, activeFolder, activeCategory, selectedAccount] as const,
     queryFn: fetchInbox,
     initialPageParam: undefined as unknown,
     getNextPageParam: (last) => last.nextPageToken ?? undefined,
@@ -151,7 +187,7 @@ export default function InboxScreen() {
     });
   }, [apiBaseUrl, authHeaders]);
 
-  const qKey = ["priority-inbox", activeQuery, activeFolder] as const;
+  const qKey = ["priority-inbox", activeQuery, activeFolder, activeCategory, selectedAccount] as const;
 
   const onStar = useCallback((email: EmailThread) => {
     const addLabels = email.isStarred ? [] : ["STARRED"];
@@ -550,9 +586,9 @@ export default function InboxScreen() {
                 ActionSheetIOS.showActionSheetWithOptions(
                   { options: ["Inbox", "Starred", "Trash", "Cancel"], cancelButtonIndex: 3 },
                   (idx) => {
-                    if (idx === 0) { setActiveFolder("INBOX"); setActiveQuery(""); setSearchQuery(""); }
-                    if (idx === 1) { setActiveFolder("STARRED"); setActiveQuery(""); setSearchQuery(""); }
-                    if (idx === 2) { setActiveFolder("TRASH"); setActiveQuery(""); setSearchQuery(""); }
+                    if (idx === 0) { setActiveFolder("INBOX"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                    if (idx === 1) { setActiveFolder("STARRED"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                    if (idx === 2) { setActiveFolder("TRASH"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
                   }
                 );
               } else {
@@ -646,6 +682,30 @@ export default function InboxScreen() {
             })}
           </ScrollView>
         )}
+
+        {activeFolder === "INBOX" && categories.filter(c => c.enabled).length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.accountPillsRow, { paddingTop: 8 }]}
+            style={styles.accountPillsScroll}
+          >
+            {["All", ...categories.filter(c => c.enabled).map(c => c.category)].map((cat) => {
+              const isActive = activeCategory === cat;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.accountPill, isActive && styles.accountPillActive]}
+                  onPress={() => setActiveCategory(cat)}
+                >
+                  <Text style={[styles.accountPillText, isActive && styles.accountPillTextActive]} numberOfLines={1}>
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
 
       {/* Android/Web folder picker modal */}
@@ -659,7 +719,7 @@ export default function InboxScreen() {
               const icon = folder === "INBOX" ? "inbox" : folder === "STARRED" ? "star" : "trash-2";
               const isActive = activeFolder === folder;
               return (
-                <TouchableOpacity key={folder} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 14, gap: 14 }} onPress={() => { setActiveFolder(folder); setActiveQuery(""); setSearchQuery(""); setFolderPickerVisible(false); }}>
+                <TouchableOpacity key={folder} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 14, gap: 14 }} onPress={() => { setActiveFolder(folder); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); setFolderPickerVisible(false); }}>
                   <Feather name={icon} size={18} color={isActive ? colors.foreground : colors.mutedForeground} />
                   <Text style={{ fontSize: 16, fontFamily: isActive ? "Inter_600SemiBold" : "Inter_400Regular", color: isActive ? colors.foreground : colors.mutedForeground }}>{label}</Text>
                   {isActive && <Feather name="check" size={16} color={colors.foreground} style={{ marginLeft: "auto" }} />}
@@ -703,7 +763,7 @@ export default function InboxScreen() {
           <RefreshControl
             refreshing={isRefetching}
             onRefresh={() => {
-              qc.resetQueries({ queryKey: ["priority-inbox", activeQuery, activeFolder] });
+              qc.resetQueries({ queryKey: ["priority-inbox", activeQuery, activeFolder, activeCategory] });
             }}
             tintColor={colors.foreground}
           />

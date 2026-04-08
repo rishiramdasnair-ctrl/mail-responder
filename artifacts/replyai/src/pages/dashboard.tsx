@@ -1337,6 +1337,7 @@ export default function Dashboard() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string>("All");
   const [showCalendar, setShowCalendar] = useState(true);
   const [showAddToCalendar, setShowAddToCalendar] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
@@ -1354,6 +1355,16 @@ export default function Dashboard() {
       return res.json() as Promise<{ accounts: Array<{ email: string; isPrimary: boolean }> }>;
     },
   });
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ["email-categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/gmail/categories", { credentials: "include" });
+      if (!res.ok) return { categories: [] as Array<{ category: string; enabled: boolean }> };
+      return res.json() as Promise<{ categories: Array<{ category: string; enabled: boolean }> }>;
+    },
+  });
+  const enabledCategories = (categoriesData?.categories ?? []).filter(c => c.enabled).map(c => c.category);
   const gmailAccounts = gmailAccountsData?.accounts ?? [];
   // null selectedAccount = "All accounts" unified mode; a specific email = single-account mode
   const primaryAccount = gmailAccounts.find(a => a.isPrimary)?.email ?? gmailAccounts[0]?.email ?? null;
@@ -1372,6 +1383,7 @@ export default function Dashboard() {
     setSelectedThreadId(null);
     setSelectedThreadAccount(null);
     setSearchQuery("");
+    setActiveCategory("All");
   }, [activeLabel]);
 
   useEffect(() => {
@@ -1397,6 +1409,8 @@ export default function Dashboard() {
     return () => window.removeEventListener("replyai:compose", handler);
   }, []);
 
+  const categoryLabel = activeCategory !== "All" ? `ReplyAI/${activeCategory}` : null;
+
   const {
     data: inboxData,
     isLoading: isLoadingInbox,
@@ -1406,13 +1420,16 @@ export default function Dashboard() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["inbox", activeLabel, debouncedSearch, isUnifiedInbox ? "__unified__" : activeAccount],
+    queryKey: ["inbox", activeLabel, debouncedSearch, isUnifiedInbox ? "__unified__" : activeAccount, activeCategory],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ signal, pageParam }) => {
       if (isUnifiedInbox) {
+        // Unified inbox (all accounts): use priority-inbox which aggregates across accounts.
+        // It now supports an optional ?label= param for category filtering.
         const params = new URLSearchParams();
         if (debouncedSearch) params.set("q", debouncedSearch);
         if (pageParam) params.set("pageToken", pageParam);
+        if (categoryLabel) params.set("label", categoryLabel);
         const url = `/api/gmail/priority-inbox${params.toString() ? `?${params}` : ""}`;
         const res = await fetch(url, { credentials: "include", signal });
         if (!res.ok) {
@@ -1423,8 +1440,9 @@ export default function Dashboard() {
         }
         return res.json() as Promise<{ threads: any[]; nextPageToken?: string }>;
       }
-      // Single-account inbox
-      const params = new URLSearchParams({ maxResults: "100", label: activeLabel });
+      // Single-account inbox (specific account selected)
+      const label = categoryLabel || activeLabel;
+      const params = new URLSearchParams({ maxResults: "100", label });
       if (debouncedSearch) params.set("q", debouncedSearch);
       if (activeAccount) params.set("account", activeAccount);
       if (pageParam) params.set("pageToken", pageParam);
@@ -1778,6 +1796,25 @@ export default function Dashboard() {
                 />
               </div>
             </div>
+            {enabledCategories.length > 0 && activeLabel === "INBOX" && (
+              <div className="px-3 pb-2">
+                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {["All", ...enabledCategories].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                        activeCategory === cat
+                          ? "bg-foreground text-background border-foreground"
+                          : "bg-transparent text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           
           <ScrollArea className="flex-1 pb-16 md:pb-0">

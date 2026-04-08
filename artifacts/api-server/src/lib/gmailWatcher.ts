@@ -1,8 +1,10 @@
 import { db } from "@workspace/db";
 import { gmailWatchesTable, expoPushTokensTable, usersTable } from "@workspace/db/schema";
 import { eq, lt, and } from "drizzle-orm";
+import { gmail_v1 } from "googleapis";
 import { getGmailClientForUser } from "./gmailClient";
 import { logger } from "./logger";
+import { classifyAndLabelMessage } from "./emailClassifier";
 
 const PUBSUB_TOPIC = process.env.GOOGLE_PUBSUB_TOPIC || "";
 
@@ -70,7 +72,32 @@ export async function handlePushNotification(data: {
         const newCount = added.length;
 
         if (newCount > 0) {
-          // Send push notification to all registered Expo tokens for this user
+          // Classify and label each new message BEFORE sending push notification.
+          // Use data.emailAddress (the webhook event's account email) for correct
+          // per-account Gmail label ID resolution.
+          const classifyTasks = added
+            .filter(item => item.message?.id && item.message?.threadId)
+            .map(async (item) => {
+              const msg = item.message!;
+              try {
+                const fullMsg = await gmail.users.messages.get({
+                  userId: "me",
+                  id: msg.id!,
+                  format: "metadata",
+                  metadataHeaders: ["Subject"],
+                });
+                const headers: gmail_v1.Schema$MessagePartHeader[] = fullMsg.data.payload?.headers ?? [];
+                const subject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value ?? "";
+                const snippet = fullMsg.data.snippet || "";
+                await classifyAndLabelMessage(user.id, data.emailAddress, msg.threadId!, subject, snippet);
+              } catch (err) {
+                logger.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[watcher] classify error");
+              }
+            });
+
+          await Promise.allSettled(classifyTasks);
+
+          // Labels are applied — now send push notification
           await sendExpoPushNotification(user.id, newCount);
         }
       }

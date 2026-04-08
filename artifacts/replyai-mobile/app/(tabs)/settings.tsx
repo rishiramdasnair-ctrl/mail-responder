@@ -89,6 +89,8 @@ export default function SettingsScreen() {
   const [editLast, setEditLast] = useState("");
   const [savingName, setSavingName] = useState(false);
   const lastInputRef = useRef<TextInput>(null);
+  const [classifyingInbox, setClassifyingInbox] = useState(false);
+  const [categoriesData, setCategoriesData] = useState<Array<{ category: string; enabled: boolean }>>([]);
 
   const { data: profile, isLoading: profileLoading } = useQuery<UserProfile>({
     queryKey: ["auth-me"],
@@ -301,6 +303,54 @@ export default function SettingsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/gmail/categories`, { headers });
+        if (res.ok) {
+          const data = await res.json() as { categories: Array<{ category: string; enabled: boolean }> };
+          setCategoriesData(data.categories);
+        }
+      } catch {}
+    })();
+  }, [apiBaseUrl, authHeaders]);
+
+  const handleToggleCategory = async (category: string, enabled: boolean) => {
+    const updated = categoriesData.map(c => c.category === category ? { ...c, enabled } : c);
+    setCategoriesData(updated);
+    try {
+      const headers = await authHeaders();
+      await fetch(`${apiBaseUrl}/api/gmail/categories`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ categories: updated }),
+      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {
+      setCategoriesData(categoriesData);
+      Alert.alert("Error", "Could not update category. Please try again.");
+    }
+  };
+
+  const handleClassifyInbox = async () => {
+    setClassifyingInbox(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/gmail/categories/classify-inbox`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Started", "Your inbox is being labeled in the background. Check back in a moment.");
+    } catch {
+      Alert.alert("Error", "Failed to start inbox classification.");
+    } finally {
+      setClassifyingInbox(false);
+    }
+  };
 
   const handleToneChange = (t: "pro" | "casual" | "fast") => {
     setTone(t);
@@ -1016,6 +1066,40 @@ export default function SettingsScreen() {
                   </Text>
                 </TouchableOpacity>
               </Link>
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Email Categories</Text>
+            <View style={styles.card}>
+              {categoriesData.map((cat, i) => (
+                <React.Fragment key={cat.category}>
+                  {i > 0 && <View style={styles.divider} />}
+                  <View style={styles.row}>
+                    <Text style={styles.rowLabel}>{cat.category}</Text>
+                    <Switch
+                      value={cat.enabled}
+                      onValueChange={(v) => handleToggleCategory(cat.category, v)}
+                      trackColor={{ false: colors.border, true: colors.foreground }}
+                      thumbColor={colors.background}
+                    />
+                  </View>
+                </React.Fragment>
+              ))}
+              {categoriesData.length > 0 && <View style={styles.divider} />}
+              <TouchableOpacity
+                style={styles.addAccountBtn}
+                onPress={handleClassifyInbox}
+                disabled={classifyingInbox}
+                activeOpacity={0.7}
+              >
+                {classifyingInbox ? (
+                  <ActivityIndicator size="small" color={colors.foreground} />
+                ) : (
+                  <Feather name="tag" size={16} color={colors.foreground} />
+                )}
+                <Text style={styles.addAccountText}>Label my inbox now</Text>
+              </TouchableOpacity>
             </View>
           </View>
 

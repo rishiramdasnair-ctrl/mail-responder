@@ -6,3 +6,15 @@ id = "LM4aOsQnME0sPHVGh7ZO-"
 uri = "file://artifacts/replyai-mobile/assets/images/icon.png"
 type = "image"
 title = "replyai app icon paper airplane"
+
+[[generated]]
+id = "wgfFUQ5RgGSrFElcWRrRu"
+uri = "file://artifacts/replyai-intro/public/images/bg-texture.png"
+type = "image"
+title = "Dark tech texture"
+
+[[generated]]
+id = "TkH7YbVC0R3-9kM7I0ZKN"
+uri = "file://artifacts/replyai-intro/public/images/glass-texture.png"
+type = "image"
+title = "Frosted glass macro"

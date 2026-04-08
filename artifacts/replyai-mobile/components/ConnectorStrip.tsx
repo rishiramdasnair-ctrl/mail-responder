@@ -117,14 +117,66 @@ interface ConnectedRecord {
   status: string;
 }
 
+function ConnectorAvatarIcon({
+  def,
+  size = 28,
+}: {
+  def: ConnectorDef;
+  size?: number;
+}) {
+  const imgCfg = getConnectorLogoImage(def.id);
+  if (imgCfg) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          overflow: "hidden",
+          backgroundColor: imgCfg.backgroundColor,
+          padding: imgCfg.padding,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Image
+          source={imgCfg.source}
+          style={{ width: size - imgCfg.padding * 2, height: size - imgCfg.padding * 2 }}
+          resizeMode={imgCfg.resizeMode}
+        />
+      </View>
+    );
+  }
+  const Logo = getConnectorLogo(def.id);
+  const logoSize = Math.round(size * 0.58);
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: def.color,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {Logo ? (
+        <Logo size={logoSize} color={def.textColor} />
+      ) : (
+        <Text style={{ fontSize: size <= 28 ? 9 : 11, fontFamily: "Inter_700Bold", color: def.textColor, letterSpacing: -0.3 }}>
+          {def.initials}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function ConnectorAvatar({
   def,
-  connected,
   size = 28,
   onPress,
 }: {
   def: ConnectorDef;
-  connected: boolean;
   size?: number;
   onPress: () => void;
 }) {
@@ -136,79 +188,20 @@ function ConnectorAvatar({
       style={{ alignItems: "center", gap: 3 }}
     >
       <View style={{ width: size, height: size, position: "relative" }}>
-        {(() => {
-          const imgCfg = getConnectorLogoImage(def.id);
-          if (imgCfg) {
-            return (
-              <View
-                style={{
-                  width: size,
-                  height: size,
-                  borderRadius: size / 2,
-                  overflow: "hidden",
-                  opacity: connected ? 1 : 0.45,
-                  backgroundColor: imgCfg.backgroundColor,
-                  padding: imgCfg.padding,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Image
-                  source={imgCfg.source}
-                  style={{ width: size - imgCfg.padding * 2, height: size - imgCfg.padding * 2 }}
-                  resizeMode={imgCfg.resizeMode}
-                />
-              </View>
-            );
-          }
-          const Logo = getConnectorLogo(def.id);
-          const logoSize = Math.round(size * 0.58);
-          const logoColor = connected ? def.textColor : colors.mutedForeground;
-          return (
-            <View
-              style={{
-                width: size,
-                height: size,
-                borderRadius: size / 2,
-                backgroundColor: connected ? def.color : colors.muted,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: connected ? 0 : 1,
-                borderColor: colors.border,
-              }}
-            >
-              {Logo ? (
-                <Logo size={logoSize} color={logoColor} />
-              ) : (
-                <Text
-                  style={{
-                    fontSize: size <= 28 ? 9 : 11,
-                    fontFamily: "Inter_700Bold",
-                    color: logoColor,
-                    letterSpacing: -0.3,
-                  }}
-                >
-                  {def.initials}
-                </Text>
-              )}
-            </View>
-          );
-        })()}
-        {connected && (
-          <View
-            style={{
-              position: "absolute",
-              bottom: -1,
-              right: -1,
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: colors.foreground,
-              borderWidth: 1.5,
-              borderColor: colors.background,
-            }}
-          />
-        )}
+        <ConnectorAvatarIcon def={def} size={size} />
+        <View
+          style={{
+            position: "absolute",
+            bottom: -1,
+            right: -1,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: colors.foreground,
+            borderWidth: 1.5,
+            borderColor: colors.background,
+          }}
+        />
       </View>
     </TouchableOpacity>
   );
@@ -241,136 +234,25 @@ function ConnectorDetailSheet({
   if (!def) return null;
 
   const styles = StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.45)",
-      justifyContent: "flex-end",
-    },
-    sheet: {
-      backgroundColor: colors.background,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingTop: 12,
-      paddingBottom: 40,
-      paddingHorizontal: 20,
-    },
-    handle: {
-      width: 36,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.border,
-      alignSelf: "center",
-      marginBottom: 20,
-    },
-    topRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 14,
-      marginBottom: 16,
-    },
-    avatar: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      backgroundColor: def.color,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: {
-      fontSize: 18,
-      fontFamily: "Inter_700Bold",
-      color: def.textColor,
-    },
-    label: {
-      fontSize: 20,
-      fontFamily: "Inter_700Bold",
-      color: colors.foreground,
-    },
-    statusRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginTop: 2,
-    },
-    statusDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor: connected ? colors.foreground : colors.border,
-    },
-    statusText: {
-      fontSize: 12,
-      fontFamily: "Inter_400Regular",
-      color: connected ? colors.foreground : colors.mutedForeground,
-    },
-    description: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-      lineHeight: 21,
-      marginBottom: 16,
-    },
-    capSection: {
-      marginBottom: 20,
-    },
-    capTitle: {
-      fontSize: 11,
-      fontFamily: "Inter_600SemiBold",
-      color: colors.mutedForeground,
-      textTransform: "uppercase",
-      letterSpacing: 0.7,
-      marginBottom: 10,
-    },
-    capRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginBottom: 8,
-    },
-    capText: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
-      color: colors.foreground,
-    },
-    connectBtn: {
-      backgroundColor: def.color,
-      borderRadius: 14,
-      paddingVertical: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "row",
-      gap: 8,
-    },
-    connectBtnText: {
-      fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
-      color: def.textColor,
-    },
-    disconnectBtn: {
-      marginTop: 12,
-      borderRadius: 14,
-      paddingVertical: 12,
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    disconnectText: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-    },
-    builtInBadge: {
-      backgroundColor: colors.muted,
-      borderRadius: 12,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      alignItems: "center",
-    },
-    builtInText: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
-      color: colors.mutedForeground,
-    },
+    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+    sheet: { backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12, paddingBottom: 40, paddingHorizontal: 20 },
+    handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: "center", marginBottom: 20 },
+    topRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 16 },
+    label: { fontSize: 20, fontFamily: "Inter_700Bold", color: colors.foreground },
+    statusRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+    statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: connected ? colors.foreground : colors.border },
+    statusText: { fontSize: 12, fontFamily: "Inter_400Regular", color: connected ? colors.foreground : colors.mutedForeground },
+    description: { fontSize: 14, fontFamily: "Inter_400Regular", color: colors.mutedForeground, lineHeight: 21, marginBottom: 16 },
+    capSection: { marginBottom: 20 },
+    capTitle: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 10 },
+    capRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+    capText: { fontSize: 14, fontFamily: "Inter_400Regular", color: colors.foreground },
+    connectBtn: { backgroundColor: def.color, borderRadius: 14, paddingVertical: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+    connectBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: def.textColor },
+    disconnectBtn: { marginTop: 12, borderRadius: 14, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: colors.border },
+    disconnectText: { fontSize: 14, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
+    builtInBadge: { backgroundColor: colors.muted, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, alignItems: "center" },
+    builtInText: { fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
   });
 
   return (
@@ -391,8 +273,8 @@ function ConnectorDetailSheet({
                 }
                 const Logo = getConnectorLogo(def.id);
                 return (
-                  <View style={styles.avatar}>
-                    {Logo ? <Logo size={28} color={def.textColor} /> : <Text style={styles.avatarText}>{def.initials}</Text>}
+                  <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: def.color, alignItems: "center", justifyContent: "center" }}>
+                    {Logo ? <Logo size={28} color={def.textColor} /> : <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: def.textColor }}>{def.initials}</Text>}
                   </View>
                 );
               })()}
@@ -422,31 +304,19 @@ function ConnectorDetailSheet({
             {isBuiltIn ? (
               <View style={styles.builtInBadge}>
                 <Text style={styles.builtInText}>
-                  {connected
-                    ? "Built-in — connected via your Gmail account"
-                    : "Connect Gmail to enable this tool"}
+                  {connected ? "Built-in — connected via your Gmail account" : "Connect Gmail to enable this tool"}
                 </Text>
               </View>
             ) : connected ? (
-              <>
-                <TouchableOpacity
-                  style={styles.disconnectBtn}
-                  onPress={() => onDisconnect(def)}
-                  disabled={connecting}
-                >
-                  {connecting ? (
-                    <ActivityIndicator size="small" color={colors.mutedForeground} />
-                  ) : (
-                    <Text style={styles.disconnectText}>Disconnect {def.label}</Text>
-                  )}
-                </TouchableOpacity>
-              </>
+              <TouchableOpacity style={styles.disconnectBtn} onPress={() => onDisconnect(def)} disabled={connecting}>
+                {connecting ? (
+                  <ActivityIndicator size="small" color={colors.mutedForeground} />
+                ) : (
+                  <Text style={styles.disconnectText}>Disconnect {def.label}</Text>
+                )}
+              </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                style={[styles.connectBtn, connecting && { opacity: 0.6 }]}
-                onPress={() => onConnect(def)}
-                disabled={connecting}
-              >
+              <TouchableOpacity style={[styles.connectBtn, connecting && { opacity: 0.6 }]} onPress={() => onConnect(def)} disabled={connecting}>
                 {connecting ? (
                   <ActivityIndicator size="small" color={def.textColor} />
                 ) : (
@@ -457,6 +327,107 @@ function ConnectorDetailSheet({
                 )}
               </TouchableOpacity>
             )}
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+interface ConnectionLibraryProps {
+  visible: boolean;
+  onClose: () => void;
+  isConnected: (id: string) => boolean;
+  getConnectedAs: (id: string) => string | undefined;
+  onSelectConnector: (def: ConnectorDef) => void;
+  exclude?: string[];
+}
+
+function ConnectionLibrary({
+  visible,
+  onClose,
+  isConnected,
+  getConnectedAs,
+  onSelectConnector,
+  exclude,
+}: ConnectionLibraryProps) {
+  const colors = useColors();
+
+  const visibleConnectors = ALL_CONNECTORS.filter((d) => !exclude?.includes(d.id));
+  const connected = visibleConnectors.filter((d) => isConnected(d.id));
+  const available = visibleConnectors.filter((d) => !isConnected(d.id));
+
+  const styles = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+    sheet: { backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "85%", paddingBottom: 34 },
+    handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: "center", marginTop: 12, marginBottom: 4 },
+    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14 },
+    title: { fontSize: 17, fontFamily: "Inter_600SemiBold", color: colors.foreground },
+    closeBtn: { padding: 4 },
+    sectionLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.7, paddingHorizontal: 20, marginTop: 12, marginBottom: 6 },
+    row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 12, gap: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+    rowInfo: { flex: 1 },
+    rowLabel: { fontSize: 15, fontFamily: "Inter_500Medium", color: colors.foreground },
+    rowDesc: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 1 },
+    connectedBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.muted, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+    connectedText: { fontSize: 11, fontFamily: "Inter_500Medium", color: colors.foreground },
+    addBtn: { backgroundColor: colors.foreground, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
+    addBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: colors.primaryForeground },
+  });
+
+  const renderRow = (def: ConnectorDef) => {
+    const conn = isConnected(def.id);
+    const connAs = getConnectedAs(def.id);
+    const isBuiltIn = def.id === "gmail" || def.id === "calendar";
+    return (
+      <TouchableOpacity key={def.id} style={styles.row} onPress={() => { onClose(); onSelectConnector(def); }} activeOpacity={0.7}>
+        <ConnectorAvatarIcon def={def} size={40} />
+        <View style={styles.rowInfo}>
+          <Text style={styles.rowLabel}>{def.label}</Text>
+          <Text style={styles.rowDesc} numberOfLines={1}>{def.description}</Text>
+        </View>
+        {conn ? (
+          <View style={styles.connectedBadge}>
+            <Feather name="check" size={10} color={colors.foreground} />
+            <Text style={styles.connectedText}>{connAs ? connAs.split("—")[1]?.trim() || "Connected" : "Connected"}</Text>
+          </View>
+        ) : isBuiltIn ? (
+          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>via Gmail</Text>
+        ) : (
+          <View style={styles.addBtn}>
+            <Text style={styles.addBtnText}>Add</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+            <View style={styles.handle} />
+            <View style={styles.headerRow}>
+              <Text style={styles.title}>Connections</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+                <Feather name="x" size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {connected.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>Connected</Text>
+                  {connected.map(renderRow)}
+                </>
+              )}
+              {available.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>Available</Text>
+                  {available.map(renderRow)}
+                </>
+              )}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </TouchableOpacity>
@@ -477,6 +448,7 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
 
   const [selectedDef, setSelectedDef] = useState<ConnectorDef | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [libraryVisible, setLibraryVisible] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
   const { data: connectorsData } = useQuery({
@@ -534,13 +506,10 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
         const { url: oauthUrl } = await urlRes.json() as { url: string };
 
         if (Platform.OS === "web") {
-          // Open in new tab so the user stays in the app
           const popup = (window as any).open(oauthUrl, "_blank", "width=520,height=620");
           if (!popup) {
-            // Popup blocked — fall back to same-tab navigation
             (window as any).location.href = oauthUrl;
           } else {
-            // Poll until the popup closes, then refresh connector status
             const poll = setInterval(() => {
               if (popup.closed) {
                 clearInterval(poll);
@@ -548,7 +517,7 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
                 setConnecting(false);
               }
             }, 800);
-            return; // don't hit finally until poll fires
+            return;
           }
         } else {
           const result = await WebBrowser.openAuthSessionAsync(
@@ -560,8 +529,6 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
             await qc.invalidateQueries({ queryKey: ["connectors"] });
             setSheetVisible(false);
             showToast(`${def.label} connected`, "success");
-          } else if (result.type === "cancel" || result.type === "dismiss") {
-            // user cancelled — no toast needed
           }
         }
       } catch (e) {
@@ -579,10 +546,7 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
       setConnecting(true);
       try {
         const headers = await authHeaders();
-        await fetch(`${apiBaseUrl}/api/connectors/${def.id}`, {
-          method: "DELETE",
-          headers,
-        });
+        await fetch(`${apiBaseUrl}/api/connectors/${def.id}`, { method: "DELETE", headers });
         await qc.invalidateQueries({ queryKey: ["connectors"] });
         setSheetVisible(false);
       } catch (e) {
@@ -594,7 +558,9 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
     [apiBaseUrl, authHeaders, qc]
   );
 
-  const connectedCount = ALL_CONNECTORS.filter((d) => isConnected(d.id)).length;
+  const connectedDefs = ALL_CONNECTORS.filter(
+    (d) => !exclude?.includes(d.id) && isConnected(d.id)
+  );
 
   const styles = StyleSheet.create({
     strip: {
@@ -607,33 +573,15 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
       backgroundColor: colors.background,
       gap: 8,
     },
-    leftSide: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      marginRight: 4,
-    },
-    toolsText: {
-      fontSize: 11,
-      fontFamily: "Inter_500Medium",
-      color: colors.mutedForeground,
-    },
-    divider: {
-      width: 1,
-      height: 16,
-      backgroundColor: colors.border,
-      marginHorizontal: 2,
-    },
+    leftSide: { flexDirection: "row", alignItems: "center", gap: 5, marginRight: 4 },
+    toolsText: { fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground },
+    divider: { width: 1, height: 16, backgroundColor: colors.border, marginHorizontal: 2 },
     addBtn: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      borderWidth: 1.5,
-      borderColor: colors.border,
-      borderStyle: "dashed",
-      alignItems: "center",
-      justifyContent: "center",
+      width: 28, height: 28, borderRadius: 14,
+      borderWidth: 1.5, borderColor: colors.border, borderStyle: "dashed",
+      alignItems: "center", justifyContent: "center",
     },
+    emptyText: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, fontStyle: "italic" },
   });
 
   return (
@@ -648,23 +596,17 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ flexDirection: "row", gap: 8, alignItems: "center" }}
         >
-          {ALL_CONNECTORS.filter((d) => !exclude?.includes(d.id)).map((def) => (
+          {connectedDefs.length === 0 && (
+            <Text style={styles.emptyText}>No tools connected</Text>
+          )}
+          {connectedDefs.map((def) => (
             <ConnectorAvatar
               key={def.id}
               def={def}
-              connected={isConnected(def.id)}
               onPress={() => handleOpen(def)}
             />
           ))}
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => {
-              const firstUnconnected = ALL_CONNECTORS.filter((d) => !exclude?.includes(d.id)).find(
-                (d) => !isConnected(d.id) && d.oauthPath
-              );
-              if (firstUnconnected) handleOpen(firstUnconnected);
-            }}
-          >
+          <TouchableOpacity style={styles.addBtn} onPress={() => setLibraryVisible(true)}>
             <Feather name="plus" size={13} color={colors.mutedForeground} />
           </TouchableOpacity>
         </ScrollView>
@@ -680,6 +622,15 @@ export function ConnectorStrip({ gmailConnected, exclude }: ConnectorStripProps)
         onDisconnect={handleDisconnect}
         connecting={connecting}
         isBuiltIn={selectedDef?.id === "gmail" || selectedDef?.id === "calendar"}
+      />
+
+      <ConnectionLibrary
+        visible={libraryVisible}
+        onClose={() => setLibraryVisible(false)}
+        isConnected={isConnected}
+        getConnectedAs={getConnectedAs}
+        onSelectConnector={handleOpen}
+        exclude={exclude}
       />
     </>
   );

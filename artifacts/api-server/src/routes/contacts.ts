@@ -104,6 +104,77 @@ function extractPeopleResults(
     .filter((r) => r.email);
 }
 
+// Parse email header like "John Smith <john@example.com>" or "john@example.com"
+function parseEmailHeader(raw: string): { name: string | null; email: string } | null {
+  if (!raw) return null;
+  const match = raw.match(/^(.*?)\s*<([^>]+)>/);
+  if (match) {
+    const name = match[1].trim().replace(/^"|"$/g, "") || null;
+    const email = match[2].trim().toLowerCase();
+    if (!email.includes("@")) return null;
+    return { name, email };
+  }
+  const plain = raw.trim().toLowerCase();
+  if (plain.includes("@")) return { name: null, email: plain };
+  return null;
+}
+
+async function searchGmailRecipients(
+  userId: string,
+  q: string,
+): Promise<Array<{ name: string | null; email: string; organization: null; photoUrl: null }>> {
+  try {
+    const oauth2Client = await getOAuth2ClientForUser(userId);
+    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+    // Search sent + all mail for messages involving this query in headers
+    const listRes = await gmail.users.messages.list({
+      userId: "me",
+      q: `to:${q} OR from:${q} OR ${q}`,
+      maxResults: 20,
+    });
+
+    const messages = listRes.data.messages ?? [];
+    if (messages.length === 0) return [];
+
+    const headerFetches = messages.slice(0, 10).map((m) =>
+      gmail.users.messages.get({
+        userId: "me",
+        id: m.id!,
+        format: "metadata",
+        metadataHeaders: ["To", "From", "Cc"],
+      })
+    );
+
+    const fetched = await Promise.allSettled(headerFetches);
+    const seen = new Set<string>();
+    const results: Array<{ name: string | null; email: string; organization: null; photoUrl: null }> = [];
+    const ql = q.toLowerCase();
+
+    for (const r of fetched) {
+      if (r.status !== "fulfilled") continue;
+      const headers = r.value.data.payload?.headers ?? [];
+      for (const h of headers) {
+        const value = h.value ?? "";
+        // Split comma-separated recipients
+        const parts = value.split(",");
+        for (const part of parts) {
+          const parsed = parseEmailHeader(part);
+          if (!parsed) continue;
+          if (seen.has(parsed.email)) continue;
+          if (!parsed.email.includes(ql) && !(parsed.name?.toLowerCase().includes(ql))) continue;
+          seen.add(parsed.email);
+          results.push({ ...parsed, organization: null, photoUrl: null });
+        }
+      }
+    }
+
+    return results.slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
 router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
   const { userId } = getAuth(req);
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -149,11 +220,16 @@ router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
       return true;
     });
 
-    res.json({ results: merged.slice(0, 10) });
+    // If People API returned nothing, fall back to searching Gmail message headers
+    const final = merged.length > 0 ? merged : await searchGmailRecipients(userId, q);
+
+    res.json({ results: final.slice(0, 10) });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : "";
     if (errMsg.includes("insufficient") || errMsg.includes("403") || errMsg.includes("scope")) {
-      res.json({ results: [] });
+      // People API failed — fall back to Gmail header search
+      const fallback = await searchGmailRecipients(userId, q);
+      res.json({ results: fallback });
       return;
     }
     console.error("[contacts/search] error:", err);

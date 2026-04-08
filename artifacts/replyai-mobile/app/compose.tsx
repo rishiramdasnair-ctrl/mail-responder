@@ -24,6 +24,21 @@ import { useToast } from "@/components/ToastProvider";
 interface GmailAccount {
   email: string;
   isPrimary: boolean;
+  signature?: string | null;
+}
+
+function parseSignatureText(raw: string | null | undefined): string {
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      const text = parsed.text?.trim() ?? "";
+      const links: Array<{ label: string; url: string }> = parsed.links ?? [];
+      const linkPart = links.map((l: { label: string; url: string }) => l.label ? `${l.label}: ${l.url}` : l.url).join("\n");
+      return [text, linkPart].filter(Boolean).join("\n");
+    }
+  } catch {}
+  return raw.trim();
 }
 
 interface ContactResult {
@@ -116,10 +131,12 @@ export default function ComposeScreen() {
 
   const [accounts, setAccounts] = useState<GmailAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
 
   const [sending, setSending] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
 
   const toDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ccDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -194,12 +211,35 @@ export default function ComposeScreen() {
         if (res.ok) {
           const data = (await res.json()) as { accounts: GmailAccount[] };
           setAccounts(data.accounts);
-          const primary = data.accounts.find((a) => a.isPrimary) ?? data.accounts[0];
-          if (primary) setSelectedAccount(primary.email);
+          const preferred = params.accountEmail
+            ? data.accounts.find((a) => a.email === params.accountEmail) ?? data.accounts.find((a) => a.isPrimary)
+            : data.accounts.find((a) => a.isPrimary);
+          const account = preferred ?? data.accounts[0];
+          if (account) {
+            setSelectedAccount(account.email);
+            const sigText = parseSignatureText(account.signature);
+            if (sigText && !params.prefill) {
+              setBody(`\n\n-- \n${sigText}`);
+            }
+          }
         }
       } catch {}
+      setAccountsLoaded(true);
     })();
   }, [apiBaseUrl, authHeaders]);
+
+  const handleAccountChange = (email: string) => {
+    setSelectedAccount(email);
+    const acct = accounts.find((a) => a.email === email);
+    const sigText = parseSignatureText(acct?.signature);
+    setBody((prev) => {
+      // Strip any existing signature block and replace with new one
+      const sigDelimiter = "\n\n-- \n";
+      const sigIdx = prev.indexOf(sigDelimiter);
+      const textPart = sigIdx !== -1 ? prev.slice(0, sigIdx) : prev;
+      return sigText ? `${textPart}${sigDelimiter}${sigText}` : textPart;
+    });
+  };
 
   const searchContacts = useCallback(
     async (q: string, field: "to" | "cc") => {
@@ -618,7 +658,7 @@ export default function ComposeScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {accounts.length > 1 && (
+          {accountsLoaded && accounts.length > 0 && (
             <View style={styles.accountSection}>
               <Text style={styles.accountLabel}>From</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountScroll}>
@@ -626,7 +666,8 @@ export default function ComposeScreen() {
                   <TouchableOpacity
                     key={acct.email}
                     style={[styles.accountPill, selectedAccount === acct.email && styles.accountPillActive]}
-                    onPress={() => setSelectedAccount(acct.email)}
+                    onPress={() => handleAccountChange(acct.email)}
+                    activeOpacity={accounts.length > 1 ? 0.7 : 1}
                   >
                     <Text
                       style={[styles.accountPillText, selectedAccount === acct.email && styles.accountPillTextActive]}

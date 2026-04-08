@@ -21,7 +21,7 @@ import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "@clerk/clerk-expo";
 import { useColors } from "@/hooks/useColors";
@@ -79,6 +79,7 @@ export default function SettingsScreen() {
   const colors = useColors();
   const { themeId, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { signOut } = useAuth();
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
@@ -492,6 +493,8 @@ export default function SettingsScreen() {
       backgroundColor: colors.background,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
+      flexDirection: "row",
+      alignItems: "center",
     },
     title: {
       fontSize: 22,
@@ -884,6 +887,9 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: 8 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Feather name="arrow-left" size={22} color={colors.foreground} />
+        </TouchableOpacity>
         <Text style={styles.title}>Settings</Text>
       </View>
 

@@ -98,13 +98,6 @@ function ClassicTabLayout() {
             ),
         }}
       />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "Settings",
-          href: null,
-        }}
-      />
     </Tabs>
   );
 }

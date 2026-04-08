@@ -625,7 +625,7 @@ export default function InboxScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => router.push("/(tabs)/settings")}
+              onPress={() => router.push("/settings")}
               accessibilityLabel="Profile and settings"
             >
               <View style={styles.profileIconBtn}>

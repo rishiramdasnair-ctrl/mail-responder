@@ -71,6 +71,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ presentation: "card", headerShown: false }} />
         <Stack.Screen name="thread/[threadId]" options={{ presentation: "card" }} />
         <Stack.Screen name="connect-gmail" options={{ presentation: "modal", headerShown: false }} />
         <Stack.Screen name="compose" options={{ presentation: "modal", headerShown: false }} />

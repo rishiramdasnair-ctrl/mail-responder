@@ -56,19 +56,33 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const [onboardingState, setOnboardingState] = React.useState<"checking" | "needed" | "done">("checking");
 
   usePushToken();
 
   useEffect(() => {
-    if (!isLoaded) return;
+    SecureStore.getItemAsync("onboarding_complete").then((val) => {
+      setOnboardingState(val ? "done" : "needed");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isLoaded || onboardingState === "checking") return;
     const inAuthGroup = segments[0] === "(auth)";
+    const inOnboarding = segments[0] === "onboarding";
+
     if (!isSignedIn && !inAuthGroup) {
       router.replace(SIGN_IN_ROUTE);
     } else if (isSignedIn && inAuthGroup) {
-      router.replace("/");
+      if (onboardingState === "needed") {
+        router.replace("/onboarding" as any);
+      } else {
+        router.replace("/");
+      }
+    } else if (isSignedIn && !inAuthGroup && !inOnboarding && onboardingState === "needed") {
+      router.replace("/onboarding" as any);
     }
-    // connect-gmail and thread screens are not in (auth), so signed-in users can access them
-  }, [isSignedIn, isLoaded, segments]);
+  }, [isSignedIn, isLoaded, segments, onboardingState]);
 
   return <>{children}</>;
 }
@@ -78,6 +92,7 @@ function RootLayoutNav() {
     <AuthGuard>
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ presentation: "card", headerShown: false }} />
         <Stack.Screen name="event/[eventId]" options={{ presentation: "card", headerShown: false }} />

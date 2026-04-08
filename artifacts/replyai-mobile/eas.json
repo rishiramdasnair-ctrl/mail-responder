@@ -17,7 +17,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR-REPLIT-APP.replit.app"
+        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app"
       }
     },
     "production": {
@@ -26,7 +26,7 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR-REPLIT-APP.replit.app"
+        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app"
       }
     }
   }

@@ -2,9 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useApiClient } from "./useApiClient";
 
 export interface GmailAccount {
+  id?: number;
   email: string;
   isPrimary: boolean;
   signature?: string | null;
+  signatureImageUrl?: string | null;
 }
 
 const STALE_MS = 5 * 60_000;

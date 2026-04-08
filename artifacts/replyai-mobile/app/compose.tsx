@@ -124,7 +124,7 @@ export default function ComposeScreen() {
   const [searchingTo, setSearchingTo] = useState(false);
   const [searchingCc, setSearchingCc] = useState(false);
 
-  const { accounts, isLoading: accountsLoading } = useGmailAccounts();
+  const { accounts } = useGmailAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const accountInitRef = useRef(false);
 

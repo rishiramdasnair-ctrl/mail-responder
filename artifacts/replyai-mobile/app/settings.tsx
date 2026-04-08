@@ -17,6 +17,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useGmailAccounts } from "@/hooks/useGmailAccounts";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
@@ -52,13 +53,6 @@ interface UserProfile {
   repliesLimit: number;
 }
 
-interface GmailAccount {
-  id: number;
-  email: string;
-  isPrimary: boolean;
-  signature?: string | null;
-  signatureImageUrl?: string | null;
-}
 
 interface Connector {
   id: string;
@@ -113,15 +107,7 @@ export default function SettingsScreen() {
     staleTime: 5 * 60_000,
   });
 
-  const { data: accountsData, isLoading: accountsLoading } = useQuery<{ accounts: GmailAccount[] }>({
-    queryKey: ["gmail-accounts"],
-    queryFn: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
-      return res.json();
-    },
-    staleTime: 5 * 60_000,
-  });
+  const { accounts: accountsList, isLoading: accountsLoading } = useGmailAccounts();
 
   const { data: connectorsData, isLoading: connectorsLoading } = useQuery<{ connectors: Connector[] }>({
     queryKey: ["connectors"],
@@ -168,11 +154,11 @@ export default function SettingsScreen() {
   }, [settings]);
 
   useEffect(() => {
-    if (accountsData?.accounts) {
+    if (accountsList.length > 0) {
       const texts: Record<string, string> = {};
       const images: Record<string, string | null> = {};
       const links: Record<string, Array<{ id: string; label: string; url: string }>> = {};
-      for (const a of accountsData.accounts) {
+      for (const a of accountsList) {
         let parsed: { text?: string; imageUrl?: string | null; links?: Array<{ label: string; url: string }> } | null = null;
         if (a.signature) {
           try { parsed = JSON.parse(a.signature); } catch { parsed = { text: a.signature }; }
@@ -185,7 +171,7 @@ export default function SettingsScreen() {
       setSigImages(prev => ({ ...prev, ...images }));
       setSigLinks(prev => ({ ...prev, ...links }));
     }
-  }, [accountsData]);
+  }, [accountsList]);
 
   const handleToggleSig = (email: string) => {
     setExpandedSig(prev => (prev === email ? null : email));
@@ -369,7 +355,7 @@ export default function SettingsScreen() {
   };
 
   const handleDisconnectAccount = (email: string, isPrimary: boolean) => {
-    const accounts = accountsData?.accounts ?? [];
+    const accounts = accountsList;
     if (isPrimary && accounts.length === 1) {
       Alert.alert(
         "Disconnect Gmail",
@@ -880,7 +866,7 @@ export default function SettingsScreen() {
         .slice(0, 2)
     : "?";
 
-  const accounts = accountsData?.accounts ?? [];
+  const accounts = accountsList;
   const connectors = connectorsData?.connectors ?? [];
 
   const VIDEO_CONNECTORS: Array<{ id: "zoom" | "teams"; label: string; icon: FeatherName }> = [

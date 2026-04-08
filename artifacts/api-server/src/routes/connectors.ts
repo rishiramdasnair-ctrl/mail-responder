@@ -24,7 +24,7 @@ router.get("/connectors", requireAuth, async (req, res) => {
       .where(eq(connectorsTable.userId, userId));
     res.json({ connectors: rows });
   } catch (err) {
-    console.error("[connectors] list error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[connectors] list error");
     res.status(500).json({ error: "Failed to list connectors" });
   }
 });
@@ -51,7 +51,7 @@ router.delete("/connectors/:connectorId", requireAuth, async (req, res) => {
       );
     res.json({ success: true });
   } catch (err) {
-    console.error("[connectors] delete error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[connectors] delete error");
     res.status(500).json({ error: "Failed to remove connector" });
   }
 });

@@ -9,12 +9,14 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { useGetSettings, useUpdateSettings, getGetSettingsQueryKey } from "@workspace/api-client-react";
-import { Loader2, Mail, CheckCircle2, AlertCircle, Plus, Trash2 } from "lucide-react";
+import { Loader2, Mail, CheckCircle2, AlertCircle, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
+import { useClerk } from "@clerk/react";
 
 interface GmailAccount {
   email: string;
@@ -31,10 +33,16 @@ const settingsSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
+const DELETE_CONFIRMATION_PHRASE = "delete my account";
+
 export default function Settings() {
   const { toast } = useToast();
   const { setTheme } = useTheme();
+  const { signOut } = useClerk();
   const [removingEmail, setRemovingEmail] = useState<string | null>(null);
+  const [showDeleteSection, setShowDeleteSection] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const { data: settings, isLoading: isLoadingSettings } = useGetSettings();
   const updateSettings = useUpdateSettings();
@@ -63,6 +71,33 @@ export default function Settings() {
       toast({ title: "Error", description: "Failed to remove account.", variant: "destructive" });
     } finally {
       setRemovingEmail(null);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText.toLowerCase().trim() !== DELETE_CONFIRMATION_PHRASE) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch("/api/account", {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data?.error || "Failed to delete account");
+      }
+      toast({
+        title: "Account deleted",
+        description: "Your account and all data have been permanently removed.",
+      });
+      await signOut({ redirectUrl: "/" });
+    } catch (err) {
+      toast({
+        title: "Deletion failed",
+        description: err instanceof Error ? err.message : "Could not delete your account. Please try again.",
+        variant: "destructive",
+      });
+      setIsDeleting(false);
     }
   };
 
@@ -348,6 +383,72 @@ export default function Settings() {
                   </Button>
                 </form>
               </Form>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold mb-1 pb-2 border-b text-destructive">Danger Zone</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Permanently delete your ReplyAI account and all associated data. This action cannot be undone.
+            </p>
+
+            {!showDeleteSection ? (
+              <Button
+                variant="outline"
+                className="border-destructive text-destructive hover:bg-destructive/10"
+                onClick={() => setShowDeleteSection(true)}
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Delete my account
+              </Button>
+            ) : (
+              <div className="border border-destructive/50 rounded-lg p-5 space-y-4 bg-destructive/5">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-destructive">This will permanently delete:</p>
+                    <ul className="text-sm text-muted-foreground mt-1 space-y-1 list-disc list-inside">
+                      <li>Your account and profile</li>
+                      <li>All connected Gmail accounts and OAuth tokens</li>
+                      <li>All connected third-party integrations</li>
+                      <li>Your reply history and scheduled emails</li>
+                      <li>All settings and preferences</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">
+                    Type <span className="font-mono font-bold text-destructive">{DELETE_CONFIRMATION_PHRASE}</span> to confirm:
+                  </p>
+                  <Input
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder={DELETE_CONFIRMATION_PHRASE}
+                    className="border-destructive/50 focus-visible:ring-destructive"
+                    disabled={isDeleting}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteAccount}
+                    disabled={deleteConfirmText.toLowerCase().trim() !== DELETE_CONFIRMATION_PHRASE || isDeleting}
+                  >
+                    {isDeleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Permanently delete account
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowDeleteSection(false);
+                      setDeleteConfirmText("");
+                    }}
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             )}
           </section>
 

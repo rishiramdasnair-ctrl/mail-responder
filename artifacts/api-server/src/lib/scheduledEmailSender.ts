@@ -2,6 +2,7 @@ import { db } from "@workspace/db";
 import { scheduledEmailsTable } from "@workspace/db/schema";
 import { eq, lte, and } from "drizzle-orm";
 import { getGmailClientForUser } from "./gmailClient";
+import { logger } from "./logger";
 
 async function sendDueEmails() {
   const now = new Date();
@@ -40,10 +41,10 @@ async function sendDueEmails() {
         .set({ status: "sent", sentAt: new Date() })
         .where(eq(scheduledEmailsTable.id, email.id));
 
-      console.log(`[scheduler] Sent scheduled email ${email.id} for user ${email.userId}`);
+      logger.info({ emailId: email.id }, "[scheduler] Sent scheduled email");
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`[scheduler] Failed to send email ${email.id}:`, message);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      logger.error({ emailId: email.id, err: message }, "[scheduler] Failed to send scheduled email");
       await db.update(scheduledEmailsTable)
         .set({ status: "failed", errorMessage: message })
         .where(eq(scheduledEmailsTable.id, email.id));
@@ -52,11 +53,13 @@ async function sendDueEmails() {
 }
 
 export function startScheduledEmailSender() {
-  // Run immediately on startup, then every 60 seconds
-  sendDueEmails().catch(console.error);
+  const onError = (err: unknown) => {
+    logger.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[scheduler] Unhandled error in sendDueEmails");
+  };
+  sendDueEmails().catch(onError);
   const interval = setInterval(() => {
-    sendDueEmails().catch(console.error);
+    sendDueEmails().catch(onError);
   }, 60_000);
-  console.log("[scheduler] Scheduled email sender started (interval: 60s)");
+  logger.info("[scheduler] Scheduled email sender started (interval: 60s)");
   return interval;
 }

@@ -4,6 +4,7 @@ import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
+import { decryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ export async function getFathomToken(userId: string): Promise<string | null> {
     .where(and(eq(connectorsTable.userId, userId), eq(connectorsTable.connectorId, "fathom"), eq(connectorsTable.status, "connected")))
     .limit(1);
   if (!rows.length) return null;
-  const config = rows[0].config as FathomConfig | null;
+  const config = rows[0].config ? decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as FathomConfig : null;
   return config?.accessToken ?? null;
 }
 

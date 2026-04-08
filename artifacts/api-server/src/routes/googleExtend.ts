@@ -7,6 +7,7 @@ import { usersTable, connectorsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { maybeEncrypt } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -103,7 +104,7 @@ router.get("/auth/google/extend/callback", async (req, res) => {
   }
 
   if (!userId) {
-    console.error("[google-extend-callback] invalid or expired state");
+    req.log.warn("[google-extend-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=google_extend_missing_params`);
   }
 
@@ -118,14 +119,14 @@ router.get("/auth/google/extend/callback", async (req, res) => {
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
 
     const updated = await db.update(usersTable).set({
-      googleAccessToken: tokens.access_token,
-      ...(tokens.refresh_token ? { googleRefreshToken: tokens.refresh_token } : {}),
+      googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
+      ...(tokens.refresh_token ? { googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token } : {}),
       googleTokenExpiresAt: expiresAt,
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId)).returning({ id: usersTable.id });
 
     if (updated.length === 0) {
-      console.error("[google-extend-callback] user row not found for userId:", userId);
+      req.log.error("[google-extend-callback] user row not found for userId");
       return res.redirect(`${frontendUrl}/connectors?error=google_extend_callback_failed`);
     }
 
@@ -158,7 +159,7 @@ router.get("/auth/google/extend/callback", async (req, res) => {
 
     res.redirect(`${frontendUrl}/connectors?gsuite_extended=true`);
   } catch (err) {
-    console.error("[google-extend-callback] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[google-extend-callback] error");
     res.redirect(`${frontendUrl}/connectors?error=google_extend_callback_failed`);
   }
 });

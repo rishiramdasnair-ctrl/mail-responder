@@ -8,6 +8,8 @@ import { eq, and, inArray } from "drizzle-orm";
 import { getOrCreateUser } from "../lib/getOrCreateUser";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 import { getConnectedGmailAccounts } from "../lib/gmailClient";
+import { maybeEncrypt } from "../lib/tokenCrypto";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -106,7 +108,7 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
       state,
     });
 
-    console.log("[google-start] redirect_uri:", getRedirectUri(), "addAccount:", addAccount, "platform:", platform);
+    req.log.info({ redirectUri: getRedirectUri(), addAccount, platform }, "[google-start] oauth init");
     res.redirect(url);
   } catch (err: unknown) {
     const domain2 = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
@@ -128,7 +130,7 @@ router.get("/auth/google/callback", async (req, res) => {
     const { code, state, error } = req.query;
 
     if (error) {
-      console.error("[google-callback] Google returned error:", error);
+      req.log.warn({ oauthError: String(error) }, "[google-callback] Google returned error");
       res.redirect(`${frontendUrl}/settings?gmail_error=access_denied`);
       return;
     }
@@ -152,8 +154,8 @@ router.get("/auth/google/callback", async (req, res) => {
       const result = await getOAuthClient().getToken(code as string);
       tokens = result.tokens;
     } catch (tokenErr: unknown) {
-      const msg = tokenErr instanceof Error ? tokenErr.message : String(tokenErr);
-      console.error("[google-callback] token exchange FAILED:", msg);
+      const msg = tokenErr instanceof Error ? tokenErr.message : "Unknown error";
+      req.log.error({ err: msg }, "[google-callback] token exchange FAILED");
       if (isMobile) {
         res.redirect(`replyai://oauth-error?error=callback_failed`);
       } else {
@@ -195,8 +197,8 @@ router.get("/auth/google/callback", async (req, res) => {
     if (existingRow.length > 0) {
       await db.update(gmailAccountsTable)
         .set({
-          accessToken: tokens.access_token,
-          ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+          accessToken: maybeEncrypt(tokens.access_token) ?? null,
+          ...(tokens.refresh_token ? { refreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token } : {}),
           tokenExpiresAt: expiresAt,
           updatedAt: new Date(),
         })
@@ -205,8 +207,8 @@ router.get("/auth/google/callback", async (req, res) => {
       await db.insert(gmailAccountsTable).values({
         userId,
         email: googleEmail,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || "",
+        accessToken: maybeEncrypt(tokens.access_token) ?? null,
+        refreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? "",
         tokenExpiresAt: expiresAt,
         isPrimary: shouldBePrimary,
       });
@@ -216,8 +218,8 @@ router.get("/auth/google/callback", async (req, res) => {
     if (!addAccount || isFirstAccount || shouldBePrimary) {
       const updated = await db.update(usersTable)
         .set({
-          googleAccessToken: tokens.access_token,
-          ...(tokens.refresh_token ? { googleRefreshToken: tokens.refresh_token } : {}),
+          googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
+          ...(tokens.refresh_token ? { googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token } : {}),
           googleTokenExpiresAt: expiresAt,
           googleEmail,
           updatedAt: new Date(),
@@ -230,8 +232,8 @@ router.get("/auth/google/callback", async (req, res) => {
           id: userId,
           email: googleEmail,
           googleEmail,
-          googleAccessToken: tokens.access_token,
-          googleRefreshToken: tokens.refresh_token || null,
+          googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
+          googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? null,
           googleTokenExpiresAt: expiresAt,
         }).onConflictDoNothing();
       }
@@ -248,7 +250,7 @@ router.get("/auth/google/callback", async (req, res) => {
       res.redirect(`${frontendUrl}/dashboard?${redirectParam}`);
     }
   } catch (err) {
-    console.error("[google-callback] unexpected error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[google-callback] unexpected error");
     res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
   }
 });
@@ -261,7 +263,7 @@ router.get("/gmail/accounts", requireAuth, async (req, res) => {
     const accounts = await getConnectedGmailAccounts(userId);
     res.json({ accounts });
   } catch (err) {
-    console.error("[gmail-accounts] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[gmail-accounts] error");
     res.status(500).json({ error: "Failed to fetch accounts" });
   }
 });
@@ -279,7 +281,7 @@ router.put("/gmail/accounts/:email/signature", requireAuth, async (req, res) => 
       .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)));
     res.json({ ok: true });
   } catch (err) {
-    console.error("[signature] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[signature] error");
     res.status(500).json({ error: "Failed to update signature" });
   }
 });
@@ -340,7 +342,7 @@ router.delete("/gmail/accounts/:email", requireAuth, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("[gmail-account-disconnect] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[gmail-account-disconnect] error");
     res.status(500).json({ error: "Failed to disconnect account" });
   }
 });
@@ -371,7 +373,7 @@ router.post("/auth/google/disconnect", requireAuth, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("[google-disconnect] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[google-disconnect] error");
     res.status(500).json({ error: "Failed to disconnect Gmail" });
   }
 });

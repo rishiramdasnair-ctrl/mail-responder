@@ -14,6 +14,19 @@ import { SendReplyBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { emailSnoozesTable, gmailAccountsTable } from "@workspace/db/schema";
 import { eq, and, gt } from "drizzle-orm";
+import rateLimit from "express-rate-limit";
+
+const emailSendRateLimit = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => getAuth(req).userId ?? req.ip ?? "anon",
+  validate: { xForwardedForHeader: false },
+  handler: (_req, res) => {
+    res.status(429).json({ error: "Too many email send requests. Please wait a moment.", code: "RATE_LIMITED" });
+  },
+});
 
 interface SignatureData {
   text?: string;
@@ -535,7 +548,7 @@ router.post("/gmail/threads/:threadId/modify", requireAuth, async (req, res) => 
   }
 });
 
-router.post("/gmail/compose", requireAuth, async (req, res) => {
+router.post("/gmail/compose", requireAuth, emailSendRateLimit, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -590,7 +603,7 @@ router.post("/gmail/compose", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/gmail/send", requireAuth, async (req, res) => {
+router.post("/gmail/send", requireAuth, emailSendRateLimit, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -778,7 +791,7 @@ router.post("/gmail/webhook", async (req, res) => {
       const { handlePushNotification } = await import("../lib/gmailWatcher");
       // Don't await — respond immediately, process async
       handlePushNotification({ emailAddress: parsed.emailAddress, historyId: parsed.historyId })
-        .catch(console.error);
+        .catch((err: unknown) => req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[gmail-push] handlePushNotification error"));
     }
 
     res.status(200).send("ok");

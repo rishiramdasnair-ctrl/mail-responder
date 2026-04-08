@@ -6,6 +6,7 @@ import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -129,13 +130,15 @@ router.get("/auth/github/callback", async (req, res) => {
       .from(connectorsTable)
       .where(and(eq(connectorsTable.userId, userId), eq(connectorsTable.connectorId, "github")));
 
+    const githubConfig = encryptConnectorConfig({ access_token: tokenData.access_token, login: ghUser.login });
+
     if (existing.length > 0) {
       await db
         .update(connectorsTable)
         .set({
           displayName,
           status: "connected",
-          config: { access_token: tokenData.access_token, login: ghUser.login },
+          config: githubConfig,
           updatedAt: new Date(),
         })
         .where(eq(connectorsTable.id, existing[0].id));
@@ -146,7 +149,7 @@ router.get("/auth/github/callback", async (req, res) => {
         connectorId: "github",
         displayName,
         status: "connected",
-        config: { access_token: tokenData.access_token, login: ghUser.login },
+        config: githubConfig,
       });
     }
 
@@ -156,7 +159,7 @@ router.get("/auth/github/callback", async (req, res) => {
     res.redirect(`${frontendUrl}?github_connected=true`);
   } catch (err) {
     req.log?.error?.({ err }, "GitHub OAuth callback error");
-    console.error("[githubAuth] callback error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[githubAuth] callback error");
     res.redirect(`${frontendUrl}?error=github_callback_failed`);
   }
 });

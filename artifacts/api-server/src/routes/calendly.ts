@@ -4,6 +4,7 @@ import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
+import { decryptConnectorConfig, encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -42,12 +43,12 @@ async function refreshCalendlyToken(userId: string, config: CalendlyConnectorCon
       ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
       : null;
 
-    const newConfig: CalendlyConnectorConfig = {
+    const newConfig = encryptConnectorConfig({
       ...config,
       accessToken: tokens.access_token,
       expiresAt: newExpiresAt,
       ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-    };
+    });
 
     await db.update(connectorsTable).set({
       config: newConfig,
@@ -75,7 +76,7 @@ async function getCalendlyToken(userId: string): Promise<{ token: string; ownerU
     .limit(1);
 
   if (!rows.length) return null;
-  const config = rows[0].config as CalendlyConnectorConfig | null;
+  const config = rows[0].config ? decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as CalendlyConnectorConfig : null;
   if (!config?.accessToken) return null;
 
   const ownerUri = config.ownerUri ?? null;
@@ -110,8 +111,8 @@ router.get("/calendly/event-types", requireAuth, async (req, res): Promise<void>
     });
 
     if (!evtRes.ok) {
-      const err = await evtRes.json().catch(() => ({})) as { message?: string };
-      console.error("[calendly/event-types] API error:", err);
+      const errData = await evtRes.json().catch(() => ({})) as { message?: string };
+      req.log.error({ status: evtRes.status, calendlyMessage: errData.message }, "[calendly/event-types] API error");
       res.status(500).json({ error: "Failed to fetch event types" });
       return;
     }
@@ -141,7 +142,7 @@ router.get("/calendly/event-types", requireAuth, async (req, res): Promise<void>
 
     res.json({ connected: true, eventTypes });
   } catch (err) {
-    console.error("[calendly/event-types] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[calendly/event-types] error");
     res.status(500).json({ error: "Failed to fetch event types" });
   }
 });

@@ -6,6 +6,7 @@ import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -53,7 +54,7 @@ router.get("/auth/slack/callback", async (req, res) => {
   const { code, state, error } = req.query;
 
   if (error) {
-    console.error("[slack-callback] OAuth error:", error);
+    req.log.warn({ oauthError: String(error) }, "[slack-callback] OAuth error");
     return res.redirect(`${frontendUrl}/connectors?error=slack_denied`);
   }
 
@@ -63,7 +64,7 @@ router.get("/auth/slack/callback", async (req, res) => {
 
   const stateResult = verifyOAuthState(state);
   if (!stateResult) {
-    console.error("[slack-callback] invalid or expired state");
+    req.log.warn("[slack-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=slack_missing_params`);
   }
   const { userId } = stateResult;
@@ -97,7 +98,7 @@ router.get("/auth/slack/callback", async (req, res) => {
     };
 
     if (!tokens.ok || !tokens.access_token) {
-      console.error("[slack-callback] token exchange failed:", tokens.error);
+      req.log.error({ slackError: tokens.error }, "[slack-callback] token exchange failed");
       return res.redirect(`${frontendUrl}/connectors?error=slack_token_failed`);
     }
 
@@ -113,11 +114,11 @@ router.get("/auth/slack/callback", async (req, res) => {
       ))
       .limit(1);
 
-    const config = {
+    const config = encryptConnectorConfig({
       accessToken: tokens.access_token,
       teamId: tokens.team?.id ?? null,
       teamName,
-    };
+    });
 
     if (existing.length > 0) {
       await db.update(connectorsTable).set({
@@ -139,7 +140,7 @@ router.get("/auth/slack/callback", async (req, res) => {
 
     res.redirect(`${frontendUrl}/connectors?slack_connected=true`);
   } catch (err) {
-    console.error("[slack-callback] unexpected error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[slack-callback] unexpected error");
     res.redirect(`${frontendUrl}/connectors?error=slack_callback_failed`);
   }
 });

@@ -6,6 +6,7 @@ import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -131,13 +132,15 @@ router.get("/auth/linear/callback", async (req, res) => {
       .from(connectorsTable)
       .where(and(eq(connectorsTable.userId, userId), eq(connectorsTable.connectorId, "linear")));
 
+    const linearConfig = encryptConnectorConfig({ access_token: tokenData.access_token });
+
     if (existing.length > 0) {
       await db
         .update(connectorsTable)
         .set({
           displayName,
           status: "connected",
-          config: { access_token: tokenData.access_token },
+          config: linearConfig,
           updatedAt: new Date(),
         })
         .where(eq(connectorsTable.id, existing[0].id));
@@ -148,7 +151,7 @@ router.get("/auth/linear/callback", async (req, res) => {
         connectorId: "linear",
         displayName,
         status: "connected",
-        config: { access_token: tokenData.access_token },
+        config: linearConfig,
       });
     }
 
@@ -157,7 +160,7 @@ router.get("/auth/linear/callback", async (req, res) => {
     }
     res.redirect(`${frontendUrl}?linear_connected=true`);
   } catch (err) {
-    console.error("[linearAuth] callback error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[linearAuth] callback error");
     res.redirect(`${frontendUrl}?error=linear_callback_failed`);
   }
 });

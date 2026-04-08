@@ -5,6 +5,7 @@ import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { openrouter as openai, FAST_MODEL } from "../lib/openrouter";
+import { decryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ async function getSlackToken(userId: string): Promise<string | null> {
     .limit(1);
 
   if (!rows.length) return null;
-  const config = rows[0].config as SlackConnectorConfig | null;
+  const config = rows[0].config ? decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as SlackConnectorConfig : null;
   return config?.accessToken ?? null;
 }
 
@@ -60,7 +61,7 @@ router.get("/slack/channels", requireAuth, async (req, res): Promise<void> => {
     };
 
     if (!data.ok) {
-      console.error("[slack/channels] API error:", data.error);
+      req.log.error({ slackError: data.error }, "[slack/channels] API error");
       res.status(500).json({ error: "Failed to list channels" });
       return;
     }
@@ -74,7 +75,7 @@ router.get("/slack/channels", requireAuth, async (req, res): Promise<void> => {
 
     res.json({ connected: true, channels });
   } catch (err) {
-    console.error("[slack/channels] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[slack/channels] error");
     res.status(500).json({ error: "Failed to list channels" });
   }
 });
@@ -133,7 +134,7 @@ ${threadContent}`;
 
     res.json({ summary });
   } catch (err) {
-    console.error("[slack/summarize] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[slack/summarize] error");
     res.status(500).json({ error: "Failed to generate summary" });
   }
 });
@@ -181,14 +182,14 @@ router.post("/slack/send", requireAuth, async (req, res): Promise<void> => {
     const data = await sendRes.json() as { ok: boolean; error?: string; ts?: string };
 
     if (!data.ok) {
-      console.error("[slack/send] API error:", data.error);
+      req.log.error({ slackError: data.error }, "[slack/send] API error");
       res.status(500).json({ error: `Failed to send to Slack: ${data.error ?? "unknown error"}` });
       return;
     }
 
     res.json({ success: true, ts: data.ts, channel: channelName ?? channelId });
   } catch (err) {
-    console.error("[slack/send] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[slack/send] error");
     res.status(500).json({ error: "Failed to send to Slack" });
   }
 });

@@ -10,6 +10,7 @@ import { openrouter as openai, FAST_MODEL } from "../lib/openrouter";
 import rateLimit from "express-rate-limit";
 import { getGmailClientForUser, getCalendarClientForUser, getHeader } from "../lib/gmailClient";
 import { getTeamsToken, teamsGet } from "../lib/teamsClient";
+import { decryptConnectorConfig } from "../lib/tokenCrypto";
 import { getFathomToken } from "./fathom";
 import { google } from "googleapis";
 
@@ -477,7 +478,7 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
         .limit(1);
 
       if (slackRows.length) {
-        const slackToken = (slackRows[0].config as { accessToken: string })?.accessToken;
+        const slackToken = (decryptConnectorConfig(slackRows[0].config as Record<string, unknown>) as { accessToken?: string }).accessToken;
         if (slackToken) {
           const chRes = await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel,im&limit=20&exclude_archived=true", {
             headers: { Authorization: `Bearer ${slackToken}` },

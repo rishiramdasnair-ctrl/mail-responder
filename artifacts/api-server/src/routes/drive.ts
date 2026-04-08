@@ -6,6 +6,7 @@ import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { Readable } from "stream";
+import { maybeDecrypt } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -19,7 +20,10 @@ async function getDriveClient(userId: string) {
   if (!user?.googleAccessToken) throw new Error("Google account not connected");
 
   const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
-  auth.setCredentials({ access_token: user.googleAccessToken, refresh_token: user.googleRefreshToken ?? undefined });
+  auth.setCredentials({
+    access_token: maybeDecrypt(user.googleAccessToken) ?? undefined,
+    refresh_token: maybeDecrypt(user.googleRefreshToken) ?? undefined,
+  });
   return { drive: google.drive({ version: "v3", auth }), gmail: google.gmail({ version: "v1", auth }) };
 }
 
@@ -111,7 +115,7 @@ router.post("/drive/save", requireAuth, async (req, res): Promise<void> => {
     res.json({ success: true, file: { id: driveFile.data.id, name: driveFile.data.name, url: driveFile.data.webViewLink } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to save to Drive";
-    console.error("[drive/save] error:", err);
+    req.log.error({ err: msg }, "[drive/save] error");
     res.status(500).json({ error: msg });
   }
 });

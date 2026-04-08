@@ -4,6 +4,7 @@ import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
+import { decryptConnectorConfig, encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ async function getTeamsToken(userId: string): Promise<string | null> {
 
   if (!rows.length || rows[0].status !== "connected") return null;
 
-  const config = rows[0].config as TeamsConfig;
+  const config = decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as TeamsConfig;
 
   if (config.expiresAt && new Date(config.expiresAt) < new Date(Date.now() + 60_000)) {
     const refreshed = await refreshTeamsToken(userId, rows[0].id, config);
@@ -73,12 +74,12 @@ async function refreshTeamsToken(
       : null;
 
     await db.update(connectorsTable).set({
-      config: {
+      config: encryptConnectorConfig({
         ...config,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? config.refreshToken,
         expiresAt,
-      },
+      }),
       updatedAt: new Date(),
     }).where(eq(connectorsTable.id, rowId));
 

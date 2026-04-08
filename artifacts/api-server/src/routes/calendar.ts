@@ -6,6 +6,8 @@ import { openrouter, FAST_MODEL } from "../lib/openrouter";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
+import { decryptConnectorConfig, encryptConnectorConfig } from "../lib/tokenCrypto";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -50,12 +52,12 @@ async function refreshZoomToken(userId: string, config: ZoomConnectorConfig): Pr
       ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
       : null;
 
-    const newConfig: ZoomConnectorConfig = {
+    const newConfig = encryptConnectorConfig({
       ...config,
       accessToken: tokens.access_token,
       expiresAt: newExpiresAt,
       ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-    };
+    });
 
     await db.update(connectorsTable).set({
       config: newConfig,
@@ -83,7 +85,7 @@ async function getZoomToken(userId: string): Promise<string | null> {
     .limit(1);
 
   if (!rows.length) return null;
-  const config = rows[0].config as ZoomConnectorConfig | null;
+  const config = rows[0].config ? decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as ZoomConnectorConfig : null;
   if (!config?.accessToken) return null;
 
   const expiresAt = config.expiresAt ? new Date(config.expiresAt) : null;
@@ -116,15 +118,15 @@ async function createZoomMeeting(token: string, title: string, startIso: string,
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({})) as { message?: string };
-      console.error("[zoom] create meeting failed:", err);
+      const errData = await res.json().catch(() => ({})) as { message?: string };
+      logger.error({ status: res.status, zoomMessage: errData.message }, "[zoom] create meeting failed");
       return null;
     }
 
     const data = await res.json() as { join_url?: string };
     return data.join_url ?? null;
   } catch (err) {
-    console.error("[zoom] create meeting error:", err);
+    logger.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[zoom] create meeting error");
     return null;
   }
 }
@@ -154,12 +156,12 @@ async function refreshTeamsToken(userId: string, config: TeamsConnectorConfig): 
       ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
       : null;
 
-    const newConfig: TeamsConnectorConfig = {
+    const newConfig = encryptConnectorConfig({
       ...config,
       accessToken: tokens.access_token,
       expiresAt: newExpiresAt,
       ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-    };
+    });
 
     await db.update(connectorsTable).set({
       config: newConfig,
@@ -187,7 +189,7 @@ async function getTeamsToken(userId: string): Promise<string | null> {
     .limit(1);
 
   if (!rows.length) return null;
-  const config = rows[0].config as TeamsConnectorConfig | null;
+  const config = rows[0].config ? decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as TeamsConnectorConfig : null;
   if (!config?.accessToken) return null;
 
   const expiresAt = config.expiresAt ? new Date(config.expiresAt) : null;
@@ -212,15 +214,15 @@ async function createTeamsMeeting(token: string, title: string, startIso: string
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-      console.error("[teams] create meeting failed:", err);
+      const errData = await res.json().catch(() => ({})) as { error?: { message?: string } };
+      logger.error({ status: res.status, teamsMessage: errData.error?.message }, "[teams] create meeting failed");
       return null;
     }
 
     const data = await res.json() as { joinWebUrl?: string };
     return data.joinWebUrl ?? null;
   } catch (err) {
-    console.error("[teams] create meeting error:", err);
+    logger.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[teams] create meeting error");
     return null;
   }
 }

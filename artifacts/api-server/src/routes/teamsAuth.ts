@@ -6,6 +6,7 @@ import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -92,7 +93,7 @@ router.get("/auth/teams/callback", async (req, res) => {
   const { code, state, error } = req.query;
 
   if (error) {
-    console.error("[teams-callback] OAuth error:", error);
+    req.log.warn({ oauthError: String(error) }, "[teams-callback] OAuth error");
     return res.redirect(`${frontendUrl}/connectors?error=teams_denied`);
   }
 
@@ -102,7 +103,7 @@ router.get("/auth/teams/callback", async (req, res) => {
 
   const stateResult = verifyOAuthState(state);
   if (!stateResult) {
-    console.error("[teams-callback] invalid or expired state");
+    req.log.warn("[teams-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=teams_missing_params`);
   }
   const { userId, platform } = stateResult;
@@ -131,8 +132,7 @@ router.get("/auth/teams/callback", async (req, res) => {
     });
 
     if (!tokenRes.ok) {
-      const err = await tokenRes.json().catch(() => ({})) as { error_description?: string };
-      console.error("[teams-callback] token exchange failed:", err);
+      req.log.error({ status: tokenRes.status }, "[teams-callback] token exchange failed");
       if (platform === "mobile") return res.redirect("replyai://oauth-error?reason=teams_token_failed");
       return res.redirect(`${frontendUrl}/connectors?error=teams_token_failed`);
     }
@@ -175,13 +175,13 @@ router.get("/auth/teams/callback", async (req, res) => {
       ))
       .limit(1);
 
-    const config = {
+    const config = encryptConnectorConfig({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? null,
       expiresAt,
       teamsUserId,
       teamsEmail,
-    };
+    });
 
     if (existing.length > 0) {
       await db.update(connectorsTable).set({
@@ -206,7 +206,7 @@ router.get("/auth/teams/callback", async (req, res) => {
     }
     res.redirect(`${frontendUrl}/connectors?teams_connected=true`);
   } catch (err) {
-    console.error("[teams-callback] unexpected error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[teams-callback] unexpected error");
     if (platform === "mobile") return res.redirect("replyai://oauth-error?reason=teams_callback_failed");
     res.redirect(`${frontendUrl}/connectors?error=teams_callback_failed`);
   }

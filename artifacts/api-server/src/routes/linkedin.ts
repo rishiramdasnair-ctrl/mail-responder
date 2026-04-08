@@ -4,6 +4,8 @@ import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
+import { decryptConnectorConfig, encryptConnectorConfig } from "../lib/tokenCrypto";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -29,7 +31,7 @@ async function getLinkedInConnector(userId: string): Promise<{ config: LinkedInC
     .limit(1);
 
   if (!rows.length) return null;
-  const config = rows[0].config as LinkedInConnectorConfig | null;
+  const config = rows[0].config ? decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as LinkedInConnectorConfig : null;
   if (!config?.accessToken) return null;
   return { config, rowId: rows[0].rowId };
 }
@@ -58,7 +60,7 @@ async function refreshLinkedInToken(
     });
 
     if (!tokenRes.ok) {
-      console.error("[linkedin] token refresh failed:", await tokenRes.text());
+      logger.warn({ status: tokenRes.status }, "[linkedin] token refresh HTTP error");
       return config.accessToken;
     }
 
@@ -68,12 +70,12 @@ async function refreshLinkedInToken(
       refresh_token?: string;
     };
 
-    const newConfig: LinkedInConnectorConfig = {
+    const newConfig = encryptConnectorConfig({
       ...config,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? config.refreshToken,
       expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    };
+    });
 
     await db
       .update(connectorsTable)
@@ -82,7 +84,7 @@ async function refreshLinkedInToken(
 
     return tokens.access_token;
   } catch (err) {
-    console.error("[linkedin] token refresh error:", err);
+    logger.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[linkedin] token refresh error");
     return config.accessToken;
   }
 }

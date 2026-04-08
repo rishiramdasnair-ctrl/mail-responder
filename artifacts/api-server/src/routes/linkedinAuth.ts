@@ -6,6 +6,7 @@ import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get("/auth/linkedin/callback", async (req, res) => {
   const { code, state, error } = req.query;
 
   if (error) {
-    console.error("[linkedin-callback] OAuth error:", error);
+    req.log.warn({ oauthError: String(error) }, "[linkedin-callback] OAuth error");
     return res.redirect(`${frontendUrl}/connectors?error=linkedin_denied`);
   }
 
@@ -64,7 +65,7 @@ router.get("/auth/linkedin/callback", async (req, res) => {
 
   const stateResult = verifyOAuthState(state);
   if (!stateResult) {
-    console.error("[linkedin-callback] invalid or expired state");
+    req.log.warn("[linkedin-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=linkedin_missing_params`);
   }
   const { userId } = stateResult;
@@ -91,7 +92,7 @@ router.get("/auth/linkedin/callback", async (req, res) => {
 
     if (!tokenRes.ok) {
       const err = await tokenRes.json().catch(() => ({})) as { error_description?: string };
-      console.error("[linkedin-callback] token exchange failed:", err);
+      req.log.error({ status: tokenRes.status }, "[linkedin-callback] token exchange failed");
       return res.redirect(`${frontendUrl}/connectors?error=linkedin_token_failed`);
     }
 
@@ -135,7 +136,7 @@ router.get("/auth/linkedin/callback", async (req, res) => {
       ))
       .limit(1);
 
-    const config = {
+    const config = encryptConnectorConfig({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? null,
       expiresAt: expiresAt.toISOString(),
@@ -143,7 +144,7 @@ router.get("/auth/linkedin/callback", async (req, res) => {
       connectedUserEmail: connectedProfile.email ?? null,
       connectedUserPhoto: connectedProfile.picture ?? null,
       connectedUserSub: connectedProfile.sub ?? null,
-    };
+    });
 
     if (existing.length > 0) {
       await db.update(connectorsTable).set({
@@ -165,7 +166,7 @@ router.get("/auth/linkedin/callback", async (req, res) => {
 
     res.redirect(`${frontendUrl}/connectors?linkedin_connected=true`);
   } catch (err) {
-    console.error("[linkedin-callback] unexpected error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[linkedin-callback] unexpected error");
     res.redirect(`${frontendUrl}/connectors?error=linkedin_callback_failed`);
   }
 });

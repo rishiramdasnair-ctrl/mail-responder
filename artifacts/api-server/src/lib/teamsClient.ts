@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
+import { decryptConnectorConfig, encryptConnectorConfig } from "./tokenCrypto";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -19,7 +20,7 @@ export async function getTeamsToken(userId: string): Promise<string | null> {
 
   if (!rows.length || rows[0].status !== "connected") return null;
 
-  const config = rows[0].config as TeamsConfig;
+  const config = decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as TeamsConfig;
 
   if (config.expiresAt && new Date(config.expiresAt) < new Date(Date.now() + 60_000)) {
     return refreshTeamsToken(userId, rows[0].id, config);
@@ -56,7 +57,7 @@ async function refreshTeamsToken(
       ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
       : null;
     await db.update(connectorsTable).set({
-      config: { ...config, accessToken: tokens.access_token, refreshToken: tokens.refresh_token ?? config.refreshToken, expiresAt },
+      config: encryptConnectorConfig({ ...config, accessToken: tokens.access_token, refreshToken: tokens.refresh_token ?? config.refreshToken, expiresAt }),
       updatedAt: new Date(),
     }).where(eq(connectorsTable.id, rowId));
     return tokens.access_token;

@@ -4,6 +4,8 @@ import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
+import { decryptConnectorConfig, encryptConnectorConfig } from "../lib/tokenCrypto";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -39,12 +41,12 @@ async function refreshHubSpotToken(userId: string, config: HubSpotConnectorConfi
     };
 
     const newExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
-    const newConfig: HubSpotConnectorConfig = {
+    const newConfig = encryptConnectorConfig({
       ...config,
       accessToken: tokens.access_token,
       expiresAt: newExpiresAt.toISOString(),
       ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-    };
+    });
 
     await db.update(connectorsTable).set({
       config: newConfig,
@@ -72,7 +74,7 @@ async function getHubSpotToken(userId: string): Promise<{ token: string; portalI
     .limit(1);
 
   if (!rows.length) return null;
-  const config = rows[0].config as HubSpotConnectorConfig | null;
+  const config = rows[0].config ? decryptConnectorConfig(rows[0].config as Record<string, unknown>) as unknown as HubSpotConnectorConfig : null;
   if (!config?.accessToken) return null;
 
   const portalId = config.portalId ?? null;
@@ -177,8 +179,8 @@ router.get("/hubspot/contact", requireAuth, async (req, res): Promise<void> => {
     );
 
     if (!searchRes.ok) {
-      const err = await searchRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
-      console.error("[hubspot/contact] search failed:", err);
+      const errData = await searchRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
+      req.log.error({ status: searchRes.status, hubspotMessage: errData.message }, "[hubspot/contact] search failed");
       res.status(500).json({ error: "HubSpot search failed" });
       return;
     }
@@ -213,7 +215,7 @@ router.get("/hubspot/contact", requireAuth, async (req, res): Promise<void> => {
       },
     });
   } catch (err) {
-    console.error("[hubspot/contact] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[hubspot/contact] error");
     res.status(500).json({ error: "Failed to look up contact" });
   }
 });
@@ -257,8 +259,8 @@ router.post("/hubspot/contact", requireAuth, async (req, res): Promise<void> => 
     });
 
     if (!createRes.ok) {
-      const err = await createRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
-      console.error("[hubspot/contact POST] failed:", err);
+      const errData = await createRes.json().catch(() => ({ message: "unknown" })) as { message?: string };
+      req.log.error({ status: createRes.status, hubspotMessage: errData.message }, "[hubspot/contact POST] failed");
       res.status(500).json({ error: "Failed to create contact" });
       return;
     }
@@ -266,7 +268,7 @@ router.post("/hubspot/contact", requireAuth, async (req, res): Promise<void> => 
     const created = await createRes.json();
     res.json({ success: true, contact: created });
   } catch (err) {
-    console.error("[hubspot/contact POST] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[hubspot/contact POST] error");
     res.status(500).json({ error: "Failed to create contact" });
   }
 });

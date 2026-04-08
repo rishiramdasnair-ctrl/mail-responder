@@ -6,6 +6,7 @@ import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -86,7 +87,7 @@ router.get("/auth/fathom/callback", async (req, res) => {
 
     if (!tokenRes.ok) {
       const err = await tokenRes.json().catch(() => ({}));
-      console.error("[fathom-callback] token exchange failed:", err);
+      req.log.error({ status: tokenRes.status }, "[fathom-callback] token exchange failed");
       if (platform === "mobile") return res.redirect("replyai://oauth-error?reason=fathom_token_failed");
       return res.redirect(`${frontendUrl}/connectors?error=fathom_token_failed`);
     }
@@ -118,7 +119,7 @@ router.get("/auth/fathom/callback", async (req, res) => {
       .where(and(eq(connectorsTable.userId, userId), eq(connectorsTable.connectorId, "fathom")))
       .limit(1);
 
-    const config = { accessToken: tokens.access_token, refreshToken: tokens.refresh_token ?? null, expiresAt };
+    const config = encryptConnectorConfig({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token ?? null, expiresAt });
 
     if (existing.length > 0) {
       await db.update(connectorsTable).set({ config, displayName, status: "connected", updatedAt: new Date() })
@@ -130,7 +131,7 @@ router.get("/auth/fathom/callback", async (req, res) => {
     if (platform === "mobile") return res.redirect("replyai://oauth-success?event=fathom_connected");
     res.redirect(`${frontendUrl}/connectors?fathom_connected=true`);
   } catch (err) {
-    console.error("[fathom-callback] unexpected error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[fathom-callback] unexpected error");
     if (platform === "mobile") return res.redirect("replyai://oauth-error?reason=fathom_callback_failed");
     res.redirect(`${frontendUrl}/connectors?error=fathom_callback_failed`);
   }

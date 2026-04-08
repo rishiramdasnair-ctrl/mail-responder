@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, Platform } from "react-native";
-import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import React from "react";
+import { View, Text, StyleSheet, Platform, Dimensions } from "react-native";
+import { WebView } from "react-native-webview";
 
 interface EmailBodyRendererProps {
   body: string;
@@ -11,28 +11,8 @@ interface EmailBodyRendererProps {
   borderColor?: string;
 }
 
-const INJECTED_JS = `
-(function() {
-  function reportHeight() {
-    var h = Math.max(
-      document.body.scrollHeight,
-      document.body.offsetHeight,
-      document.documentElement.scrollHeight,
-      document.documentElement.offsetHeight
-    );
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'height', height: h }));
-  }
-  reportHeight();
-  window.addEventListener('load', reportHeight);
-  var mo = new MutationObserver(reportHeight);
-  mo.observe(document.body, { subtree: true, childList: true, attributes: true });
-  setTimeout(reportHeight, 300);
-  setTimeout(reportHeight, 800);
-  setTimeout(reportHeight, 1500);
-  setTimeout(reportHeight, 3000);
-})();
-true;
-`;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+const WEBVIEW_MIN_HEIGHT = Math.round(SCREEN_HEIGHT * 0.5);
 
 function buildHtmlDoc(html: string, bg: string, text: string, muted: string, border: string): string {
   return `<!DOCTYPE html>
@@ -117,90 +97,6 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       max-width: 100% !important;
     }
   </style>
-  <script>
-    function getLuminance(r, g, b) {
-      var a = [r, g, b].map(function(v) {
-        v /= 255;
-        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-      });
-      return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
-    }
-
-    function parseColor(str) {
-      if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
-      var m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
-      return m ? [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])] : null;
-    }
-
-    function getEffectiveBg(el) {
-      var node = el;
-      while (node && node !== document.documentElement) {
-        var c = parseColor(window.getComputedStyle(node).backgroundColor);
-        if (c) return c;
-        node = node.parentElement;
-      }
-      return [255, 255, 255]; // default to white
-    }
-
-    function fixContrast() {
-      var appText = '${text}';
-      var all = document.querySelectorAll('*');
-      for (var i = 0; i < all.length; i++) {
-        var el = all[i];
-        if (!el.childNodes.length) continue;
-        var hasTextNode = false;
-        for (var j = 0; j < el.childNodes.length; j++) {
-          if (el.childNodes[j].nodeType === 3 && el.childNodes[j].textContent.trim()) {
-            hasTextNode = true; break;
-          }
-        }
-        if (!hasTextNode) continue;
-
-        var computed = window.getComputedStyle(el);
-        var textColor = parseColor(computed.color);
-        if (!textColor) continue;
-
-        var bgColor = getEffectiveBg(el);
-        var textLum = getLuminance(textColor[0], textColor[1], textColor[2]);
-        var bgLum = getLuminance(bgColor[0], bgColor[1], bgColor[2]);
-        var brighter = Math.max(textLum, bgLum);
-        var darker = Math.min(textLum, bgLum);
-        var ratio = (brighter + 0.05) / (darker + 0.05);
-
-        if (ratio < 2.5) {
-          // Low contrast — force text to app foreground color if background is light
-          if (bgLum > 0.4) {
-            el.style.setProperty('color', appText, 'important');
-          } else {
-            el.style.setProperty('color', '#ffffff', 'important');
-          }
-        }
-      }
-    }
-
-    function boostSmallFonts() {
-      var all = document.querySelectorAll('[style]');
-      for (var i = 0; i < all.length; i++) {
-        var el = all[i];
-        var style = el.getAttribute('style') || '';
-        var match = style.match(/font-size:\\s*(\\d+(?:\\.\\d+)?)(px|pt)/i);
-        if (match) {
-          var size = parseFloat(match[1]);
-          var unit = match[2].toLowerCase();
-          var px = unit === 'pt' ? size * 1.333 : size;
-          if (px < 12) el.style.fontSize = '12px';
-        }
-      }
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-      boostSmallFonts();
-      fixContrast();
-      // Run again after images/fonts load in case layout shifts
-      setTimeout(fixContrast, 600);
-      setTimeout(fixContrast, 1800);
-    });
-  </script>
 </head>
 <body><div class="email-content-wrapper">${html}</div></body>
 </html>`;
@@ -214,35 +110,22 @@ export function EmailBodyRenderer({
   mutedColor = "#737373",
   borderColor = "#e5e5e5",
 }: EmailBodyRendererProps) {
-  const [webViewHeight, setWebViewHeight] = useState(200);
-
-  const onMessage = useCallback((e: WebViewMessageEvent) => {
-    try {
-      const data = JSON.parse(e.nativeEvent.data) as { type: string; height: number };
-      if (data.type === "height" && data.height > 0) {
-        setWebViewHeight(Math.max(data.height, 200));
-      }
-    } catch {}
-  }, []);
-
   if (bodyType === "html" && body.trim()) {
     const htmlDoc = buildHtmlDoc(body, backgroundColor, textColor, mutedColor, borderColor);
 
     return (
-      <View style={{ height: webViewHeight, width: "100%" }}>
+      <View style={{ minHeight: WEBVIEW_MIN_HEIGHT, width: "100%" }}>
         <WebView
           source={{ html: htmlDoc }}
-          style={{ flex: 1, backgroundColor: "transparent" }}
-          scrollEnabled={false}
-          showsVerticalScrollIndicator={false}
+          style={{ minHeight: WEBVIEW_MIN_HEIGHT, backgroundColor: "transparent" }}
+          scrollEnabled={true}
+          showsVerticalScrollIndicator={true}
           showsHorizontalScrollIndicator={false}
-          injectedJavaScript={INJECTED_JS}
-          onMessage={onMessage}
-          originWhitelist={["*"]}
-          javaScriptEnabled
+          javaScriptEnabled={false}
           domStorageEnabled={false}
+          originWhitelist={[]}
           allowsInlineMediaPlayback={false}
-          mediaPlaybackRequiresUserAction
+          mediaPlaybackRequiresUserAction={true}
           scalesPageToFit={false}
           onShouldStartLoadWithRequest={(req) => {
             if (req.navigationType === "click") return false;

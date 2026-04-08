@@ -120,7 +120,7 @@ function HtmlBodyRenderer({ body }: { body: string }) {
       <iframe
         ref={iframeRef}
         srcDoc={html}
-        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        sandbox="allow-popups allow-popups-to-escape-sandbox"
         onLoad={handleLoad}
         style={{ height: `${iframeHeight}px`, minWidth: "100%", display: "block" }}
         className="border-none rounded-xl"

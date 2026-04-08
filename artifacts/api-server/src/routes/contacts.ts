@@ -77,7 +77,7 @@ router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Contacts lookup failed";
-    console.error("[contacts/lookup] error:", err);
+    req.log.error({ err: message }, "[contacts/lookup] error");
     res.status(500).json({ error: message });
   }
 });
@@ -232,7 +232,7 @@ router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
       res.json({ results: fallback });
       return;
     }
-    console.error("[contacts/search] error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[contacts/search] error");
     res.json({ results: [] });
   }
 });

@@ -61,7 +61,7 @@ catalogs:
       specifier: ^4.1.14
       version: 4.2.1
     tsx:
-      specifier: ^4.21.0
+      specifier: 4.21.0
       version: 4.21.0
     vite:
       specifier: ^7.3.0
@@ -166,6 +166,9 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@clerk/backend':
+        specifier: ^3.2.4
+        version: 3.2.4
       '@clerk/express':
         specifier: ^2.0.8
         version: 2.0.8(express@5.2.1)
@@ -196,6 +199,9 @@ importers:
       googleapis:
         specifier: 148.0.0
         version: 148.0.0
+      helmet:
+        specifier: ^8.1.0
+        version: 8.1.0
       http-proxy-middleware:
         specifier: ^3.0.5
         version: 3.0.5
@@ -245,6 +251,9 @@ importers:
       thread-stream:
         specifier: 3.1.0
         version: 3.1.0
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
 
   artifacts/mockup-sandbox:
     devDependencies:
@@ -4558,6 +4567,10 @@ packages:
   hasown@2.0.2:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
+
+  helmet@8.1.0:
+    resolution: {integrity: sha512-jOiHyAZsmnr8LqoPGmCjYAaiuWwjAPLgY8ZX2XrmHawt99/u1y6RgrZMTeoPfpUbV96HOalYgz1qzkRbw54Pmg==}
+    engines: {node: '>=18.0.0'}
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
@@ -11487,6 +11500,8 @@ snapshots:
   hasown@2.0.2:
     dependencies:
       function-bind: 1.1.2
+
+  helmet@8.1.0: {}
 
   help-me@5.0.0: {}
 

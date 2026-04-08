@@ -30,6 +30,7 @@ import fathomAuthRouter from "./fathomAuth";
 import fathomRouter from "./fathom";
 import scheduledEmailRouter from "./scheduledEmail";
 import pushTokenRouter from "./pushToken";
+import accountRouter from "./account";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(githubAuthRouter);
 router.use(linearAuthRouter);
 router.use(scheduledEmailRouter);
 router.use(pushTokenRouter);
+router.use(accountRouter);
 
 export default router;

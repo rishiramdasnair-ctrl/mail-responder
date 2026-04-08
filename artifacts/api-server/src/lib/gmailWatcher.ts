@@ -2,6 +2,7 @@ import { db } from "@workspace/db";
 import { gmailWatchesTable, expoPushTokensTable, usersTable } from "@workspace/db/schema";
 import { eq, lt, and } from "drizzle-orm";
 import { getGmailClientForUser } from "./gmailClient";
+import { logger } from "./logger";
 
 const PUBSUB_TOPIC = process.env.GOOGLE_PUBSUB_TOPIC || "";
 
@@ -28,9 +29,9 @@ export async function watchUser(userId: string): Promise<void> {
       target: gmailWatchesTable.userId,
       set: { historyId, expiration, updatedAt: new Date() },
     });
-    console.log(`[watcher] Watching Gmail for user ${userId}, expires ${new Date(expiration).toISOString()}`);
+    logger.info({ userId, expires: new Date(expiration).toISOString() }, "[watcher] Watching Gmail for user");
   } catch (err) {
-    console.error(`[watcher] Failed to watch Gmail for user ${userId}:`, err);
+    logger.error({ userId, err: err instanceof Error ? err.message : "Unknown error" }, "[watcher] Failed to watch Gmail for user");
   }
 }
 
@@ -74,7 +75,7 @@ export async function handlePushNotification(data: {
         }
       }
     } catch (err) {
-      console.error(`[watcher] Error processing push for user ${user.id}:`, err);
+      logger.error({ userId: user.id, err: err instanceof Error ? err.message : "Unknown error" }, "[watcher] Error processing push for user");
     }
   }
 }
@@ -105,9 +106,9 @@ async function sendExpoPushNotification(userId: string, newEmailCount: number): 
       },
       body: JSON.stringify(messages),
     });
-    console.log(`[watcher] Push notification sent to ${tokenRows.length} device(s) for user ${userId}`);
+    logger.info({ userId, deviceCount: tokenRows.length }, "[watcher] Push notification sent");
   } catch (err) {
-    console.error(`[watcher] Failed to send push notification:`, err);
+    logger.error({ userId, err: err instanceof Error ? err.message : "Unknown error" }, "[watcher] Failed to send push notification");
   }
 }
 
@@ -126,11 +127,13 @@ async function renewExpiringWatches(): Promise<void> {
 
 export function startGmailWatcher() {
   // Renew expiring watches every 12 hours
+  const onError = (err: unknown) => {
+    logger.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[watcher] Unhandled error in renewExpiringWatches");
+  };
   const interval = setInterval(() => {
-    renewExpiringWatches().catch(console.error);
+    renewExpiringWatches().catch(onError);
   }, 12 * 60 * 60 * 1000);
-  // Initial renewal check
-  renewExpiringWatches().catch(console.error);
-  console.log("[watcher] Gmail watch renewal started (interval: 12h)");
+  renewExpiringWatches().catch(onError);
+  logger.info("[watcher] Gmail watch renewal started (interval: 12h)");
   return interval;
 }

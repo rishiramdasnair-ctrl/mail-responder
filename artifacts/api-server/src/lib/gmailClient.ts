@@ -3,6 +3,7 @@ import { google } from "googleapis";
 import { db } from "@workspace/db";
 import { usersTable, gmailAccountsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { maybeEncrypt, maybeDecrypt } from "./tokenCrypto";
 
 function getOAuthClient() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -26,8 +27,8 @@ async function ensureMigrated(userId: string, user: { googleRefreshToken: string
   await db.insert(gmailAccountsTable).values({
     userId,
     email,
-    accessToken: user.googleAccessToken,
-    refreshToken: user.googleRefreshToken,
+    accessToken: maybeEncrypt(user.googleAccessToken) ?? null,
+    refreshToken: maybeEncrypt(user.googleRefreshToken) ?? user.googleRefreshToken,
     tokenExpiresAt: user.googleTokenExpiresAt,
     isPrimary: true,
   }).onConflictDoNothing();
@@ -59,8 +60,8 @@ async function getFreshAccessToken(userId: string, accountEmail?: string): Promi
         id: -1,
         userId,
         email: user.googleEmail || "",
-        accessToken: user.googleAccessToken,
-        refreshToken: user.googleRefreshToken!,
+        accessToken: maybeDecrypt(user.googleAccessToken) ?? null,
+        refreshToken: maybeDecrypt(user.googleRefreshToken)!,
         tokenExpiresAt: user.googleTokenExpiresAt,
         isPrimary: true,
         createdAt: new Date(),
@@ -69,27 +70,30 @@ async function getFreshAccessToken(userId: string, accountEmail?: string): Promi
     }
   }
 
+  const refreshToken = maybeDecrypt(account.refreshToken);
+  const accessToken = maybeDecrypt(account.accessToken);
+
   const oAuth2Client = getOAuthClient();
   oAuth2Client.setCredentials({
-    refresh_token: account.refreshToken,
-    access_token: account.accessToken,
+    refresh_token: refreshToken,
+    access_token: accessToken,
     expiry_date: account.tokenExpiresAt?.getTime(),
   });
 
   // Refresh if expired or expiring within 60 seconds
   const expiresAt = account.tokenExpiresAt?.getTime() ?? 0;
-  if (!account.accessToken || expiresAt < Date.now() + 60_000) {
+  if (!accessToken || expiresAt < Date.now() + 60_000) {
     const { credentials } = await oAuth2Client.refreshAccessToken();
     if (account.id !== -1) {
       await db.update(gmailAccountsTable).set({
-        accessToken: credentials.access_token,
+        accessToken: maybeEncrypt(credentials.access_token ?? null) ?? null,
         tokenExpiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined,
         updatedAt: new Date(),
       }).where(eq(gmailAccountsTable.id, account.id));
     } else {
-      // legacy path: update users table
+      // legacy path: update users table (always encrypt on write)
       await db.update(usersTable).set({
-        googleAccessToken: credentials.access_token,
+        googleAccessToken: maybeEncrypt(credentials.access_token ?? null) ?? null,
         googleTokenExpiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined,
         updatedAt: new Date(),
       }).where(eq(usersTable.id, userId));
@@ -175,9 +179,9 @@ function findBodyByMime(part: any, mimeType: string): string {
 /**
  * Strips potentially dangerous content from HTML email bodies.
  * Removes <script> tags, inline event handlers, and javascript: URLs
- * so the HTML can be safely rendered in a WebView for display purposes.
+ * so the HTML can be safely rendered in a sandboxed iframe for display purposes.
  */
-function sanitizeEmailHtml(html: string): string {
+export function sanitizeEmailHtml(html: string): string {
   return html
     // Remove <script>...</script> blocks (including multiline)
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
@@ -233,3 +237,5 @@ export function extractAttachments(part: any, result: EmailAttachment[] = []): E
   }
   return result;
 }
+
+export { maybeEncrypt, maybeDecrypt };

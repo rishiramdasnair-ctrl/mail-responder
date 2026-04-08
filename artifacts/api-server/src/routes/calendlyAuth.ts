@@ -6,6 +6,7 @@ import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { encryptConnectorConfig } from "../lib/tokenCrypto";
 
 const router = Router();
 
@@ -51,7 +52,7 @@ router.get("/auth/calendly/callback", async (req, res) => {
   const { code, state, error } = req.query;
 
   if (error) {
-    console.error("[calendly-callback] OAuth error:", error);
+    req.log.warn({ oauthError: String(error) }, "[calendly-callback] OAuth error");
     return res.redirect(`${frontendUrl}/connectors?error=calendly_denied`);
   }
 
@@ -61,7 +62,7 @@ router.get("/auth/calendly/callback", async (req, res) => {
 
   const stateResult = verifyOAuthState(state);
   if (!stateResult) {
-    console.error("[calendly-callback] invalid or expired state");
+    req.log.warn("[calendly-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=calendly_missing_params`);
   }
   const { userId } = stateResult;
@@ -88,7 +89,7 @@ router.get("/auth/calendly/callback", async (req, res) => {
 
     if (!tokenRes.ok) {
       const err = await tokenRes.json().catch(() => ({})) as { error_description?: string };
-      console.error("[calendly-callback] token exchange failed:", err);
+      req.log.error({ status: tokenRes.status }, "[calendly-callback] token exchange failed");
       return res.redirect(`${frontendUrl}/connectors?error=calendly_token_failed`);
     }
 
@@ -128,12 +129,12 @@ router.get("/auth/calendly/callback", async (req, res) => {
       ))
       .limit(1);
 
-    const config = {
+    const config = encryptConnectorConfig({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? null,
       expiresAt,
       ownerUri,
-    };
+    });
 
     if (existing.length > 0) {
       await db.update(connectorsTable).set({
@@ -155,7 +156,7 @@ router.get("/auth/calendly/callback", async (req, res) => {
 
     res.redirect(`${frontendUrl}/connectors?calendly_connected=true`);
   } catch (err) {
-    console.error("[calendly-callback] unexpected error:", err);
+    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[calendly-callback] unexpected error");
     res.redirect(`${frontendUrl}/connectors?error=calendly_callback_failed`);
   }
 });

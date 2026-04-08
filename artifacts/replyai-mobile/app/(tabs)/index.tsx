@@ -10,7 +10,6 @@ import {
   RefreshControl,
   TextInput,
   Platform,
-  ScrollView,
   Modal,
   ActionSheetIOS,
 } from "react-native";
@@ -454,34 +453,6 @@ export default function InboxScreen() {
       fontSize: 11,
       fontFamily: "Inter_600SemiBold",
     },
-    accountPillsScroll: {
-      marginBottom: 10,
-    },
-    accountPillsRow: {
-      flexDirection: "row",
-      gap: 6,
-      paddingRight: 16,
-    },
-    accountPill: {
-      paddingHorizontal: 12,
-      paddingVertical: 5,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    accountPillActive: {
-      backgroundColor: colors.foreground,
-      borderColor: colors.foreground,
-    },
-    accountPillText: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
-      color: colors.foreground,
-    },
-    accountPillTextActive: {
-      color: colors.primaryForeground,
-      fontFamily: "Inter_500Medium",
-    },
     folderPickerBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -708,30 +679,6 @@ export default function InboxScreen() {
           </View>
         )}
 
-        {accounts.length > 1 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.accountPillsRow}
-            style={styles.accountPillsScroll}
-          >
-            {[{ email: "all", isPrimary: false }, ...accounts].map((acct) => {
-              const isActive = selectedAccount === acct.email;
-              const label = acct.email === "all" ? "All" : acct.email.split("@")[0];
-              return (
-                <TouchableOpacity
-                  key={acct.email}
-                  style={[styles.accountPill, isActive && styles.accountPillActive]}
-                  onPress={() => setSelectedAccount(acct.email)}
-                >
-                  <Text style={[styles.accountPillText, isActive && styles.accountPillTextActive]} numberOfLines={1}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        )}
 
         {showCategoryTabs && (
           <View style={styles.categoryTabsRow}>

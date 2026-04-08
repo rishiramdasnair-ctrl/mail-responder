@@ -7,14 +7,13 @@ import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import { useInboxSheet } from "@/contexts/InboxSheetContext";
 
 function NativeTabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
-        <Label>Profile</Label>
+        <Icon sf={{ default: "tray", selected: "tray.fill" }} />
+        <Label>Inbox</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="agent">
         <Icon sf={{ default: "sparkles", selected: "sparkles" }} />
@@ -34,7 +33,6 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
-  const { emitOpenAccountSheet } = useInboxSheet();
 
   return (
     <Tabs
@@ -67,18 +65,13 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Profile",
+          title: "Inbox",
           tabBarIcon: ({ focused }) =>
             isIOS ? (
-              <SymbolView name={focused ? "person.circle.fill" : "person.circle"} tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
+              <SymbolView name={focused ? "tray.fill" : "tray"} tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
             ) : (
-              <Feather name="user" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
+              <Feather name="inbox" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
             ),
-        }}
-        listeners={{
-          tabPress: () => {
-            emitOpenAccountSheet();
-          },
         }}
       />
       <Tabs.Screen

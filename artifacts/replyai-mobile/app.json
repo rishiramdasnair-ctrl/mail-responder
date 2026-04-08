@@ -20,7 +20,8 @@
         "NSUserNotificationUsageDescription": "ReplyAI sends you notifications for important emails and replies.",
         "NSCalendarsUsageDescription": "ReplyAI accesses your calendar to help schedule meetings from emails.",
         "NSCalendarsWriteOnlyAccessUsageDescription": "ReplyAI creates calendar events from emails.",
-        "NSRemindersUsageDescription": "ReplyAI may create reminders for follow-up emails."
+        "NSRemindersUsageDescription": "ReplyAI may create reminders for follow-up emails.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -50,6 +51,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "37a94f7d-4f44-4888-9071-8794847e2d9f"
+      }
+    },
+    "owner": "rishinair"
   }
 }

@@ -10,8 +10,8 @@ import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 const router = Router();
 
 const FATHOM_SCOPES = "public_api";
-const FATHOM_AUTH_URL = "https://fathom.video/oauth/authorize";
-const FATHOM_TOKEN_URL = "https://fathom.video/oauth/token";
+const FATHOM_AUTH_URL = "https://app.fathom.video/oauth/authorize";
+const FATHOM_TOKEN_URL = "https://app.fathom.video/oauth/token";
 
 function getFathomRedirectUri() {
   if (process.env.FATHOM_REDIRECT_URI) return process.env.FATHOM_REDIRECT_URI;

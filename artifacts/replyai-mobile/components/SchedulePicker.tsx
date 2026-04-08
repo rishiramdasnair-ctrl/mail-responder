@@ -123,6 +123,8 @@ export function SchedulePicker({ visible, onConfirm, onCancel }: SchedulePickerP
             display="spinner"
             minimumDate={minDate}
             onChange={handleChange}
+            themeVariant="light"
+            textColor={colors.foreground}
             style={{ width: "100%" }}
           />
         </View>

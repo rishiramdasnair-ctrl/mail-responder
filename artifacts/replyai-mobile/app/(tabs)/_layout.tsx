@@ -23,10 +23,6 @@ function NativeTabLayout() {
         <Icon sf={{ default: "sparkles", selected: "sparkles" }} />
         <Label>Agent</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="settings">
-        <Icon sf={{ default: "gear", selected: "gearshape.fill" }} />
-        <Label>Settings</Label>
-      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -106,12 +102,7 @@ function ClassicTabLayout() {
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ focused }) =>
-            isIOS ? (
-              <SymbolView name="gear" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
-            ) : (
-              <Feather name="settings" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
-            ),
+          href: null,
         }}
       />
     </Tabs>

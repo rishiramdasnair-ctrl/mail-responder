@@ -336,6 +336,14 @@ export default function InboxScreen() {
     iconBtn: {
       padding: 6,
     },
+    profileIconBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     searchBar: {
       flexDirection: "row",
       alignItems: "center",
@@ -578,6 +586,15 @@ export default function InboxScreen() {
                 size={20}
                 color={colors.foreground}
               />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => router.push("/(tabs)/settings")}
+              accessibilityLabel="Profile and settings"
+            >
+              <View style={styles.profileIconBtn}>
+                <Feather name="user" size={18} color={colors.foreground} />
+              </View>
             </TouchableOpacity>
           </View>
         </View>

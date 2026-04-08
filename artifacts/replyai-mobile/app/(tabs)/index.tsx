@@ -14,6 +14,7 @@ import {
   ActionSheetIOS,
 } from "react-native";
 import { useRouter, Link } from "expo-router";
+import { useAuth } from "@clerk/clerk-expo";
 import { Feather } from "@expo/vector-icons";
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -55,6 +56,7 @@ export default function InboxScreen() {
   const [activeQuery, setActiveQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<TextInput>(null);
+  const { signOut } = useAuth();
   const { accounts } = useGmailAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
   const [activeFolder, setActiveFolder] = useState<"INBOX" | "STARRED" | "TRASH">("INBOX");
@@ -793,6 +795,15 @@ export default function InboxScreen() {
               </View>
               <Text style={{ fontSize: 15, fontFamily: "Inter_400Regular", color: colors.foreground }}>Settings</Text>
               <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginLeft: "auto" }} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flexDirection: "row", alignItems: "center", paddingVertical: 13, gap: 14 }}
+              onPress={() => { setAccountSheetVisible(false); signOut(); }}
+            >
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" }}>
+                <Feather name="log-out" size={16} color={colors.destructive} />
+              </View>
+              <Text style={{ fontSize: 15, fontFamily: "Inter_400Regular", color: colors.destructive }}>Sign out</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

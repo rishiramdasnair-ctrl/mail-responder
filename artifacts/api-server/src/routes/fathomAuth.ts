@@ -10,8 +10,8 @@ import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
 const router = Router();
 
 const FATHOM_SCOPES = "public_api";
-const FATHOM_AUTH_URL = "https://app.fathom.video/oauth/authorize";
-const FATHOM_TOKEN_URL = "https://app.fathom.video/oauth/token";
+const FATHOM_AUTH_URL = "https://fathom.video/external/v1/oauth2/authorize";
+const FATHOM_TOKEN_URL = "https://fathom.video/external/v1/oauth2/token";
 
 function getFathomRedirectUri() {
   if (process.env.FATHOM_REDIRECT_URI) return process.env.FATHOM_REDIRECT_URI;
@@ -100,7 +100,7 @@ router.get("/auth/fathom/callback", async (req, res) => {
 
     let displayName = "Fathom";
     try {
-      const meRes = await fetch("https://api.fathom.ai/external/v1/me", {
+      const meRes = await fetch("https://fathom.video/external/v1/me", {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       if (meRes.ok) {

@@ -86,22 +86,18 @@ router.get("/auth/hubspot/callback", async (req, res) => {
     return res.redirect(`${frontendUrl}/connectors?error=hubspot_missing_params`);
   }
 
-  let userId: string | null;
-  try {
-    userId = verifyOAuthState(state);
-  } catch {
-    userId = null;
-  }
-
-  if (!userId) {
+  const stateResult = verifyOAuthState(state);
+  if (!stateResult) {
     console.error("[hubspot-callback] invalid or expired state");
     return res.redirect(`${frontendUrl}/connectors?error=hubspot_missing_params`);
   }
+  const { userId, platform } = stateResult;
 
   const clientId = process.env.HUBSPOT_CLIENT_ID;
   const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
+    if (platform === "mobile") return res.redirect("replyai://oauth-error?reason=hubspot_not_configured");
     return res.redirect(`${frontendUrl}/connectors?error=hubspot_not_configured`);
   }
 
@@ -121,6 +117,7 @@ router.get("/auth/hubspot/callback", async (req, res) => {
     if (!tokenRes.ok) {
       const err = await tokenRes.json().catch(() => ({})) as { message?: string };
       console.error("[hubspot-callback] token exchange failed:", err);
+      if (platform === "mobile") return res.redirect("replyai://oauth-error?reason=hubspot_token_failed");
       return res.redirect(`${frontendUrl}/connectors?error=hubspot_token_failed`);
     }
 
@@ -178,9 +175,11 @@ router.get("/auth/hubspot/callback", async (req, res) => {
       });
     }
 
+    if (platform === "mobile") return res.redirect("replyai://oauth-success?event=hubspot_connected");
     res.redirect(`${frontendUrl}/connectors?hubspot_connected=true`);
   } catch (err) {
     console.error("[hubspot-callback] unexpected error:", err);
+    if (platform === "mobile") return res.redirect("replyai://oauth-error?reason=hubspot_callback_failed");
     res.redirect(`${frontendUrl}/connectors?error=hubspot_callback_failed`);
   }
 });

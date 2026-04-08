@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -22,11 +22,8 @@ import { EmailRow, EmailThread } from "@/components/EmailRow";
 import { PrioritySection, type PriorityEmail } from "@/components/PrioritySection";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
-
-interface GmailAccount {
-  email: string;
-  isPrimary: boolean;
-}
+import { useGmailAccounts } from "@/hooks/useGmailAccounts";
+import { useGmailCategories } from "@/hooks/useGmailCategories";
 
 const PAGE_SIZE = 50;
 
@@ -46,38 +43,12 @@ export default function InboxScreen() {
   const [activeQuery, setActiveQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<TextInput>(null);
-  const [accounts, setAccounts] = useState<GmailAccount[]>([]);
+  const { accounts } = useGmailAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
   const [activeFolder, setActiveFolder] = useState<"INBOX" | "STARRED" | "TRASH">("INBOX");
   const [folderPickerVisible, setFolderPickerVisible] = useState(false);
-  const [categories, setCategories] = useState<Array<{ category: string; enabled: boolean }>>([]);
+  const { categories } = useGmailCategories();
   const [activeCategory, setActiveCategory] = useState<string>("All");
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const headers = await authHeaders();
-        const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
-        if (res.ok) {
-          const data = (await res.json()) as { accounts: GmailAccount[] };
-          setAccounts(data.accounts);
-        }
-      } catch {}
-    })();
-  }, [apiBaseUrl, authHeaders]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const headers = await authHeaders();
-        const res = await fetch(`${apiBaseUrl}/api/gmail/categories`, { headers });
-        if (res.ok) {
-          const data = (await res.json()) as { categories: Array<{ category: string; enabled: boolean }> };
-          setCategories(data.categories);
-        }
-      } catch {}
-    })();
-  }, [apiBaseUrl, authHeaders]);
 
   const categoryLabel = activeCategory !== "All" ? `ReplyAI/${activeCategory}` : null;
 
@@ -137,6 +108,7 @@ export default function InboxScreen() {
     queryFn: fetchInbox,
     initialPageParam: undefined as unknown,
     getNextPageParam: (last) => last.nextPageToken ?? undefined,
+    staleTime: 2 * 60_000,
   });
 
   const allThreads = data?.pages.flatMap((p) => p.threads) ?? [];

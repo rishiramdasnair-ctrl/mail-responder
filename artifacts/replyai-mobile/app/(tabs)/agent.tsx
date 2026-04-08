@@ -21,6 +21,7 @@ import { useUser } from "@clerk/clerk-expo";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { ConnectorStrip } from "@/components/ConnectorStrip";
+import { useGmailAccounts } from "@/hooks/useGmailAccounts";
 
 type FeatherName = ComponentProps<typeof Feather>["name"];
 
@@ -281,24 +282,13 @@ export default function AgentScreen() {
   const rawFirst = user?.firstName || user?.username || null;
   const firstName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1) : null;
 
-  const { data: gmailAccountsData } = useQuery({
-    queryKey: ["gmail-accounts-agent"],
-    queryFn: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
-      if (!res.ok) return { accounts: [] };
-      return res.json() as Promise<{ accounts: { email: string }[] }>;
-    },
-    staleTime: 30_000,
-  });
-  const gmailConnected = (gmailAccountsData?.accounts?.length ?? 0) > 0;
+  const { accounts: gmailAccounts } = useGmailAccounts();
+  const gmailConnected = gmailAccounts.length > 0;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isActing, setIsActing] = useState(false);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   const [digestLoading, setDigestLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -308,19 +298,17 @@ export default function AgentScreen() {
   const TAB_BAR_HEIGHT = Platform.select({ ios: 49, android: 56, web: 84, default: 49 }) as number;
   const botPad = (Platform.OS === "web" ? 0 : insets.bottom) + TAB_BAR_HEIGHT;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const headers = await authHeaders();
-        const res = await fetch(`${apiBaseUrl}/api/agent/suggestions`, { headers });
-        if (res.ok) {
-          const data = await res.json() as { suggestions: Suggestion[] };
-          setSuggestions(data.suggestions || []);
-        }
-      } catch {}
-      setLoadingSuggestions(false);
-    })();
-  }, [apiBaseUrl, authHeaders]);
+  const { data: suggestionsData, isLoading: loadingSuggestions } = useQuery<{ suggestions: Suggestion[] }>({
+    queryKey: ["agent-suggestions"],
+    queryFn: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/agent/suggestions`, { headers });
+      if (!res.ok) return { suggestions: [] };
+      return res.json() as Promise<{ suggestions: Suggestion[] }>;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const suggestions = suggestionsData?.suggestions ?? [];
 
   useEffect(() => () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); }, []);
 

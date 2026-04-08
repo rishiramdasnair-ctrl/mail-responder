@@ -20,12 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useToast } from "@/components/ToastProvider";
-
-interface GmailAccount {
-  email: string;
-  isPrimary: boolean;
-  signature?: string | null;
-}
+import { useGmailAccounts } from "@/hooks/useGmailAccounts";
 
 function parseSignatureText(raw: string | null | undefined): string {
   if (!raw) return "";
@@ -129,9 +124,9 @@ export default function ComposeScreen() {
   const [searchingTo, setSearchingTo] = useState(false);
   const [searchingCc, setSearchingCc] = useState(false);
 
-  const [accounts, setAccounts] = useState<GmailAccount[]>([]);
+  const { accounts, isLoading: accountsLoading } = useGmailAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-  const [accountsLoaded, setAccountsLoaded] = useState(false);
+  const accountInitRef = useRef(false);
 
   const [sending, setSending] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -204,29 +199,20 @@ export default function ComposeScreen() {
   }, [navigation, hasContent, confirmDiscard]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const headers = await authHeaders();
-        const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
-        if (res.ok) {
-          const data = (await res.json()) as { accounts: GmailAccount[] };
-          setAccounts(data.accounts);
-          const preferred = params.accountEmail
-            ? data.accounts.find((a) => a.email === params.accountEmail) ?? data.accounts.find((a) => a.isPrimary)
-            : data.accounts.find((a) => a.isPrimary);
-          const account = preferred ?? data.accounts[0];
-          if (account) {
-            setSelectedAccount(account.email);
-            const sigText = parseSignatureText(account.signature);
-            if (sigText && !params.prefill) {
-              setBody(`\n\n-- \n${sigText}`);
-            }
-          }
-        }
-      } catch {}
-      setAccountsLoaded(true);
-    })();
-  }, [apiBaseUrl, authHeaders]);
+    if (accountInitRef.current || accounts.length === 0) return;
+    accountInitRef.current = true;
+    const preferred = params.accountEmail
+      ? accounts.find((a) => a.email === params.accountEmail) ?? accounts.find((a) => a.isPrimary)
+      : accounts.find((a) => a.isPrimary);
+    const account = preferred ?? accounts[0];
+    if (account) {
+      setSelectedAccount(account.email);
+      const sigText = parseSignatureText(account.signature);
+      if (sigText && !params.prefill) {
+        setBody(`\n\n-- \n${sigText}`);
+      }
+    }
+  }, [accounts]);
 
   const handleAccountChange = (email: string) => {
     setSelectedAccount(email);
@@ -640,7 +626,7 @@ export default function ComposeScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {accountsLoaded && accounts.length > 0 && (
+          {accounts.length > 0 && (
             <View style={styles.fieldRow}>
               <View style={styles.fieldLabelRow}>
                 <Text style={styles.fieldLabel}>From</Text>

@@ -258,6 +258,7 @@ export default function ThreadScreen() {
       return res.json();
     },
     enabled: !!threadId,
+    staleTime: 2 * 60_000,
   });
 
   const lastMessage = thread?.messages?.[thread.messages.length - 1];

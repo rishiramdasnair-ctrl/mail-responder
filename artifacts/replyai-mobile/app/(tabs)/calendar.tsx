@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useCallback, useState, useEffect } from "react";
+import React, { useMemo, useRef, useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -19,11 +19,7 @@ import { Link, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
-
-interface GmailAccount {
-  email: string;
-  isPrimary: boolean;
-}
+import { useGmailAccounts } from "@/hooks/useGmailAccounts";
 
 interface CalendarEvent {
   id: string;
@@ -120,25 +116,12 @@ export default function CalendarScreen() {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
-  const [accounts, setAccounts] = useState<GmailAccount[]>([]);
+  const { accounts } = useGmailAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const headers = await authHeaders();
-        const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
-        if (res.ok) {
-          const d = (await res.json()) as { accounts: GmailAccount[] };
-          setAccounts(d.accounts);
-        }
-      } catch {}
-    })();
-  }, [apiBaseUrl, authHeaders]);
 
   const weekSunday = useMemo(() => getWeekSunday(todayBase, weekOffset), [weekOffset]);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekSunday, i)), [weekSunday]);
@@ -162,7 +145,7 @@ export default function CalendarScreen() {
       return res.json();
     },
     retry: false,
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
   });
 
   const eventsByDay = useMemo(() => {

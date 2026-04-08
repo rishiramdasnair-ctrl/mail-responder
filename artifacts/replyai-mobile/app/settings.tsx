@@ -100,6 +100,7 @@ export default function SettingsScreen() {
       const res = await fetch(`${apiBaseUrl}/api/auth/me`, { headers });
       return res.json();
     },
+    staleTime: 5 * 60_000,
   });
 
   const { data: settings, isLoading: settingsLoading } = useQuery<UserSettings>({
@@ -109,6 +110,7 @@ export default function SettingsScreen() {
       const res = await fetch(`${apiBaseUrl}/api/settings`, { headers });
       return res.json();
     },
+    staleTime: 5 * 60_000,
   });
 
   const { data: accountsData, isLoading: accountsLoading } = useQuery<{ accounts: GmailAccount[] }>({
@@ -118,6 +120,7 @@ export default function SettingsScreen() {
       const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
       return res.json();
     },
+    staleTime: 5 * 60_000,
   });
 
   const { data: connectorsData, isLoading: connectorsLoading } = useQuery<{ connectors: Connector[] }>({
@@ -127,6 +130,7 @@ export default function SettingsScreen() {
       const res = await fetch(`${apiBaseUrl}/api/connectors`, { headers });
       return res.json();
     },
+    staleTime: 2 * 60_000,
   });
 
   const disconnectConnectorMutation = useMutation({

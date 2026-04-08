@@ -154,7 +154,7 @@ export default function EventDetailScreen() {
       return res.json();
     },
     enabled: !!eventId,
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
     placeholderData: parsedPlaceholder,
   });
 

@@ -162,6 +162,23 @@ const connectorActionRateLimit = rateLimit({
   },
 });
 
+// Calendar-specific limiter: looser limit since day-swipe navigation generates
+// burst queries but each query is for a full week and is client-side cached.
+const calendarRateLimit = rateLimit({
+  windowMs: 60_000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => getAuth(req).userId ?? req.ip ?? "anon",
+  validate: { xForwardedForHeader: false },
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "Too many calendar requests. Please slow down.",
+      code: "RATE_LIMITED",
+    });
+  },
+});
+
 app.use("/api", globalRateLimit);
 
 // Tighter limit on all OAuth initiation and callback endpoints
@@ -177,11 +194,14 @@ app.use(
     "/api/calendly",
     "/api/linkedin",
     "/api/fathom",
-    "/api/calendar",
     "/api/drive",
   ],
   connectorActionRateLimit,
 );
+
+// Looser limit for calendar — day-swipe navigation creates bursts that are
+// backed by 5-minute client cache but each week boundary still hits the API once.
+app.use("/api/calendar", calendarRateLimit);
 
 app.use("/api", router);
 

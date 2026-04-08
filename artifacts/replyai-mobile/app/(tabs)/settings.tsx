@@ -14,6 +14,8 @@ import {
   Image,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
@@ -146,6 +148,9 @@ export default function SettingsScreen() {
   const [expandedSig, setExpandedSig] = useState<string | null>(null);
   const [sigTexts, setSigTexts] = useState<Record<string, string>>({});
   const [sigImages, setSigImages] = useState<Record<string, string | null>>({});
+  const [sigLinks, setSigLinks] = useState<Record<string, Array<{ id: string; label: string; url: string }>>>({});
+  const [newLinkLabel, setNewLinkLabel] = useState<Record<string, string>>({});
+  const [newLinkUrl, setNewLinkUrl] = useState<Record<string, string>>({});
   const [savingSig, setSavingSig] = useState<string | null>(null);
 
   useEffect(() => {
@@ -159,12 +164,19 @@ export default function SettingsScreen() {
     if (accountsData?.accounts) {
       const texts: Record<string, string> = {};
       const images: Record<string, string | null> = {};
+      const links: Record<string, Array<{ id: string; label: string; url: string }>> = {};
       for (const a of accountsData.accounts) {
-        texts[a.email] = a.signature ?? "";
-        images[a.email] = a.signatureImageUrl ?? null;
+        let parsed: { text?: string; imageUrl?: string | null; links?: Array<{ label: string; url: string }> } | null = null;
+        if (a.signature) {
+          try { parsed = JSON.parse(a.signature); } catch { parsed = { text: a.signature }; }
+        }
+        texts[a.email] = parsed?.text ?? "";
+        images[a.email] = parsed?.imageUrl ?? a.signatureImageUrl ?? null;
+        links[a.email] = (parsed?.links ?? []).map((l, i) => ({ ...l, id: String(i) }));
       }
       setSigTexts(prev => ({ ...prev, ...texts }));
       setSigImages(prev => ({ ...prev, ...images }));
+      setSigLinks(prev => ({ ...prev, ...links }));
     }
   }, [accountsData]);
 
@@ -173,7 +185,7 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handlePickSigImage = async (email: string) => {
+  const handlePickSigImageFromLibrary = async (email: string) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Allow photo library access to add a signature image.");
@@ -182,31 +194,70 @@ export default function SettingsScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
       allowsEditing: true,
-      quality: 0.5,
+      quality: 0.4,
       base64: true,
     });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const dataUri = `data:image/jpeg;base64,${asset.base64}`;
-      setSigImages(prev => ({ ...prev, [email]: dataUri }));
+    if (!result.canceled && result.assets[0]?.base64) {
+      const mime = result.assets[0].mimeType ?? "image/jpeg";
+      setSigImages(prev => ({ ...prev, [email]: `data:${mime};base64,${result.assets[0].base64}` }));
     }
+  };
+
+  const handlePickSigImageFromFiles = async (email: string) => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/*"],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+    const mime = asset.mimeType ?? "image/jpeg";
+    setSigImages(prev => ({ ...prev, [email]: `data:${mime};base64,${b64}` }));
+  };
+
+  const handlePickSigImage = (email: string) => {
+    Alert.alert("Add image", "Choose source", [
+      { text: "Photo Library", onPress: () => handlePickSigImageFromLibrary(email) },
+      { text: "Browse Files", onPress: () => handlePickSigImageFromFiles(email) },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const handleRemoveSigImage = (email: string) => {
     setSigImages(prev => ({ ...prev, [email]: null }));
   };
 
+  const handleAddLink = (email: string) => {
+    const url = (newLinkUrl[email] ?? "").trim();
+    const label = (newLinkLabel[email] ?? "").trim();
+    if (!url) return;
+    const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+    setSigLinks(prev => ({
+      ...prev,
+      [email]: [...(prev[email] ?? []), { id: Date.now().toString(), label: label || fullUrl, url: fullUrl }],
+    }));
+    setNewLinkUrl(prev => ({ ...prev, [email]: "" }));
+    setNewLinkLabel(prev => ({ ...prev, [email]: "" }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleRemoveLink = (email: string, id: string) => {
+    setSigLinks(prev => ({ ...prev, [email]: (prev[email] ?? []).filter(l => l.id !== id) }));
+  };
+
   const handleSaveSig = async (email: string) => {
     setSavingSig(email);
     try {
       const headers = await authHeaders();
+      const sigData = {
+        text: sigTexts[email] || null,
+        imageUrl: sigImages[email] || null,
+        links: (sigLinks[email] ?? []).map(({ label, url }) => ({ label, url })),
+      };
       await fetch(`${apiBaseUrl}/api/gmail/accounts/${encodeURIComponent(email)}/signature`, {
         method: "PUT",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          signature: sigTexts[email] || null,
-          signatureImageUrl: sigImages[email] || null,
-        }),
+        body: JSON.stringify({ signature: JSON.stringify(sigData), signatureImageUrl: null }),
       });
       await qc.invalidateQueries({ queryKey: ["gmail-accounts"] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -715,6 +766,33 @@ export default function SettingsScreen() {
       fontFamily: "Inter_400Regular",
       color: colors.foreground,
     },
+    sigLinkChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      marginBottom: 6,
+    },
+    sigLinkLabel: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+      color: colors.foreground,
+    },
+    sigLinkUrl: {
+      fontSize: 11,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+    },
+    sigAddLinkRow: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "flex-start",
+    },
     sigActionRow: {
       flexDirection: "row",
       justifyContent: "flex-end",
@@ -975,16 +1053,19 @@ export default function SettingsScreen() {
                         <>
                           <View style={styles.divider} />
                           <View style={styles.sigEditor}>
+                            <Text style={[styles.sectionLabel, { marginBottom: 4 }]}>Text</Text>
                             <TextInput
                               style={styles.sigInput}
                               value={sigTexts[acct.email] ?? ""}
                               onChangeText={(t) => setSigTexts(prev => ({ ...prev, [acct.email]: t }))}
-                              placeholder="Add your signature here..."
+                              placeholder="Name, title, company..."
                               placeholderTextColor={colors.mutedForeground}
                               multiline
                               autoCapitalize="none"
                               autoCorrect={false}
                             />
+
+                            <Text style={[styles.sectionLabel, { marginBottom: 4, marginTop: 4 }]}>Image</Text>
                             <View style={styles.sigImageRow}>
                               {sigImages[acct.email] ? (
                                 <>
@@ -1006,10 +1087,54 @@ export default function SettingsScreen() {
                                   onPress={() => handlePickSigImage(acct.email)}
                                 >
                                   <Feather name="image" size={13} color={colors.foreground} />
-                                  <Text style={styles.sigImageBtnText}>Add image</Text>
+                                  <Text style={styles.sigImageBtnText}>Add photo or file</Text>
                                 </TouchableOpacity>
                               )}
                             </View>
+
+                            <Text style={[styles.sectionLabel, { marginBottom: 4, marginTop: 4 }]}>Links</Text>
+                            {(sigLinks[acct.email] ?? []).map(link => (
+                              <View key={link.id} style={styles.sigLinkChip}>
+                                <Feather name="link" size={12} color={colors.mutedForeground} />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.sigLinkLabel} numberOfLines={1}>{link.label}</Text>
+                                  <Text style={styles.sigLinkUrl} numberOfLines={1}>{link.url}</Text>
+                                </View>
+                                <TouchableOpacity onPress={() => handleRemoveLink(acct.email, link.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                  <Feather name="x" size={14} color={colors.mutedForeground} />
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                            <View style={styles.sigAddLinkRow}>
+                              <View style={{ flex: 1, gap: 6 }}>
+                                <TextInput
+                                  style={[styles.sigInput, { minHeight: 36, paddingVertical: 6 }]}
+                                  value={newLinkLabel[acct.email] ?? ""}
+                                  onChangeText={(t) => setNewLinkLabel(prev => ({ ...prev, [acct.email]: t }))}
+                                  placeholder="Label (e.g. Schedule a call)"
+                                  placeholderTextColor={colors.mutedForeground}
+                                  autoCapitalize="none"
+                                  autoCorrect={false}
+                                />
+                                <TextInput
+                                  style={[styles.sigInput, { minHeight: 36, paddingVertical: 6 }]}
+                                  value={newLinkUrl[acct.email] ?? ""}
+                                  onChangeText={(t) => setNewLinkUrl(prev => ({ ...prev, [acct.email]: t }))}
+                                  placeholder="https://calendly.com/..."
+                                  placeholderTextColor={colors.mutedForeground}
+                                  autoCapitalize="none"
+                                  autoCorrect={false}
+                                  keyboardType="url"
+                                />
+                              </View>
+                              <TouchableOpacity
+                                style={[styles.sigImageBtn, { alignSelf: "flex-end", paddingVertical: 10 }]}
+                                onPress={() => handleAddLink(acct.email)}
+                              >
+                                <Feather name="plus" size={14} color={colors.foreground} />
+                              </TouchableOpacity>
+                            </View>
+
                             <View style={styles.sigActionRow}>
                               <TouchableOpacity
                                 style={styles.sigCancelBtn}

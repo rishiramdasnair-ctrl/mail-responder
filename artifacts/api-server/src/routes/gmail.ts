@@ -15,12 +15,82 @@ import { db } from "@workspace/db";
 import { emailSnoozesTable, gmailAccountsTable } from "@workspace/db/schema";
 import { eq, and, gt } from "drizzle-orm";
 
-async function getAccountSignature(userId: string, email: string): Promise<string> {
+interface SignatureData {
+  text?: string;
+  imageUrl?: string | null;
+  links?: Array<{ label: string; url: string }>;
+}
+
+function parseSignatureData(raw: string | null | undefined): SignatureData | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) return parsed as SignatureData;
+  } catch {}
+  // Legacy plain text
+  return { text: raw.trim() };
+}
+
+function buildPlainSignature(sig: SignatureData): string {
+  const parts: string[] = [];
+  if (sig.text?.trim()) parts.push(sig.text.trim());
+  if (sig.links?.length) {
+    for (const link of sig.links) {
+      parts.push(link.label ? `${link.label}: ${link.url}` : link.url);
+    }
+  }
+  return parts.join("\n");
+}
+
+function buildHtmlSignature(sig: SignatureData): string {
+  const parts: string[] = [`<table cellpadding="0" cellspacing="0" border="0" style="font-family:sans-serif;font-size:13px;color:#333;">`];
+  if (sig.imageUrl) {
+    parts.push(`<tr><td style="padding-bottom:8px;"><img src="${sig.imageUrl}" style="max-height:60px;max-width:200px;display:block;" /></td></tr>`);
+  }
+  if (sig.text?.trim()) {
+    const escaped = sig.text.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+    parts.push(`<tr><td style="padding-bottom:4px;">${escaped}</td></tr>`);
+  }
+  if (sig.links?.length) {
+    const linkHtml = sig.links.map(l =>
+      `<a href="${l.url}" style="color:#1a6aff;text-decoration:none;">${l.label || l.url}</a>`
+    ).join(" &nbsp;·&nbsp; ");
+    parts.push(`<tr><td style="padding-top:4px;">${linkHtml}</td></tr>`);
+  }
+  parts.push(`</table>`);
+  return parts.join("");
+}
+
+function buildMultipartEmail(headers: string[], plainBody: string, htmlBody: string): string {
+  const boundary = `boundary_${Date.now().toString(36)}`;
+  const lines = [
+    ...headers,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    `Content-Type: text/plain; charset=utf-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    plainBody,
+    "",
+    `--${boundary}`,
+    `Content-Type: text/html; charset=utf-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    htmlBody,
+    "",
+    `--${boundary}--`,
+  ];
+  return lines.join("\r\n");
+}
+
+async function getAccountSignatureData(userId: string, email: string): Promise<SignatureData | null> {
   const [row] = await db.select({ signature: gmailAccountsTable.signature })
     .from(gmailAccountsTable)
     .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)))
     .limit(1);
-  return row?.signature?.trim() || "";
+  return parseSignatureData(row?.signature);
 }
 
 const router = Router();
@@ -486,21 +556,28 @@ router.post("/gmail/compose", requireAuth, async (req, res) => {
     const gmail = await getGmailClientForUser(userId, account);
     const profile = await gmail.users.getProfile({ userId: "me" });
     const fromEmail = account || profile.data.emailAddress || "";
-    const sig = await getAccountSignature(userId, fromEmail);
-    const fullBody = sig ? `${body}\n\n-- \n${sig}` : body;
+    const sigData = await getAccountSignatureData(userId, fromEmail);
 
-    const emailLines = [
+    const baseHeaders = [
       `From: ${fromEmail}`,
       `To: ${to}`,
       ...(cc ? [`Cc: ${cc}`] : []),
       ...(bcc ? [`Bcc: ${bcc}`] : []),
       `Subject: ${subject}`,
-      `Content-Type: text/plain; charset=utf-8`,
-      "",
-      fullBody,
     ];
 
-    const raw = Buffer.from(emailLines.join("\r\n")).toString("base64url");
+    let raw: string;
+    if (sigData && (sigData.imageUrl || sigData.links?.length)) {
+      const plainSig = buildPlainSignature(sigData);
+      const plainBody = plainSig ? `${body}\n\n-- \n${plainSig}` : body;
+      const htmlBody = `<div style="font-family:sans-serif;font-size:14px;white-space:pre-wrap;">${body.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div><br><hr style="border:none;border-top:1px solid #eee;margin:12px 0;">${buildHtmlSignature(sigData)}`;
+      raw = Buffer.from(buildMultipartEmail(baseHeaders, plainBody, `<html><body>${htmlBody}</body></html>`)).toString("base64url");
+    } else {
+      const plainSig = sigData ? buildPlainSignature(sigData) : "";
+      const fullBody = plainSig ? `${body}\n\n-- \n${plainSig}` : body;
+      raw = Buffer.from([...baseHeaders, `Content-Type: text/plain; charset=utf-8`, "", fullBody].join("\r\n")).toString("base64url");
+    }
+
     const result = await gmail.users.messages.send({
       userId: "me",
       requestBody: { raw, ...(threadId ? { threadId } : {}) },
@@ -524,22 +601,28 @@ router.post("/gmail/send", requireAuth, async (req, res) => {
 
     const profile = await gmail.users.getProfile({ userId: "me" });
     const fromEmail = account || profile.data.emailAddress || "";
-    const sig = await getAccountSignature(userId, fromEmail);
-    const fullBody = sig ? `${body.body}\n\n-- \n${sig}` : body.body;
+    const sigData = await getAccountSignatureData(userId, fromEmail);
 
-    const emailLines = [
+    const replySubject = body.subject.startsWith("Re:") ? body.subject : `Re: ${body.subject}`;
+    const baseHeaders = [
       `From: ${fromEmail}`,
       `To: ${body.to}`,
-      `Subject: ${body.subject.startsWith("Re:") ? body.subject : `Re: ${body.subject}`}`,
-      `Content-Type: text/plain; charset=utf-8`,
+      `Subject: ${replySubject}`,
     ];
+    if (body.inReplyTo) baseHeaders.push(`In-Reply-To: ${body.inReplyTo}`);
+    if (body.references) baseHeaders.push(`References: ${body.references}`);
 
-    if (body.inReplyTo) emailLines.push(`In-Reply-To: ${body.inReplyTo}`);
-    if (body.references) emailLines.push(`References: ${body.references}`);
-
-    emailLines.push("", fullBody);
-
-    const raw = Buffer.from(emailLines.join("\r\n")).toString("base64url");
+    let raw: string;
+    if (sigData && (sigData.imageUrl || sigData.links?.length)) {
+      const plainSig = buildPlainSignature(sigData);
+      const plainBody = plainSig ? `${body.body}\n\n-- \n${plainSig}` : body.body;
+      const htmlBody = `<div style="font-family:sans-serif;font-size:14px;white-space:pre-wrap;">${body.body.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div><br><hr style="border:none;border-top:1px solid #eee;margin:12px 0;">${buildHtmlSignature(sigData)}`;
+      raw = Buffer.from(buildMultipartEmail(baseHeaders, plainBody, `<html><body>${htmlBody}</body></html>`)).toString("base64url");
+    } else {
+      const plainSig = sigData ? buildPlainSignature(sigData) : "";
+      const fullBody = plainSig ? `${body.body}\n\n-- \n${plainSig}` : body.body;
+      raw = Buffer.from([...baseHeaders, `Content-Type: text/plain; charset=utf-8`, "", fullBody].join("\r\n")).toString("base64url");
+    }
 
     const result = await gmail.users.messages.send({
       userId: "me",

@@ -29,14 +29,5 @@
         "EXPO_PUBLIC_API_URL": "https://YOUR-REPLIT-APP.replit.app"
       }
     }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
-      }
-    }
   }
 }

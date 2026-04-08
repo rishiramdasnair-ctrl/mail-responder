@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 
 const API_BASE = (() => {
@@ -12,17 +13,19 @@ const API_BASE = (() => {
 export function useApiClient() {
   const { getToken } = useAuth();
 
-  const authHeaders = async (): Promise<Record<string, string>> => {
+  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken();
     return {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
-  };
+  }, [getToken]);
+
+  const getTokenStable = useCallback(async () => getToken(), [getToken]);
 
   return {
     apiBaseUrl: API_BASE,
     authHeaders,
-    getToken: async () => getToken(),
+    getToken: getTokenStable,
   };
 }

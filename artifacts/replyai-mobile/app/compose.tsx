@@ -571,24 +571,6 @@ export default function ComposeScreen() {
       color: colors.mutedForeground,
       marginTop: 1,
     },
-    accountSection: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    accountLabel: {
-      fontSize: 12,
-      color: colors.mutedForeground,
-      fontFamily: "Inter_500Medium",
-      marginBottom: 8,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-    },
-    accountScroll: {
-      flexDirection: "row",
-      gap: 8,
-    },
     accountPill: {
       paddingHorizontal: 12,
       paddingVertical: 6,
@@ -659,25 +641,28 @@ export default function ComposeScreen() {
           showsVerticalScrollIndicator={false}
         >
           {accountsLoaded && accounts.length > 0 && (
-            <View style={styles.accountSection}>
-              <Text style={styles.accountLabel}>From</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountScroll}>
-                {accounts.map((acct) => (
-                  <TouchableOpacity
-                    key={acct.email}
-                    style={[styles.accountPill, selectedAccount === acct.email && styles.accountPillActive]}
-                    onPress={() => handleAccountChange(acct.email)}
-                    activeOpacity={accounts.length > 1 ? 0.7 : 1}
-                  >
-                    <Text
-                      style={[styles.accountPillText, selectedAccount === acct.email && styles.accountPillTextActive]}
-                      numberOfLines={1}
+            <View style={styles.fieldRow}>
+              <View style={styles.fieldLabelRow}>
+                <Text style={styles.fieldLabel}>From</Text>
+                <View style={[styles.fieldInputArea, { flexDirection: "row", flexWrap: "wrap", gap: 6 }]}>
+                  {accounts.map((acct) => (
+                    <TouchableOpacity
+                      key={acct.email}
+                      style={[styles.accountPill, selectedAccount === acct.email && styles.accountPillActive]}
+                      onPress={() => handleAccountChange(acct.email)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                     >
-                      {acct.email}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                      <Text
+                        style={[styles.accountPillText, selectedAccount === acct.email && styles.accountPillTextActive]}
+                        numberOfLines={1}
+                      >
+                        {acct.email}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
             </View>
           )}
 

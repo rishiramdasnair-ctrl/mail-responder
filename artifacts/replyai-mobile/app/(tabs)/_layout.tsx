@@ -7,21 +7,22 @@ import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { useInboxSheet } from "@/contexts/InboxSheetContext";
 
 function NativeTabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "tray", selected: "tray.fill" }} />
-        <Label>Inbox</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="calendar">
-        <Icon sf={{ default: "calendar", selected: "calendar" }} />
-        <Label>Calendar</Label>
+        <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
+        <Label>Profile</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="agent">
         <Icon sf={{ default: "sparkles", selected: "sparkles" }} />
         <Label>Agent</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="calendar">
+        <Icon sf={{ default: "calendar", selected: "calendar" }} />
+        <Label>Calendar</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -33,6 +34,7 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const { emitOpenAccountSheet } = useInboxSheet();
 
   return (
     <Tabs
@@ -65,12 +67,29 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Inbox",
+          title: "Profile",
           tabBarIcon: ({ focused }) =>
             isIOS ? (
-              <SymbolView name="tray" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
+              <SymbolView name={focused ? "person.circle.fill" : "person.circle"} tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
             ) : (
-              <Feather name="inbox" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
+              <Feather name="user" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
+            ),
+        }}
+        listeners={{
+          tabPress: () => {
+            emitOpenAccountSheet();
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="agent"
+        options={{
+          title: "Agent",
+          tabBarIcon: ({ focused }) =>
+            isIOS ? (
+              <SymbolView name="sparkles" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
+            ) : (
+              <Feather name="zap" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
             ),
         }}
       />
@@ -83,18 +102,6 @@ function ClassicTabLayout() {
               <SymbolView name="calendar" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
             ) : (
               <Feather name="calendar" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
-            ),
-        }}
-      />
-      <Tabs.Screen
-        name="agent"
-        options={{
-          title: "Agent",
-          tabBarIcon: ({ focused }) =>
-            isIOS ? (
-              <SymbolView name="sparkles" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
-            ) : (
-              <Feather name="zap" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
             ),
         }}
       />

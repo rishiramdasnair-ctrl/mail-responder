@@ -19,6 +19,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { InboxSheetProvider } from "@/contexts/InboxSheetContext";
 import { usePushToken } from "@/hooks/usePushToken";
 
 SplashScreen.preventAutoHideAsync();
@@ -119,17 +120,19 @@ export default function RootLayout() {
       <ClerkLoaded>
         <SafeAreaProvider>
           <ThemeProvider>
-            <ErrorBoundary>
-              <QueryClientProvider client={queryClient}>
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                  <KeyboardProvider>
-                    <ToastProvider>
-                      <RootLayoutNav />
-                    </ToastProvider>
-                  </KeyboardProvider>
-                </GestureHandlerRootView>
-              </QueryClientProvider>
-            </ErrorBoundary>
+            <InboxSheetProvider>
+              <ErrorBoundary>
+                <QueryClientProvider client={queryClient}>
+                  <GestureHandlerRootView style={{ flex: 1 }}>
+                    <KeyboardProvider>
+                      <ToastProvider>
+                        <RootLayoutNav />
+                      </ToastProvider>
+                    </KeyboardProvider>
+                  </GestureHandlerRootView>
+                </QueryClientProvider>
+              </ErrorBoundary>
+            </InboxSheetProvider>
           </ThemeProvider>
         </SafeAreaProvider>
       </ClerkLoaded>

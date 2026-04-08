@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useGmailAccounts } from "@/hooks/useGmailAccounts";
 import { useGmailCategories } from "@/hooks/useGmailCategories";
+import { useInboxSheet } from "@/contexts/InboxSheetContext";
 
 const PAGE_SIZE = 50;
 
@@ -47,8 +48,17 @@ export default function InboxScreen() {
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
   const [activeFolder, setActiveFolder] = useState<"INBOX" | "STARRED" | "TRASH">("INBOX");
   const [folderPickerVisible, setFolderPickerVisible] = useState(false);
+  const [accountSheetVisible, setAccountSheetVisible] = useState(false);
   const { categories } = useGmailCategories();
   const [activeCategory, setActiveCategory] = useState<string>("All");
+  const { subscribeOpenAccountSheet } = useInboxSheet();
+
+  useEffect(() => {
+    const unsub = subscribeOpenAccountSheet(() => {
+      setAccountSheetVisible(true);
+    });
+    return unsub;
+  }, [subscribeOpenAccountSheet]);
 
   const categoryLabel = activeCategory !== "All" ? `ReplyAI/${activeCategory}` : null;
 
@@ -59,7 +69,6 @@ export default function InboxScreen() {
       const isAllAccounts = selectedAccount === "all";
 
       if (isAllAccounts && activeFolder === "INBOX") {
-        // All-accounts mode: always use priority-inbox (supports ?label= for category filtering)
         const params = new URLSearchParams({
           maxResults: String(PAGE_SIZE),
           ...(token ? { pageToken: token } : {}),
@@ -74,7 +83,6 @@ export default function InboxScreen() {
         return res.json() as Promise<InboxPage>;
       }
 
-      // Single-account mode or non-inbox folder
       const label = categoryLabel || activeFolder;
       const params = new URLSearchParams({
         maxResults: String(PAGE_SIZE),
@@ -110,6 +118,24 @@ export default function InboxScreen() {
     getNextPageParam: (last) => last.nextPageToken ?? undefined,
     staleTime: 2 * 60_000,
   });
+
+  // Auto-classify on inbox load (silently in background)
+  const hasAutoClassified = useRef(false);
+  useEffect(() => {
+    if (hasAutoClassified.current) return;
+    hasAutoClassified.current = true;
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        await fetch(`${apiBaseUrl}/api/gmail/categories/classify-inbox`, {
+          method: "POST",
+          headers,
+        });
+      } catch {
+        // silent - classification failure should not surface to user
+      }
+    })();
+  }, [apiBaseUrl, authHeaders]);
 
   const allThreads = data?.pages.flatMap((p) => p.threads) ?? [];
   const visibleThreads = selectedAccount === "all"
@@ -313,6 +339,10 @@ export default function InboxScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
+  const enabledCategories = categories.filter(c => c.enabled);
+  const showCategoryTabs = activeFolder === "INBOX" && enabledCategories.length > 0;
+  const categoryTabItems = ["All", ...enabledCategories.map(c => c.category)];
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -320,16 +350,17 @@ export default function InboxScreen() {
     },
     header: {
       paddingTop: topPad + 8,
-      paddingBottom: 12,
+      paddingBottom: 0,
       paddingHorizontal: 16,
       backgroundColor: colors.background,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
     },
     headerRow: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      paddingBottom: 12,
+      borderBottomWidth: showCategoryTabs ? 0 : StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     title: {
       fontSize: 22,
@@ -344,20 +375,13 @@ export default function InboxScreen() {
     iconBtn: {
       padding: 6,
     },
-    profileIconBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     searchBar: {
       flexDirection: "row",
       alignItems: "center",
       backgroundColor: colors.muted,
       borderRadius: 12,
-      marginTop: 12,
+      marginTop: 0,
+      marginBottom: 12,
       paddingHorizontal: 12,
       gap: 8,
     },
@@ -431,7 +455,7 @@ export default function InboxScreen() {
       fontFamily: "Inter_600SemiBold",
     },
     accountPillsScroll: {
-      marginTop: 10,
+      marginBottom: 10,
     },
     accountPillsRow: {
       flexDirection: "row",
@@ -463,6 +487,31 @@ export default function InboxScreen() {
       alignItems: "center",
       gap: 4,
     },
+    categoryTabsRow: {
+      flexDirection: "row",
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    categoryTab: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 10,
+      paddingHorizontal: 4,
+      borderBottomWidth: 2,
+      borderBottomColor: "transparent",
+    },
+    categoryTabActive: {
+      borderBottomColor: colors.foreground,
+    },
+    categoryTabText: {
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+    },
+    categoryTabTextActive: {
+      fontFamily: "Inter_600SemiBold",
+      color: colors.foreground,
+    },
   });
 
   const unreadCount = visibleThreads.filter((t) => t.isUnread).length;
@@ -490,6 +539,8 @@ export default function InboxScreen() {
     );
   };
 
+  const headerTitle = activeFolder === "STARRED" ? "Starred" : activeFolder === "TRASH" ? "Trash" : null;
+
   if (isLoading && !data) {
     return (
       <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
@@ -504,7 +555,13 @@ export default function InboxScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Inbox</Text>
+          <View style={styles.headerRow}>
+            {headerTitle ? (
+              <Text style={styles.title}>{headerTitle}</Text>
+            ) : (
+              <Text style={[styles.title, { color: colors.foreground }]}>ReplyAI</Text>
+            )}
+          </View>
         </View>
         <View style={styles.errorContainer}>
           <Feather name={isNotConnected ? "mail" : "wifi-off"} size={48} color={colors.border} />
@@ -551,32 +608,55 @@ export default function InboxScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Pressable
-            style={styles.folderPickerBtn}
-            onPress={() => {
-              if (Platform.OS === "ios") {
-                ActionSheetIOS.showActionSheetWithOptions(
-                  { options: ["Inbox", "Starred", "Trash", "Cancel"], cancelButtonIndex: 3 },
-                  (idx) => {
-                    if (idx === 0) { setActiveFolder("INBOX"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
-                    if (idx === 1) { setActiveFolder("STARRED"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
-                    if (idx === 2) { setActiveFolder("TRASH"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
-                  }
-                );
-              } else {
-                setFolderPickerVisible(true);
-              }
-            }}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
-          >
-            <Text style={styles.title}>{activeFolder === "STARRED" ? "Starred" : activeFolder === "TRASH" ? "Trash" : "Inbox"}</Text>
-            <Feather name="chevron-down" size={18} color={colors.mutedForeground} style={{ marginTop: 2 }} />
-            {unreadCount > 0 && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadText}>{unreadCount}</Text>
-              </View>
-            )}
-          </Pressable>
+          {headerTitle ? (
+            <Pressable
+              style={styles.folderPickerBtn}
+              onPress={() => {
+                if (Platform.OS === "ios") {
+                  ActionSheetIOS.showActionSheetWithOptions(
+                    { options: ["Inbox", "Starred", "Trash", "Cancel"], cancelButtonIndex: 3 },
+                    (idx) => {
+                      if (idx === 0) { setActiveFolder("INBOX"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                      if (idx === 1) { setActiveFolder("STARRED"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                      if (idx === 2) { setActiveFolder("TRASH"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                    }
+                  );
+                } else {
+                  setFolderPickerVisible(true);
+                }
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+            >
+              <Text style={styles.title}>{headerTitle}</Text>
+              <Feather name="chevron-down" size={18} color={colors.mutedForeground} style={{ marginTop: 2 }} />
+            </Pressable>
+          ) : (
+            <Pressable
+              style={styles.folderPickerBtn}
+              onPress={() => {
+                if (Platform.OS === "ios") {
+                  ActionSheetIOS.showActionSheetWithOptions(
+                    { options: ["Inbox", "Starred", "Trash", "Cancel"], cancelButtonIndex: 3 },
+                    (idx) => {
+                      if (idx === 0) { setActiveFolder("INBOX"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                      if (idx === 1) { setActiveFolder("STARRED"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                      if (idx === 2) { setActiveFolder("TRASH"); setActiveQuery(""); setSearchQuery(""); setActiveCategory("All"); }
+                    }
+                  );
+                } else {
+                  setFolderPickerVisible(true);
+                }
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+            >
+              <Text style={styles.title}>ReplyAI</Text>
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>{unreadCount}</Text>
+                </View>
+              )}
+            </Pressable>
+          )}
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.iconBtn}
@@ -597,12 +677,10 @@ export default function InboxScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => router.push("/settings")}
-              accessibilityLabel="Profile and settings"
+              onPress={() => setAccountSheetVisible(true)}
+              accessibilityLabel="Accounts and settings"
             >
-              <View style={styles.profileIconBtn}>
-                <Feather name="user" size={18} color={colors.foreground} />
-              </View>
+              <Feather name="menu" size={20} color={colors.foreground} />
             </TouchableOpacity>
           </View>
         </View>
@@ -655,28 +733,27 @@ export default function InboxScreen() {
           </ScrollView>
         )}
 
-        {activeFolder === "INBOX" && categories.filter(c => c.enabled).length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.accountPillsRow, { paddingTop: 8 }]}
-            style={styles.accountPillsScroll}
-          >
-            {["All", ...categories.filter(c => c.enabled).map(c => c.category)].map((cat) => {
+        {showCategoryTabs && (
+          <View style={styles.categoryTabsRow}>
+            {categoryTabItems.map((cat) => {
               const isActive = activeCategory === cat;
               return (
                 <TouchableOpacity
                   key={cat}
-                  style={[styles.accountPill, isActive && styles.accountPillActive]}
+                  style={[styles.categoryTab, isActive && styles.categoryTabActive]}
                   onPress={() => setActiveCategory(cat)}
+                  activeOpacity={0.7}
                 >
-                  <Text style={[styles.accountPillText, isActive && styles.accountPillTextActive]} numberOfLines={1}>
+                  <Text
+                    style={[styles.categoryTabText, isActive && styles.categoryTabTextActive]}
+                    numberOfLines={1}
+                  >
                     {cat}
                   </Text>
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         )}
       </View>
 
@@ -698,6 +775,74 @@ export default function InboxScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Account switcher + Settings bottom sheet */}
+      <Modal visible={accountSheetVisible} transparent animationType="slide" onRequestClose={() => setAccountSheetVisible(false)}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
+          activeOpacity={1}
+          onPress={() => setAccountSheetVisible(false)}
+        >
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12, paddingBottom: insets.bottom + 24, paddingHorizontal: 20 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: "center", marginBottom: 20 }} />
+            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>Accounts</Text>
+            {accounts.length === 0 ? (
+              <Text style={{ fontSize: 14, color: colors.mutedForeground, fontFamily: "Inter_400Regular", marginBottom: 8 }}>No accounts connected</Text>
+            ) : (
+              accounts.map((acct) => {
+                const isActive = selectedAccount === acct.email;
+                return (
+                  <TouchableOpacity
+                    key={acct.email}
+                    style={{ flexDirection: "row", alignItems: "center", paddingVertical: 13, gap: 14 }}
+                    onPress={() => { setSelectedAccount(acct.email); setAccountSheetVisible(false); }}
+                  >
+                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: colors.foreground }}>
+                        {acct.email.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontFamily: isActive ? "Inter_600SemiBold" : "Inter_400Regular", color: colors.foreground }} numberOfLines={1}>
+                        {acct.email}
+                      </Text>
+                      {acct.isPrimary && (
+                        <Text style={{ fontSize: 12, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>Primary</Text>
+                      )}
+                    </View>
+                    {isActive && <Feather name="check" size={16} color={colors.foreground} />}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+            {accounts.length > 1 && (
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", paddingVertical: 13, gap: 14 }}
+                onPress={() => { setSelectedAccount("all"); setAccountSheetVisible(false); }}
+              >
+                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" }}>
+                  <Feather name="layers" size={16} color={colors.foreground} />
+                </View>
+                <Text style={{ fontSize: 15, fontFamily: selectedAccount === "all" ? "Inter_600SemiBold" : "Inter_400Regular", color: colors.foreground }}>
+                  All accounts
+                </Text>
+                {selectedAccount === "all" && <Feather name="check" size={16} color={colors.foreground} style={{ marginLeft: "auto" }} />}
+              </TouchableOpacity>
+            )}
+            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: 12 }} />
+            <TouchableOpacity
+              style={{ flexDirection: "row", alignItems: "center", paddingVertical: 13, gap: 14 }}
+              onPress={() => { setAccountSheetVisible(false); router.push("/settings"); }}
+            >
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" }}>
+                <Feather name="settings" size={16} color={colors.foreground} />
+              </View>
+              <Text style={{ fontSize: 15, fontFamily: "Inter_400Regular", color: colors.foreground }}>Settings</Text>
+              <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginLeft: "auto" }} />
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -736,6 +881,13 @@ export default function InboxScreen() {
             refreshing={isRefetching}
             onRefresh={() => {
               qc.resetQueries({ queryKey: ["priority-inbox", activeQuery, activeFolder, activeCategory] });
+              // Re-classify on manual refresh
+              authHeaders().then(headers => {
+                fetch(`${apiBaseUrl}/api/gmail/categories/classify-inbox`, {
+                  method: "POST",
+                  headers,
+                }).catch(() => {});
+              });
             }}
             tintColor={colors.foreground}
           />

@@ -9,6 +9,9 @@ import {
   RefreshControl,
   Platform,
   ScrollView,
+  PanResponder,
+  Animated,
+  Dimensions,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
@@ -32,6 +35,7 @@ interface CalendarEvent {
   attendees: Array<{ email: string; name: string; responseStatus: string }>;
   htmlLink: string | null;
   description: string | null;
+  calendarAccount?: string;
 }
 
 function toLocalDate(iso: string): Date {
@@ -65,25 +69,22 @@ function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-type Section = { dateKey: string; events: CalendarEvent[] };
-
-type ListItem =
-  | { type: "header"; sectionKey: string }
-  | { type: "event"; event: CalendarEvent; isLast: boolean };
-
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAY_ABBREVS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-function formatSectionHeader(dk: string): { dayNum: string; weekday: string } {
-  const d = toLocalDate(dk);
-  return {
-    dayNum: String(d.getDate()).padStart(2, "0"),
-    weekday: WEEKDAYS[d.getDay()],
-  };
+function getWeekSunday(baseDate: Date, weekOffset: number): Date {
+  const d = new Date(baseDate);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + weekOffset * 7);
+  const dow = d.getDay();
+  d.setDate(d.getDate() - dow);
+  return d;
 }
 
-function formatTodayHeader(d: Date): string {
-  return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
 }
 
 function getInitials(name: string, email: string): string {
@@ -94,32 +95,28 @@ function getInitials(name: string, email: string): string {
 }
 
 const ATTENDEE_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6"];
+function getAttendeeColor(i: number) { return ATTENDEE_COLORS[i % ATTENDEE_COLORS.length]; }
 
-function getAttendeeColor(index: number): string {
-  return ATTENDEE_COLORS[index % ATTENDEE_COLORS.length];
-}
-
-function buildDateStrip(today: Date): Array<{ date: Date; key: string }> {
-  const strip: Array<{ date: Date; key: string }> = [];
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    strip.push({ date: d, key: dateKey(d) });
-  }
-  return strip;
-}
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 
 export default function CalendarScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const listRef = useRef<FlatList<ListItem>>(null);
+  const listRef = useRef<FlatList<CalendarEvent>>(null);
   const { apiBaseUrl, authHeaders } = useApiClient();
 
-  const today = new Date();
-  const [selectedDateKey, setSelectedDateKey] = useState<string>(dateKey(today));
+  const todayBase = useRef(new Date()).current;
+  todayBase.setHours(0, 0, 0, 0);
+  const todayKey = dateKey(todayBase);
+
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
   const [accounts, setAccounts] = useState<GmailAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
+
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     (async () => {
@@ -134,13 +131,14 @@ export default function CalendarScreen() {
     })();
   }, [apiBaseUrl, authHeaders]);
 
-  const startStr = dateKey(today);
-  const endDate = new Date(today);
-  endDate.setDate(endDate.getDate() + 30);
-  const endStr = dateKey(endDate);
+  const weekSunday = useMemo(() => getWeekSunday(todayBase, weekOffset), [weekOffset]);
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekSunday, i)), [weekSunday]);
+
+  const startStr = dateKey(weekSunday);
+  const endStr = dateKey(addDays(weekSunday, 6));
 
   const { data, isLoading, isError, error, isRefetching, refetch } = useQuery<{ events: CalendarEvent[] }>({
-    queryKey: ["calendar-range", startStr, endStr, selectedAccount],
+    queryKey: ["calendar-week", startStr, endStr, selectedAccount],
     queryFn: async () => {
       const headers = await authHeaders();
       const params = new URLSearchParams({ start: startStr, end: endStr });
@@ -158,88 +156,177 @@ export default function CalendarScreen() {
     staleTime: 60_000,
   });
 
-  const sections = useMemo<Section[]>(() => {
-    const events = data?.events ?? [];
+  const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const evt of events) {
+    for (const evt of data?.events ?? []) {
       const dk = dateKey(toLocalDate(evt.start));
       if (!map.has(dk)) map.set(dk, []);
       map.get(dk)!.push(evt);
     }
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([dk, evts]) => ({
-        dateKey: dk,
-        events: evts.sort(
-          (a, b) => toLocalDate(a.start).getTime() - toLocalDate(b.start).getTime()
-        ),
-      }));
+    return map;
   }, [data]);
 
-  const allItems = useMemo<ListItem[]>(() => {
-    const items: ListItem[] = [];
-    for (const sec of sections) {
-      items.push({ type: "header", sectionKey: sec.dateKey });
-      sec.events.forEach((evt, idx) => {
-        items.push({ type: "event", event: evt, isLast: idx === sec.events.length - 1 });
-      });
-    }
-    return items;
-  }, [sections]);
-
-  const sectionIndexMap = useMemo<Record<string, number>>(() => {
-    const map: Record<string, number> = {};
-    allItems.forEach((item, idx) => {
-      if (item.type === "header") {
-        map[item.sectionKey] = idx;
-      }
+  const selectedDayEvents = useMemo(() => {
+    const evts = eventsByDay.get(selectedDateKey) ?? [];
+    return [...evts].sort((a, b) => {
+      if (a.isAllDay && !b.isAllDay) return -1;
+      if (!a.isAllDay && b.isAllDay) return 1;
+      return toLocalDate(a.start).getTime() - toLocalDate(b.start).getTime();
     });
-    return map;
-  }, [allItems]);
+  }, [eventsByDay, selectedDateKey]);
 
-  const todayKey = dateKey(today);
-  const dateStrip = useMemo(() => buildDateStrip(today), [todayKey]);
+  const animateWeekChange = useCallback((direction: number, newOffset: number) => {
+    slideAnim.setValue(direction * SCREEN_WIDTH);
+    setWeekOffset(newOffset);
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 70,
+      friction: 12,
+    }).start();
+  }, [slideAnim]);
 
-  const handleDateSelect = useCallback((key: string) => {
-    setSelectedDateKey(key);
-    const idx = sectionIndexMap[key];
-    if (idx !== undefined && listRef.current) {
-      listRef.current.scrollToIndex({ index: idx, animated: true, viewOffset: 0 });
-    }
-  }, [sectionIndexMap]);
+  const goToPrevWeek = useCallback(() => {
+    const newOffset = weekOffset - 1;
+    const newSunday = getWeekSunday(todayBase, newOffset);
+    const newSat = addDays(newSunday, 6);
+    setSelectedDateKey(dateKey(newSat));
+    animateWeekChange(1, newOffset);
+  }, [weekOffset, animateWeekChange]);
+
+  const goToNextWeek = useCallback(() => {
+    const newOffset = weekOffset + 1;
+    const newSunday = getWeekSunday(todayBase, newOffset);
+    setSelectedDateKey(dateKey(newSunday));
+    animateWeekChange(-1, newOffset);
+  }, [weekOffset, animateWeekChange]);
+
+  const weekOffsetRef = useRef(weekOffset);
+  weekOffsetRef.current = weekOffset;
+
+  const swipeHandlers = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) =>
+      Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 12,
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dx < -SWIPE_THRESHOLD) {
+        const cur = weekOffsetRef.current;
+        const newOff = cur + 1;
+        const newSunday = getWeekSunday(todayBase, newOff);
+        setSelectedDateKey(dateKey(newSunday));
+        slideAnim.setValue(-SCREEN_WIDTH);
+        setWeekOffset(newOff);
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }).start();
+      } else if (gs.dx > SWIPE_THRESHOLD) {
+        const cur = weekOffsetRef.current;
+        const newOff = cur - 1;
+        const newSunday = getWeekSunday(todayBase, newOff);
+        const newSat = addDays(newSunday, 6);
+        setSelectedDateKey(dateKey(newSat));
+        slideAnim.setValue(SCREEN_WIDTH);
+        setWeekOffset(newOff);
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }).start();
+      }
+    },
+  }), []);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 84 : insets.bottom;
+
+  const monthLabel = useMemo(() => {
+    const firstDay = weekDays[0];
+    const lastDay = weekDays[6];
+    if (firstDay.getMonth() === lastDay.getMonth()) {
+      return `${MONTHS[firstDay.getMonth()]} ${firstDay.getFullYear()}`;
+    }
+    return `${MONTHS[firstDay.getMonth()].slice(0, 3)} – ${MONTHS[lastDay.getMonth()].slice(0, 3)} ${lastDay.getFullYear()}`;
+  }, [weekDays]);
 
   const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     headerWrap: {
-      paddingTop: topPad + 8,
-      paddingBottom: 10,
-      paddingHorizontal: 20,
+      paddingTop: topPad + 4,
+      paddingBottom: 8,
+      paddingHorizontal: 16,
       backgroundColor: colors.background,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     headerRow: {
       flexDirection: "row",
-      alignItems: "flex-end",
+      alignItems: "center",
       justifyContent: "space-between",
+      marginBottom: 10,
     },
-    headerDateText: {
-      fontSize: 22,
+    monthLabel: {
+      fontSize: 17,
       fontFamily: "Inter_700Bold",
       color: colors.foreground,
-      letterSpacing: -0.4,
+      letterSpacing: -0.3,
+    },
+    headerRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    navBtn: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 16,
+      backgroundColor: colors.muted,
     },
     newEventBtn: {
-      paddingVertical: 4,
-      paddingHorizontal: 2,
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: colors.muted,
     },
     newEventText: {
-      fontSize: 15,
+      fontSize: 13,
       fontFamily: "Inter_500Medium",
-      color: colors.primary,
+      color: colors.foreground,
+    },
+    weekStrip: {
+      flexDirection: "row",
+      paddingBottom: 4,
+    },
+    dayCell: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 4,
+    },
+    dayAbbrev: {
+      fontSize: 10,
+      fontFamily: "Inter_500Medium",
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    dayNumWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    dayNum: {
+      fontSize: 15,
+      fontFamily: "Inter_600SemiBold",
+    },
+    todayDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      marginTop: 2,
+    },
+    eventDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      marginTop: 2,
     },
     accountPillsScroll: {
       backgroundColor: colors.background,
@@ -265,57 +352,29 @@ export default function CalendarScreen() {
       fontSize: 13,
       fontFamily: "Inter_500Medium",
     },
-    dateStripWrap: {
-      paddingBottom: 12,
-      paddingHorizontal: 16,
-      backgroundColor: colors.background,
+    eventsArea: {
+      flex: 1,
+      overflow: "hidden",
     },
-    dateCell: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      marginRight: 6,
-      borderRadius: 20,
-      minWidth: 44,
-    },
-    dateCellDayLabel: {
-      fontSize: 10,
-      fontFamily: "Inter_500Medium",
-      letterSpacing: 0.2,
-      marginBottom: 4,
-    },
-    dateCellNum: {
-      fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
-    },
-    dateCellTodayDot: {
-      width: 4,
-      height: 4,
-      borderRadius: 2,
-      marginTop: 3,
-    },
-    sectionHeaderWrap: {
-      paddingTop: 32,
-      paddingBottom: 10,
-      paddingLeft: 20,
-      paddingRight: 20,
+    dayHeaderWrap: {
+      paddingTop: 20,
+      paddingBottom: 8,
+      paddingHorizontal: 20,
       flexDirection: "row",
       alignItems: "baseline",
       gap: 8,
     },
-    sectionDayNum: {
-      fontSize: 42,
+    dayHeaderNum: {
+      fontSize: 38,
       fontFamily: "Inter_700Bold",
       color: colors.foreground,
       letterSpacing: -1,
-      lineHeight: 46,
+      lineHeight: 42,
     },
-    sectionWeekday: {
+    dayHeaderWeekday: {
       fontSize: 16,
       fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
-      letterSpacing: 0,
     },
     timelineRow: {
       flexDirection: "row",
@@ -397,6 +456,7 @@ export default function CalendarScreen() {
     attendeeRow: {
       flexDirection: "row",
       marginTop: 8,
+      alignItems: "center",
     },
     attendeeCircle: {
       width: 22,
@@ -409,217 +469,147 @@ export default function CalendarScreen() {
     },
     attendeeCircleText: {
       fontSize: 8,
-      fontFamily: "Inter_700Bold",
-      color: "#ffffff",
+      fontFamily: "Inter_600SemiBold",
+      color: "#fff",
     },
     emptyContainer: {
+      flex: 1,
       alignItems: "center",
-      paddingHorizontal: 32,
-      paddingTop: 80,
+      justifyContent: "center",
+      paddingBottom: 80,
+      gap: 10,
     },
     emptyTitle: {
       fontSize: 17,
       fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
-      marginTop: 20,
-      marginBottom: 8,
-      letterSpacing: -0.2,
+      textAlign: "center",
     },
     emptySubtitle: {
       fontSize: 14,
+      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
       textAlign: "center",
-      fontFamily: "Inter_400Regular",
-      lineHeight: 22,
+      paddingHorizontal: 40,
     },
     retryBtn: {
-      marginTop: 20,
+      marginTop: 8,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 10,
+      backgroundColor: colors.foreground,
+    },
+    retryText: {
+      fontSize: 14,
+      fontFamily: "Inter_600SemiBold",
+      color: colors.background,
+    },
+    connectBtn: {
+      marginTop: 8,
       paddingHorizontal: 20,
       paddingVertical: 10,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.border,
     },
-    retryText: {
-      fontSize: 13,
-      color: colors.foreground,
+    connectText: {
+      fontSize: 14,
       fontFamily: "Inter_500Medium",
+      color: colors.foreground,
     },
+    emptyDayContainer: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingBottom: 60,
+      gap: 6,
+    },
+    emptyDayText: {
+      fontSize: 15,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+    },
+    listFooter: { height: bottomPad + 40 },
   });
 
-  const renderDateStrip = () => (
-    <View style={s.dateStripWrap}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingRight: 4 }}
-      >
-        {dateStrip.map(({ date, key }) => {
-          const isToday = key === todayKey;
-          const isSelected = key === selectedDateKey;
-          const hasSectionEvents = sectionIndexMap[key] !== undefined;
-          const dayLabel = WEEKDAYS[date.getDay()].slice(0, 1);
-          const dayNum = date.getDate();
+  const renderWeekStrip = () => (
+    <View style={s.weekStrip}>
+      {weekDays.map((day, i) => {
+        const dk = dateKey(day);
+        const isToday = dk === todayKey;
+        const isSelected = dk === selectedDateKey;
+        const hasEvents = (eventsByDay.get(dk)?.length ?? 0) > 0;
 
-          return (
-            <TouchableOpacity
-              key={key}
+        return (
+          <TouchableOpacity
+            key={dk}
+            style={s.dayCell}
+            onPress={() => setSelectedDateKey(dk)}
+            activeOpacity={0.7}
+          >
+            <Text
               style={[
-                s.dateCell,
-                isSelected && {
-                  backgroundColor: colors.foreground,
-                },
+                s.dayAbbrev,
+                { color: isSelected ? colors.primary : colors.mutedForeground },
               ]}
-              onPress={() => handleDateSelect(key)}
-              activeOpacity={0.7}
+            >
+              {DAY_ABBREVS[i]}
+            </Text>
+            <View
+              style={[
+                s.dayNumWrap,
+                isSelected && { backgroundColor: colors.foreground },
+                !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.foreground },
+              ]}
             >
               <Text
                 style={[
-                  s.dateCellDayLabel,
-                  { color: isSelected ? colors.primaryForeground : colors.mutedForeground },
-                ]}
-              >
-                {dayLabel}
-              </Text>
-              <Text
-                style={[
-                  s.dateCellNum,
+                  s.dayNum,
                   {
                     color: isSelected
-                      ? colors.primaryForeground
+                      ? colors.background
                       : isToday
-                      ? colors.primary
+                      ? colors.foreground
                       : colors.foreground,
                   },
                 ]}
               >
-                {dayNum}
+                {day.getDate()}
               </Text>
-              {isToday && (
-                <View
-                  style={[
-                    s.dateCellTodayDot,
-                    {
-                      backgroundColor: isSelected ? colors.primaryForeground : colors.primary,
-                    },
-                  ]}
-                />
-              )}
-              {!isToday && hasSectionEvents && !isSelected && (
-                <View
-                  style={[
-                    s.dateCellTodayDot,
-                    { backgroundColor: colors.border },
-                  ]}
-                />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+            </View>
+            {isToday && !isSelected && (
+              <View style={[s.todayDot, { backgroundColor: colors.primary }]} />
+            )}
+            {!isToday && hasEvents && (
+              <View style={[s.eventDot, { backgroundColor: colors.border }]} />
+            )}
+            {isToday && !isSelected && !hasEvents && <View style={[s.todayDot, { opacity: 0 }]} />}
+            {(!isToday || isSelected) && !hasEvents && <View style={[s.eventDot, { opacity: 0 }]} />}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 
-  const renderTopHeader = () => (
-    <>
-      <View style={s.headerWrap}>
-        <View style={s.headerRow}>
-          <Text style={s.headerDateText}>{formatTodayHeader(today)}</Text>
-          <TouchableOpacity
-            style={s.newEventBtn}
-            onPress={() => router.push("/create-event")}
-            activeOpacity={0.7}
-          >
-            <Feather name="plus" size={16} color={colors.primary} />
-            <Text style={s.newEventText}>New Event</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      {accounts.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.accountPillsRow}
-          style={s.accountPillsScroll}
-        >
-          {[{ email: "all", isPrimary: false }, ...accounts].map((acct) => {
-            const isActive = selectedAccount === acct.email;
-            const label = acct.email === "all" ? "All" : acct.email;
-            return (
-              <TouchableOpacity
-                key={acct.email}
-                style={[
-                  s.accountPill,
-                  isActive && { backgroundColor: colors.foreground, borderColor: colors.foreground },
-                ]}
-                onPress={() => setSelectedAccount(acct.email)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    s.accountPillText,
-                    { color: isActive ? colors.background : colors.mutedForeground },
-                    isActive && { color: colors.background },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-    </>
-  );
-
-  const renderSectionHeader = (sectionKey: string) => {
-    const { dayNum, weekday } = formatSectionHeader(sectionKey);
-    return (
-      <View style={s.sectionHeaderWrap}>
-        <Text style={s.sectionDayNum}>{dayNum}</Text>
-        <Text style={s.sectionWeekday}>{weekday}</Text>
-      </View>
-    );
-  };
-
   const renderEvent = (evt: CalendarEvent, isLast: boolean) => {
     const past = isPastEvent(evt);
-    const dotColor = past ? colors.mutedForeground : colors.primary;
-    const opacity = past ? 0.4 : 1;
+    const dotColor = past ? colors.mutedForeground : colors.foreground;
+    const opacity = past ? 0.45 : 1;
     const timeStr = formatEventTime(evt);
 
     if (evt.isAllDay) {
       return (
         <TouchableOpacity
-          style={s.timelineRow}
-          activeOpacity={0.75}
+          key={evt.id}
           onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id } })}
+          activeOpacity={0.75}
+          style={{ paddingHorizontal: 20, marginBottom: isLast ? 0 : 10, opacity }}
         >
-          <View style={s.timelineLeft}>
-            {!isLast && <View style={s.timelineLineBottom} />}
-            <View style={[s.timelineDot, { backgroundColor: past ? colors.border : colors.primary, opacity }]} />
-          </View>
-          <View style={[s.eventContent, { opacity }]}>
-            <View
-              style={[
-                s.allDayStrip,
-                { backgroundColor: colors.muted + "cc" },
-              ]}
-            >
-              <Text style={[s.allDayTitle, { color: colors.foreground }]} numberOfLines={1}>
-                {evt.title}
-              </Text>
-              <Text style={[s.allDayTimeLabel, { color: colors.mutedForeground }]}>All day</Text>
-              {evt.location && (
-                <View style={[s.locationRow, { marginTop: 4 }]}>
-                  <Feather name="map-pin" size={10} color={colors.mutedForeground} />
-                  <Text style={s.locationText} numberOfLines={1}>
-                    {evt.location}
-                  </Text>
-                </View>
-              )}
-            </View>
+          <View style={[s.allDayStrip, { backgroundColor: colors.muted }]}>
+            <Text style={[s.allDayTitle, { color: colors.foreground }]} numberOfLines={2}>
+              {evt.title}
+            </Text>
+            <Text style={[s.allDayTimeLabel, { color: colors.mutedForeground }]}>All day</Text>
           </View>
         </TouchableOpacity>
       );
@@ -627,27 +617,24 @@ export default function CalendarScreen() {
 
     return (
       <TouchableOpacity
-        style={s.timelineRow}
-        activeOpacity={0.75}
+        key={evt.id}
         onPress={() => router.push({ pathname: "/event/[eventId]", params: { eventId: evt.id } })}
+        activeOpacity={0.75}
+        style={[s.timelineRow, { opacity }]}
       >
         <View style={s.timelineLeft}>
           {!isLast && <View style={s.timelineLineBottom} />}
-          <View style={[s.timelineDot, { backgroundColor: dotColor, opacity }]} />
+          <View style={[s.timelineDot, { backgroundColor: dotColor }]} />
         </View>
-        <View style={[s.eventContent, { opacity }]}>
-          <Text style={s.eventTitle} numberOfLines={2}>
-            {evt.title}
-          </Text>
+        <View style={s.eventContent}>
+          <Text style={s.eventTitle} numberOfLines={2}>{evt.title}</Text>
           <View style={s.timeChip}>
             <Text style={s.timeChipText}>{timeStr}</Text>
           </View>
           {evt.location && (
             <View style={s.locationRow}>
               <Feather name="map-pin" size={11} color={colors.mutedForeground} />
-              <Text style={s.locationText} numberOfLines={1}>
-                {evt.location}
-              </Text>
+              <Text style={s.locationText} numberOfLines={1}>{evt.location}</Text>
             </View>
           )}
           {evt.attendees.length > 0 && (
@@ -657,31 +644,14 @@ export default function CalendarScreen() {
                   key={i}
                   style={[
                     s.attendeeCircle,
-                    {
-                      backgroundColor: getAttendeeColor(i),
-                      marginLeft: i === 0 ? 0 : -6,
-                      zIndex: 5 - i,
-                    },
+                    { backgroundColor: getAttendeeColor(i), marginLeft: i === 0 ? 0 : -6, zIndex: 5 - i },
                   ]}
                 >
                   <Text style={s.attendeeCircleText}>{getInitials(a.name, a.email)}</Text>
                 </View>
               ))}
               {evt.attendees.length > 5 && (
-                <View
-                  style={[
-                    s.attendeeCircle,
-                    {
-                      backgroundColor: colors.muted,
-                      marginLeft: -6,
-                      zIndex: 0,
-                    },
-                  ]}
-                >
-                  <Text style={[s.attendeeCircleText, { color: colors.mutedForeground }]}>
-                    +{evt.attendees.length - 5}
-                  </Text>
-                </View>
+                <Text style={[s.timeChipText, { marginLeft: 6 }]}>+{evt.attendees.length - 5}</Text>
               )}
             </View>
           )}
@@ -690,24 +660,75 @@ export default function CalendarScreen() {
     );
   };
 
-  const renderItem = ({ item }: { item: ListItem }) => {
-    if (item.type === "header") {
-      return renderSectionHeader(item.sectionKey);
-    }
-    return renderEvent(item.event, item.isLast);
-  };
+  const selectedDay = toLocalDate(selectedDateKey);
+  const dayHeaderText = `${DAY_ABBREVS[selectedDay.getDay()].charAt(0) + DAY_ABBREVS[selectedDay.getDay()].slice(1).toLowerCase().replace(/^[A-Z]/, c => c)}`;
 
-  const renderListHeader = () => (
-    <>
-      {renderTopHeader()}
-      {renderDateStrip()}
-    </>
+  const renderDayHeader = () => (
+    <View style={s.dayHeaderWrap}>
+      <Text style={s.dayHeaderNum}>{selectedDay.getDate()}</Text>
+      <Text style={s.dayHeaderWeekday}>
+        {["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][selectedDay.getDay()]}
+      </Text>
+    </View>
   );
+
+  const header = (
+    <View style={s.headerWrap}>
+      <View style={s.headerRow}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity style={s.navBtn} onPress={goToPrevWeek} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="chevron-left" size={18} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={s.monthLabel}>{monthLabel}</Text>
+          <TouchableOpacity style={s.navBtn} onPress={goToNextWeek} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="chevron-right" size={18} color={colors.foreground} />
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={s.newEventBtn} onPress={() => router.push("/create-event")} activeOpacity={0.7}>
+          <Feather name="plus" size={14} color={colors.foreground} />
+          <Text style={s.newEventText}>New Event</Text>
+        </TouchableOpacity>
+      </View>
+      {renderWeekStrip()}
+    </View>
+  );
+
+  const accountPills = accounts.length > 1 ? (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={s.accountPillsRow}
+      style={s.accountPillsScroll}
+    >
+      {[{ email: "all", isPrimary: false }, ...accounts].map((acct) => {
+        const isActive = selectedAccount === acct.email;
+        return (
+          <TouchableOpacity
+            key={acct.email}
+            style={[s.accountPill, isActive && { backgroundColor: colors.foreground, borderColor: colors.foreground }]}
+            onPress={() => setSelectedAccount(acct.email)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[s.accountPillText, { color: isActive ? colors.background : colors.mutedForeground }]}
+              numberOfLines={1}
+            >
+              {acct.email === "all" ? "All" : acct.email}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  ) : null;
 
   if (isLoading) {
     return (
-      <View style={[s.container, { justifyContent: "center", alignItems: "center" }]}>
-        <ActivityIndicator color={colors.foreground} size="large" />
+      <View style={[s.container]}>
+        {header}
+        {accountPills}
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator color={colors.foreground} size="large" />
+        </View>
       </View>
     );
   }
@@ -720,8 +741,8 @@ export default function CalendarScreen() {
       error?.message?.includes("not connected");
     return (
       <View style={s.container}>
-        {renderTopHeader()}
-        {renderDateStrip()}
+        {header}
+        {accountPills}
         <View style={s.emptyContainer}>
           <Feather name="calendar" size={40} color={colors.border} />
           <Text style={s.emptyTitle}>
@@ -734,20 +755,13 @@ export default function CalendarScreen() {
           </Text>
           {isNotConnected ? (
             <Link href="/connect-gmail" asChild>
-              <TouchableOpacity
-                style={[
-                  s.retryBtn,
-                  { backgroundColor: colors.foreground, borderColor: colors.foreground },
-                ]}
-              >
-                <Text style={[s.retryText, { color: colors.primaryForeground }]}>
-                  Connect Gmail
-                </Text>
+              <TouchableOpacity style={s.connectBtn}>
+                <Text style={s.connectText}>Connect Gmail</Text>
               </TouchableOpacity>
             </Link>
           ) : (
             <TouchableOpacity style={s.retryBtn} onPress={() => refetch()}>
-              <Text style={s.retryText}>Try again</Text>
+              <Text style={s.retryText}>Retry</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -757,44 +771,37 @@ export default function CalendarScreen() {
 
   return (
     <View style={s.container}>
-      <FlatList
-        ref={listRef}
-        data={allItems}
-        keyExtractor={(item, i) =>
-          item.type === "header"
-            ? `header-${item.sectionKey}`
-            : `event-${item.event.id}-${i}`
-        }
-        renderItem={renderItem}
-        ListHeaderComponent={renderListHeader}
-        ListEmptyComponent={
-          <View style={s.emptyContainer}>
-            <Feather name="calendar" size={40} color={colors.border} />
-            <Text style={s.emptyTitle}>No upcoming events</Text>
-            <Text style={s.emptySubtitle}>
-              Your calendar is clear for the next 30 days.
-            </Text>
-          </View>
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={() => refetch()}
-            tintColor={colors.foreground}
-          />
-        }
-        onScrollToIndexFailed={(info) => {
-          const wait = new Promise((resolve) => setTimeout(resolve, 300));
-          wait.then(() => {
-            listRef.current?.scrollToIndex({
-              index: info.index,
-              animated: true,
-            });
-          });
-        }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
-      />
+      {header}
+      {accountPills}
+      <Animated.View
+        style={[s.eventsArea, { transform: [{ translateX: slideAnim }] }]}
+        {...swipeHandlers.panHandlers}
+      >
+        <FlatList
+          ref={listRef}
+          data={selectedDayEvents}
+          keyExtractor={(evt) => evt.id ?? Math.random().toString()}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => refetch()}
+              tintColor={colors.foreground}
+            />
+          }
+          ListHeaderComponent={renderDayHeader}
+          renderItem={({ item, index }) =>
+            renderEvent(item, index === selectedDayEvents.length - 1)
+          }
+          ListEmptyComponent={
+            <View style={s.emptyDayContainer}>
+              <Feather name="sun" size={28} color={colors.border} />
+              <Text style={s.emptyDayText}>No events today</Text>
+            </View>
+          }
+          ListFooterComponent={<View style={s.listFooter} />}
+          showsVerticalScrollIndicator={false}
+        />
+      </Animated.View>
     </View>
   );
 }

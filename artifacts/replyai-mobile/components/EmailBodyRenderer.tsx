@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, Platform, Dimensions } from "react-native";
 import { WebView } from "react-native-webview";
 
@@ -12,7 +12,7 @@ interface EmailBodyRendererProps {
 }
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
-const WEBVIEW_MIN_HEIGHT = Math.round(SCREEN_HEIGHT * 0.5);
+const FALLBACK_HEIGHT = Math.round(SCREEN_HEIGHT * 0.6);
 
 function buildHtmlDoc(html: string, bg: string, text: string, muted: string, border: string): string {
   return `<!DOCTYPE html>
@@ -37,7 +37,7 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       -webkit-text-size-adjust: 100%;
     }
     body {
-      padding: 12px 12px 20px 12px;
+      padding: 12px 12px 24px 12px;
     }
     .email-content-wrapper {
       max-width: 100%;
@@ -64,9 +64,7 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       word-break: break-word;
       max-width: 100% !important;
     }
-    * {
-      -webkit-text-size-adjust: none !important;
-    }
+    * { -webkit-text-size-adjust: none !important; }
     pre, code {
       white-space: pre-wrap;
       word-break: break-word;
@@ -76,29 +74,36 @@ function buildHtmlDoc(html: string, bg: string, text: string, muted: string, bor
       padding: 2px 4px;
       color: ${text} !important;
     }
-    pre {
-      padding: 12px;
-    }
+    pre { padding: 12px; }
     blockquote {
       margin: 8px 0;
       padding: 4px 12px;
       border-left: 3px solid ${border};
       color: ${muted} !important;
     }
-    blockquote p, blockquote div, blockquote span {
-      color: ${muted} !important;
-    }
-    hr {
-      border: none;
-      border-top: 1px solid ${border};
-      margin: 12px 0;
-    }
-    *[width] {
-      max-width: 100% !important;
-    }
+    blockquote p, blockquote div, blockquote span { color: ${muted} !important; }
+    hr { border: none; border-top: 1px solid ${border}; margin: 12px 0; }
+    *[width] { max-width: 100% !important; }
   </style>
 </head>
-<body><div class="email-content-wrapper">${html}</div></body>
+<body>
+  <div class="email-content-wrapper">${html}</div>
+  <script>
+    function reportHeight() {
+      var h = Math.max(
+        document.documentElement.scrollHeight,
+        document.body ? document.body.scrollHeight : 0
+      );
+      if (h > 0 && window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'height', height: h }));
+      }
+    }
+    document.addEventListener('DOMContentLoaded', reportHeight);
+    window.addEventListener('load', reportHeight);
+    setTimeout(reportHeight, 300);
+    setTimeout(reportHeight, 1000);
+  </script>
+</body>
 </html>`;
 }
 
@@ -110,42 +115,53 @@ export function EmailBodyRenderer({
   mutedColor = "#737373",
   borderColor = "#e5e5e5",
 }: EmailBodyRendererProps) {
+  const [webViewHeight, setWebViewHeight] = useState(FALLBACK_HEIGHT);
+
   if (bodyType === "html" && body.trim()) {
     const htmlDoc = buildHtmlDoc(body, backgroundColor, textColor, mutedColor, borderColor);
 
     return (
-      <View style={{ minHeight: WEBVIEW_MIN_HEIGHT, width: "100%" }}>
+      <View style={{ width: "100%", height: webViewHeight }}>
         <WebView
           source={{ html: htmlDoc }}
-          style={{ minHeight: WEBVIEW_MIN_HEIGHT, backgroundColor: "transparent" }}
-          scrollEnabled={true}
-          showsVerticalScrollIndicator={true}
+          style={{ width: "100%", height: webViewHeight, backgroundColor: "transparent" }}
+          scrollEnabled={false}
+          showsVerticalScrollIndicator={false}
           showsHorizontalScrollIndicator={false}
-          javaScriptEnabled={false}
+          javaScriptEnabled={true}
           domStorageEnabled={false}
-          originWhitelist={[]}
+          originWhitelist={["*"]}
           allowsInlineMediaPlayback={false}
           mediaPlaybackRequiresUserAction={true}
           scalesPageToFit={false}
+          onMessage={(e) => {
+            try {
+              const data = JSON.parse(e.nativeEvent.data);
+              if (data.type === "height" && typeof data.height === "number" && data.height > 20) {
+                setWebViewHeight(Math.max(data.height + 32, FALLBACK_HEIGHT));
+              }
+            } catch {}
+          }}
           onShouldStartLoadWithRequest={(req) => {
             if (req.navigationType === "click") return false;
-            return req.url === "about:blank" || req.url.startsWith("data:");
+            return (
+              req.url === "about:blank" ||
+              req.url.startsWith("data:") ||
+              req.url.startsWith("blob:")
+            );
           }}
         />
       </View>
     );
   }
 
-  // Plain text rendering
   const lines = (body || "").trim().split("\n");
   return (
     <View style={[styles.plainContainer, { backgroundColor }]}>
       {lines.map((line, i) => {
         const isQuote = line.startsWith(">");
         const isBlank = line.trim() === "";
-        if (isBlank) {
-          return <View key={i} style={styles.blankLine} />;
-        }
+        if (isBlank) return <View key={i} style={styles.blankLine} />;
         return (
           <Text
             key={i}
@@ -180,7 +196,5 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     opacity: 0.6,
   },
-  blankLine: {
-    height: 6,
-  },
+  blankLine: { height: 6 },
 });

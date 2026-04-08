@@ -130,7 +130,6 @@ function MessageBubble({
       justifyContent: "center",
     },
     bodyContainer: {
-      overflow: "hidden",
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },

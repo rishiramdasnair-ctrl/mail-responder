@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useCallback, useState } from "react";
+import React, { useMemo, useRef, useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,11 @@ import { Link, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
+
+interface GmailAccount {
+  email: string;
+  isPrimary: boolean;
+}
 
 interface CalendarEvent {
   id: string;
@@ -113,6 +118,21 @@ export default function CalendarScreen() {
 
   const today = new Date();
   const [selectedDateKey, setSelectedDateKey] = useState<string>(dateKey(today));
+  const [accounts, setAccounts] = useState<GmailAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<string>("all");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/gmail/accounts`, { headers });
+        if (res.ok) {
+          const d = (await res.json()) as { accounts: GmailAccount[] };
+          setAccounts(d.accounts);
+        }
+      } catch {}
+    })();
+  }, [apiBaseUrl, authHeaders]);
 
   const startStr = dateKey(today);
   const endDate = new Date(today);
@@ -120,10 +140,11 @@ export default function CalendarScreen() {
   const endStr = dateKey(endDate);
 
   const { data, isLoading, isError, error, isRefetching, refetch } = useQuery<{ events: CalendarEvent[] }>({
-    queryKey: ["calendar-range", startStr, endStr],
+    queryKey: ["calendar-range", startStr, endStr, selectedAccount],
     queryFn: async () => {
       const headers = await authHeaders();
       const params = new URLSearchParams({ start: startStr, end: endStr });
+      if (selectedAccount !== "all") params.set("account", selectedAccount);
       const res = await fetch(`${apiBaseUrl}/api/calendar/events?${params}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -219,6 +240,23 @@ export default function CalendarScreen() {
       fontSize: 15,
       fontFamily: "Inter_500Medium",
       color: colors.primary,
+    },
+    accountPillsRow: {
+      flexDirection: "row",
+      gap: 8,
+      paddingBottom: 2,
+    },
+    accountPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    accountPillText: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
     },
     dateStripWrap: {
       paddingBottom: 12,
@@ -488,6 +526,40 @@ export default function CalendarScreen() {
           <Text style={s.newEventText}>New Event</Text>
         </TouchableOpacity>
       </View>
+      {accounts.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.accountPillsRow}
+          style={{ marginTop: 8 }}
+        >
+          {[{ email: "all", isPrimary: false }, ...accounts].map((acct) => {
+            const isActive = selectedAccount === acct.email;
+            const label = acct.email === "all" ? "All" : acct.email.split("@")[0];
+            return (
+              <TouchableOpacity
+                key={acct.email}
+                style={[
+                  s.accountPill,
+                  isActive && { backgroundColor: colors.foreground, borderColor: colors.foreground },
+                ]}
+                onPress={() => setSelectedAccount(acct.email)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    s.accountPillText,
+                    { color: isActive ? colors.background : colors.foreground },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
     </View>
   );
 

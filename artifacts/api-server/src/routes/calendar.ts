@@ -231,7 +231,8 @@ router.get("/calendar/events", requireAuth, async (req, res) => {
   try {
     const auth = getAuth(req);
     const userId = auth.userId!;
-    const calendar = await getCalendarClientForUser(userId);
+    const accountEmail = req.query.account as string | undefined;
+    const calendar = await getCalendarClientForUser(userId, accountEmail);
 
     const now = new Date();
     const defaultEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);

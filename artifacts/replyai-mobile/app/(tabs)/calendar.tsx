@@ -221,27 +221,56 @@ export default function CalendarScreen() {
   const weekOffsetRef = useRef(weekOffset);
   weekOffsetRef.current = weekOffset;
 
+  const selectedDateKeyRef = useRef(selectedDateKey);
+  selectedDateKeyRef.current = selectedDateKey;
+
+  const goToNextDay = useCallback(() => {
+    const curKey = selectedDateKeyRef.current;
+    const cur = toLocalDate(curKey);
+    const next = addDays(cur, 1);
+    const nextKey = dateKey(next);
+    const curWeekSunday = getWeekSunday(todayBase, weekOffsetRef.current);
+    const curWeekSat = addDays(curWeekSunday, 6);
+    const crossesWeek = next > curWeekSat;
+    if (crossesWeek) {
+      const newOff = weekOffsetRef.current + 1;
+      slideAnim.setValue(-SCREEN_WIDTH);
+      setWeekOffset(newOff);
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
+    } else {
+      slideAnim.setValue(-SCREEN_WIDTH * 0.4);
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
+    }
+    setSelectedDateKey(nextKey);
+  }, []);
+
+  const goToPrevDay = useCallback(() => {
+    const curKey = selectedDateKeyRef.current;
+    const cur = toLocalDate(curKey);
+    const prev = addDays(cur, -1);
+    const prevKey = dateKey(prev);
+    const curWeekSunday = getWeekSunday(todayBase, weekOffsetRef.current);
+    const crossesWeek = prev < curWeekSunday;
+    if (crossesWeek) {
+      const newOff = weekOffsetRef.current - 1;
+      slideAnim.setValue(SCREEN_WIDTH);
+      setWeekOffset(newOff);
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
+    } else {
+      slideAnim.setValue(SCREEN_WIDTH * 0.4);
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
+    }
+    setSelectedDateKey(prevKey);
+  }, []);
+
   const swipeHandlers = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gs) =>
       Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 12,
     onPanResponderRelease: (_, gs) => {
       if (gs.dx < -SWIPE_THRESHOLD) {
-        const cur = weekOffsetRef.current;
-        const newOff = cur + 1;
-        const newSunday = getWeekSunday(todayBase, newOff);
-        setSelectedDateKey(dateKey(newSunday));
-        slideAnim.setValue(-SCREEN_WIDTH);
-        setWeekOffset(newOff);
-        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }).start();
+        goToNextDay();
       } else if (gs.dx > SWIPE_THRESHOLD) {
-        const cur = weekOffsetRef.current;
-        const newOff = cur - 1;
-        const newSunday = getWeekSunday(todayBase, newOff);
-        const newSat = addDays(newSunday, 6);
-        setSelectedDateKey(dateKey(newSat));
-        slideAnim.setValue(SCREEN_WIDTH);
-        setWeekOffset(newOff);
-        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }).start();
+        goToPrevDay();
       }
     },
   }), []);

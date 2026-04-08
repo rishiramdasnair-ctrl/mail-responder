@@ -210,6 +210,14 @@ export default function CalendarScreen() {
     animateWeekChange(-1, newOffset);
   }, [weekOffset, animateWeekChange]);
 
+  const goToToday = useCallback(() => {
+    if (weekOffset === 0 && selectedDateKey === todayKey) return;
+    setSelectedDateKey(todayKey);
+    const direction = weekOffset > 0 ? -1 : 1;
+    animateWeekChange(direction, 0);
+    setViewMode("day");
+  }, [weekOffset, selectedDateKey, todayKey, animateWeekChange]);
+
   const weekOffsetRef = useRef(weekOffset);
   weekOffsetRef.current = weekOffset;
 
@@ -315,6 +323,26 @@ export default function CalendarScreen() {
       color: colors.mutedForeground,
     },
     viewToggleTextActive: {
+      color: colors.background,
+    },
+    todayBtn: {
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    todayBtnActive: {
+      borderColor: colors.foreground,
+      backgroundColor: colors.foreground,
+    },
+    todayBtnText: {
+      fontSize: 12,
+      fontFamily: "Inter_600SemiBold",
+      color: colors.foreground,
+    },
+    todayBtnTextActive: {
       color: colors.background,
     },
     newEventBtn: {
@@ -901,6 +929,17 @@ export default function CalendarScreen() {
                 </View>
               )}
             </View>
+          )}
+
+          {(weekOffset !== 0 || selectedDateKey !== todayKey) && (
+            <TouchableOpacity
+              style={[s.todayBtn, s.todayBtnActive]}
+              onPress={goToToday}
+              activeOpacity={0.75}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={[s.todayBtnText, s.todayBtnTextActive]}>Today</Text>
+            </TouchableOpacity>
           )}
 
           <View style={s.viewToggle}>

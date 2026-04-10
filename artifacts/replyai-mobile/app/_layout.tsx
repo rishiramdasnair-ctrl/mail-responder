@@ -10,8 +10,9 @@ import * as SecureStore from "expo-secure-store";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Platform } from "react-native";
+import { API_BASE } from "@/hooks/useApiClient";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -58,11 +59,41 @@ const tokenCache = {
 const SIGN_IN_ROUTE = "/(auth)/sign-in" as const;
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, getToken, signOut } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const sessionChecked = useRef(false);
 
   usePushToken();
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      sessionChecked.current = false;
+      return;
+    }
+    if (sessionChecked.current) return;
+    sessionChecked.current = true;
+
+    getToken().then(async (token) => {
+      if (!token) {
+        await signOut();
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/debug/auth-check`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json() as { userId: string | null; hasAuthHeader: boolean };
+        if (!data.userId) {
+          await signOut();
+        }
+      } catch {
+        // Network error — don't sign out, may just be offline
+      }
+    }).catch(async () => {
+      await signOut();
+    });
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     if (!isLoaded) return;

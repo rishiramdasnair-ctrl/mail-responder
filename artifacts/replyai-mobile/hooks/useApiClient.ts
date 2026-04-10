@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 
-const API_BASE = (() => {
+export const API_BASE = (() => {
   const url = process.env.EXPO_PUBLIC_API_URL;
   if (url) return url;
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
@@ -15,7 +15,7 @@ async function sleep(ms: number) {
 }
 
 export function useApiClient() {
-  const { getToken } = useAuth();
+  const { getToken, signOut } = useAuth();
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     let token = await getToken();
@@ -32,11 +32,28 @@ export function useApiClient() {
     };
   }, [getToken]);
 
+  const apiFetch = useCallback(
+    async (url: string, options: RequestInit = {}): Promise<Response> => {
+      const headers = await authHeaders();
+      const res = await fetch(url, {
+        ...options,
+        headers: { ...headers, ...(options.headers as Record<string, string> ?? {}) },
+      });
+      if (res.status === 401) {
+        await signOut();
+        throw new Error("Session expired. Please sign in again.");
+      }
+      return res;
+    },
+    [authHeaders, signOut],
+  );
+
   const getTokenStable = useCallback(async () => getToken(), [getToken]);
 
   return {
     apiBaseUrl: API_BASE,
     authHeaders,
+    apiFetch,
     getToken: getTokenStable,
   };
 }

@@ -203,7 +203,7 @@ export default function SettingsScreen() {
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
-    const b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+    const b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
     const mime = asset.mimeType ?? "image/jpeg";
     setSigImages(prev => ({ ...prev, [email]: `data:${mime};base64,${b64}` }));
   };

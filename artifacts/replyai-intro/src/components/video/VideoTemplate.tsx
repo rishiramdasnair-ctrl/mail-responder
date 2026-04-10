@@ -18,7 +18,7 @@ export default function VideoTemplate() {
   const { currentScene } = useVideoPlayer({ durations: SCENE_DURATIONS });
 
   return (
-    <div className="relative w-full h-[100vh] overflow-hidden bg-background flex items-center justify-center">
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden', backgroundColor: '#0a0a0a' }} className="flex items-center justify-center">
       {/* Persistent Background Layer */}
       <div 
         className="absolute inset-0 z-0 bg-dot-matrix opacity-[0.04]"

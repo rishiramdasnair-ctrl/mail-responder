@@ -55,7 +55,7 @@ export function Scene1() {
       exit={{ scale: 1.1, opacity: 0, filter: 'blur(10px)' }}
       transition={{ duration: 0.8, ease: easings.expoOut }}
     >
-      <div className="relative w-full h-full overflow-hidden">
+      <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
         {/* Email noise */}
         {subjects.map((sub, i) => (
           <motion.div
@@ -86,7 +86,7 @@ export function Scene1() {
 
         {/* Counter */}
         <motion.div 
-          className="absolute inset-0 flex items-center justify-center pointer-events-none z-50"
+          style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 50 }}
           initial={{ opacity: 0, scale: 0.8, filter: 'blur(20px)' }}
           animate={phase >= 1 ? { opacity: 1, scale: 1, filter: 'blur(0px)' } : {}}
           transition={{ duration: 1, ease: easings.expoOut }}

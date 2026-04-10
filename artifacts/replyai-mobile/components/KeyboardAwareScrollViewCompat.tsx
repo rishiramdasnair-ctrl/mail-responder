@@ -3,7 +3,7 @@ import {
   type KeyboardAwareScrollViewProps,
 } from "react-native-keyboard-controller";
 import { Platform, ScrollView, type ScrollViewProps } from "react-native";
-import type React from "react";
+import React from "react";
 
 type Props = Omit<KeyboardAwareScrollViewProps, "children"> &
   Omit<ScrollViewProps, "children"> & {
@@ -18,8 +18,9 @@ export function KeyboardAwareScrollViewCompat({
 }: Props) {
   if (Platform.OS === "web") {
     return (
-      <ScrollView keyboardShouldPersistTaps={keyboardShouldPersistTaps} {...props}>
-        {children}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ScrollView keyboardShouldPersistTaps={keyboardShouldPersistTaps} {...(props as any)}>
+        {children as any}
       </ScrollView>
     );
   }
@@ -28,7 +29,7 @@ export function KeyboardAwareScrollViewCompat({
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       {...(props as KeyboardAwareScrollViewProps)}
     >
-      {children}
+      {children as any}
     </KeyboardAwareScrollView>
   );
 }

@@ -17,7 +17,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app",
+        "EXPO_PUBLIC_API_URL": "https://YOUR-PROJECT.up.railway.app",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cmVsaWV2ZWQtc2hlZXAtOTAuY2xlcmsuYWNjb3VudHMuZGV2JA"
       }
     },
@@ -27,7 +27,7 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app",
+        "EXPO_PUBLIC_API_URL": "https://YOUR-PROJECT.up.railway.app",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cmVsaWV2ZWQtc2hlZXAtOTAuY2xlcmsuYWNjb3VudHMuZGV2JA"
       }
     }

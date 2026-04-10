@@ -44,6 +44,7 @@ export function Scene1() {
       }, 50);
       return () => clearInterval(interval);
     }
+    return undefined;
   }, [phase]);
 
   return (

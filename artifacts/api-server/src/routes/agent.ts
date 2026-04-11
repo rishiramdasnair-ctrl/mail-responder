@@ -15,6 +15,9 @@ import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionToolMessageParam,
 } from "openai/resources";
+import { db } from "@workspace/db";
+import { agentConversations, agentMessages } from "@workspace/db/schema";
+import { eq, desc, and } from "drizzle-orm";
 
 const router = Router();
 
@@ -545,6 +548,7 @@ async function runAgentCore(
   history: AgentRunBody["history"],
   incomingSessionId: string | undefined,
   onStep?: (step: AgentStep) => void,
+  onToken?: (token: string) => void,
 ): Promise<AgentCoreResult> {
     const steps: AgentStep[] = [];
     let pendingEmail: PendingEmail | undefined;
@@ -595,29 +599,70 @@ Be concise but informative. Explain what you found and what actions you took, in
     try {
       while (iteration < MAX_ITERATIONS) {
         iteration++;
-        const completion = await openai.chat.completions.create({
-          model: AGENT_MODEL,
-          max_tokens: 1200,
-          messages,
-          tools: TOOLS,
-          tool_choice: "auto",
-        });
 
-        const choice = completion.choices[0];
-        const message = choice.message;
+        let iterContent: string | null = null;
+        let iterToolCalls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> | undefined;
+
+        if (onToken) {
+          const streamComp = await openai.chat.completions.create({
+            model: AGENT_MODEL,
+            max_tokens: 2048,
+            messages,
+            tools: TOOLS,
+            tool_choice: "auto",
+            stream: true,
+          });
+          let streamedContent = "";
+          const tcMap = new Map<number, { id: string; name: string; args: string }>();
+          for await (const chunk of streamComp) {
+            const delta = chunk.choices[0]?.delta;
+            if (!delta) continue;
+            if (delta.content) { streamedContent += delta.content; onToken(delta.content); }
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                if (!tcMap.has(idx)) tcMap.set(idx, { id: "", name: "", args: "" });
+                const acc = tcMap.get(idx)!;
+                if (tc.id) acc.id = tc.id;
+                if (tc.function?.name) acc.name += tc.function.name;
+                if (tc.function?.arguments) acc.args += tc.function.arguments;
+              }
+            }
+          }
+          iterContent = streamedContent || null;
+          if (tcMap.size > 0) {
+            iterToolCalls = Array.from(tcMap.entries())
+              .sort(([a], [b]) => a - b)
+              .map(([, tc]) => ({ id: tc.id, type: "function" as const, function: { name: tc.name, arguments: tc.args } }));
+          }
+        } else {
+          const completion = await openai.chat.completions.create({
+            model: AGENT_MODEL,
+            max_tokens: 1200,
+            messages,
+            tools: TOOLS,
+            tool_choice: "auto",
+          });
+          const message = completion.choices[0].message;
+          iterContent = message.content ?? null;
+          if (message.tool_calls?.length) {
+            iterToolCalls = message.tool_calls.map(tc => ({ id: tc.id, type: "function" as const, function: tc.function }));
+          }
+        }
+
         const assistantMsg: ChatCompletionAssistantMessageParam = {
           role: "assistant",
-          content: message.content ?? null,
-          ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+          content: iterContent,
+          ...(iterToolCalls ? { tool_calls: iterToolCalls } : {}),
         };
         messages.push(assistantMsg);
 
-        if (!message.tool_calls || message.tool_calls.length === 0) {
-          finalAnswer = message.content || "";
+        if (!iterToolCalls || iterToolCalls.length === 0) {
+          finalAnswer = iterContent || "";
           break;
         }
 
-        for (const toolCall of message.tool_calls) {
+        for (const toolCall of iterToolCalls) {
           const toolName = toolCall.function.name;
           let args: Record<string, unknown> = {};
           try {
@@ -955,20 +1000,36 @@ Be concise but informative. Explain what you found and what actions you took, in
         if (pendingEmail) {
           const lastMsg = messages[messages.length - 1];
           if (!("content" in lastMsg) || lastMsg.role !== "assistant") {
-            const pendingCompletion = await openai.chat.completions.create({
-              model: AGENT_MODEL,
-              max_tokens: 512,
-              messages,
-            });
-            finalAnswer = pendingCompletion.choices[0]?.message?.content || "I've drafted an email for you. Please review and confirm.";
+            if (onToken) {
+              const pendingStream = await openai.chat.completions.create({
+                model: AGENT_MODEL,
+                max_tokens: 512,
+                messages,
+                stream: true,
+              });
+              for await (const chunk of pendingStream) {
+                const delta = chunk.choices[0]?.delta?.content || "";
+                if (delta) { finalAnswer += delta; onToken(delta); }
+              }
+              if (!finalAnswer) { finalAnswer = "I've drafted an email for you. Please review and confirm."; onToken(finalAnswer); }
+            } else {
+              const pendingCompletion = await openai.chat.completions.create({
+                model: AGENT_MODEL,
+                max_tokens: 512,
+                messages,
+              });
+              finalAnswer = pendingCompletion.choices[0]?.message?.content || "I've drafted an email for you. Please review and confirm.";
+            }
           } else {
             finalAnswer = "I've drafted an email for you. Please review and confirm sending it.";
+            if (onToken) onToken(finalAnswer);
           }
           break;
         }
 
         if (pendingCalendarEvent) {
           finalAnswer = `I've prepared the calendar event details. Please review and confirm creating it.`;
+          if (onToken) onToken(finalAnswer);
           break;
         }
       }
@@ -980,6 +1041,7 @@ Be concise but informative. Explain what you found and what actions you took, in
 
     if (!finalAnswer) {
       finalAnswer = "I completed the task but couldn't generate a summary.";
+      if (onToken) onToken(finalAnswer);
     }
 
     return {
@@ -999,6 +1061,135 @@ function wrapAgentError(err: unknown): { status: number; body: Record<string, st
   }
   return { status: 500, body: { error: "Agent task failed. Please try again." } };
 }
+
+async function saveAgentConversation(
+  userId: string,
+  task: string,
+  answer: string,
+  steps: AgentStep[],
+): Promise<number> {
+  const title = task.slice(0, 80);
+  const [conv] = await db
+    .insert(agentConversations)
+    .values({ userId, title, createdAt: new Date(), updatedAt: new Date() })
+    .returning();
+  await db.insert(agentMessages).values([
+    { conversationId: conv.id, role: "user", content: task },
+    {
+      conversationId: conv.id,
+      role: "assistant",
+      content: answer,
+      stepsData: steps.length ? JSON.stringify(steps) : null,
+    },
+  ]);
+  return conv.id;
+}
+
+router.post("/agent/stream", requireAuth, async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const send = (data: object) => {
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const userId = getReqUserId(req)!;
+    const parsed = AgentRunBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      send({ type: "error", message: parsed.error.errors[0]?.message ?? "Invalid request body" });
+      res.end();
+      return;
+    }
+    const { task, history: rawHistory = [], sessionId: incomingSessionId } = parsed.data;
+    if (task.length > 2000) {
+      send({ type: "error", message: "task must be under 2000 characters" });
+      res.end();
+      return;
+    }
+
+    const result = await runAgentCore(
+      userId,
+      task,
+      rawHistory.slice(-20),
+      incomingSessionId,
+      (step) => send({ type: "step", step }),
+      (token) => send({ type: "token", content: token }),
+    );
+
+    if (result.pendingEmail) send({ type: "pending_email", data: result.pendingEmail });
+    if (result.pendingCalendarEvent) send({ type: "pending_event", data: result.pendingCalendarEvent });
+
+    const conversationId = await saveAgentConversation(userId, task, result.answer, result.steps);
+
+    send({
+      type: "done",
+      answer: result.answer,
+      conversationId,
+      ...(result.browserWasUsed ? { sessionId: result.sessionId } : {}),
+    });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Agent stream error");
+    const { body } = wrapAgentError(err);
+    send({ type: "error", message: body.error });
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+});
+
+router.get("/agent/conversations", requireAuth, async (req, res) => {
+  try {
+    const userId = getReqUserId(req)!;
+    const convs = await db
+      .select()
+      .from(agentConversations)
+      .where(eq(agentConversations.userId, userId))
+      .orderBy(desc(agentConversations.updatedAt))
+      .limit(50);
+    res.json({ conversations: convs });
+  } catch (err) {
+    req.log.error({ err }, "List conversations error");
+    res.status(500).json({ error: "Failed to load conversations" });
+  }
+});
+
+router.get("/agent/conversations/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = getReqUserId(req)!;
+    const convId = parseInt(req.params.id, 10);
+    if (isNaN(convId)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const [conv] = await db
+      .select()
+      .from(agentConversations)
+      .where(and(eq(agentConversations.id, convId), eq(agentConversations.userId, userId)));
+    if (!conv) { res.status(404).json({ error: "Not found" }); return; }
+    const msgs = await db
+      .select()
+      .from(agentMessages)
+      .where(eq(agentMessages.conversationId, convId))
+      .orderBy(agentMessages.createdAt);
+    res.json({ conversation: conv, messages: msgs });
+  } catch (err) {
+    req.log.error({ err }, "Get conversation error");
+    res.status(500).json({ error: "Failed to load conversation" });
+  }
+});
+
+router.delete("/agent/conversations/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = getReqUserId(req)!;
+    const convId = parseInt(req.params.id, 10);
+    if (isNaN(convId)) { res.status(400).json({ error: "Invalid id" }); return; }
+    await db.delete(agentConversations).where(and(eq(agentConversations.id, convId), eq(agentConversations.userId, userId)));
+    res.json({ deleted: true });
+  } catch (err) {
+    req.log.error({ err }, "Delete conversation error");
+    res.status(500).json({ error: "Failed to delete conversation" });
+  }
+});
 
 router.post("/agent/run", requireAuth, async (req, res) => {
   try {

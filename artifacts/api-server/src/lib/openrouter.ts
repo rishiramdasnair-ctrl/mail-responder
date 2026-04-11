@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 export const FAST_MODEL = "google/gemini-2.0-flash-001";
-export const AGENT_MODEL = "anthropic/claude-3.5-haiku";
+export const AGENT_MODEL = "anthropic/claude-3.5-sonnet";
 
 const apiKey = process.env.OPENROUTER_API_KEY;
 

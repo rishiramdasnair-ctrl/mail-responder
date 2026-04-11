@@ -13,6 +13,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from "react-native";
+import Markdown from "react-native-markdown-display";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -64,6 +65,7 @@ interface ChatMessage {
   pendingCalendarEvent?: PendingCalendarEvent;
   resolved?: boolean;
   resolvedLabel?: string;
+  streaming?: boolean;
 }
 
 interface Suggestion {
@@ -131,11 +133,12 @@ function MessageBubble({
     userBubble: { backgroundColor: colors.foreground, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10, maxWidth: "80%" },
     userText: { color: colors.primaryForeground, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 21 },
     assistantBubble: { backgroundColor: colors.muted, borderRadius: 18, borderBottomLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10, maxWidth: "82%" },
-    assistantText: { color: colors.foreground, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 21 },
     stepsContainer: { marginTop: 6, gap: 3 },
     stepRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     stepDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.mutedForeground },
     stepText: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, flex: 1 },
+    streamingText: { color: colors.foreground, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 21 },
+    cursor: { color: colors.mutedForeground, fontSize: 14 },
     card: { backgroundColor: colors.background, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, maxWidth: "88%" },
     cardTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground, marginBottom: 10 },
     fieldLabel: { fontSize: 10, fontFamily: "Inter_500Medium", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.5 },
@@ -150,6 +153,24 @@ function MessageBubble({
     resolvedText: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
   });
 
+  const markdownStyles = {
+    body: { color: colors.foreground, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22 },
+    paragraph: { marginTop: 0, marginBottom: 6 },
+    strong: { fontFamily: "Inter_600SemiBold" },
+    em: { fontStyle: "italic" as const },
+    bullet_list: { marginBottom: 6 },
+    ordered_list: { marginBottom: 6 },
+    list_item: { marginBottom: 3 },
+    code_inline: { backgroundColor: colors.border, borderRadius: 3, paddingHorizontal: 4, fontSize: 13, fontFamily: "Inter_400Regular" },
+    fence: { backgroundColor: colors.border, borderRadius: 6, padding: 10, marginVertical: 6 },
+    code_block: { backgroundColor: colors.border, borderRadius: 6, padding: 10, marginVertical: 6 },
+    heading1: { fontSize: 18, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 4 },
+    heading2: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: colors.foreground, marginBottom: 4 },
+    heading3: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.foreground, marginBottom: 3 },
+    hr: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, marginVertical: 8 },
+    blockquote: { borderLeftWidth: 3, borderLeftColor: colors.border, paddingLeft: 10, marginLeft: 0 },
+  };
+
   if (msg.role === "user") {
     return (
       <View style={s.userRow}>
@@ -159,11 +180,18 @@ function MessageBubble({
   }
 
   if (msg.role === "loading") {
+    const hasContent = msg.content && msg.content.length > 0;
     return (
       <View style={s.assistantRow}>
         <View style={s.avatar}><Feather name="message-square" size={13} color={colors.primaryForeground} /></View>
-        <View style={s.assistantBubble}>
-          <ActivityIndicator color={colors.mutedForeground} size="small" />
+        <View style={[s.assistantBubble, { flexShrink: 1 }]}>
+          {hasContent ? (
+            <Text style={s.streamingText}>
+              {msg.content}<Text style={s.cursor}>▌</Text>
+            </Text>
+          ) : (
+            <ActivityIndicator color={colors.mutedForeground} size="small" />
+          )}
           {msg.steps && msg.steps.length > 0 && (
             <View style={s.stepsContainer}>
               {msg.steps.map((step, i) => (
@@ -262,7 +290,21 @@ function MessageBubble({
   return (
     <View style={s.assistantRow}>
       <View style={s.avatar}><Feather name="message-square" size={13} color={colors.primaryForeground} /></View>
-      <View style={s.assistantBubble}><Text style={s.assistantText}>{msg.content}</Text></View>
+      <View style={[s.assistantBubble, { flexShrink: 1 }]}>
+        <Markdown style={markdownStyles}>
+          {msg.content}
+        </Markdown>
+        {msg.steps && msg.steps.length > 0 && (
+          <View style={s.stepsContainer}>
+            {msg.steps.map((step, i) => (
+              <View key={i} style={s.stepRow}>
+                <View style={[s.stepDot, { backgroundColor: step.status === "error" ? "#ef4444" : colors.mutedForeground }]} />
+                <Text style={s.stepText} numberOfLines={1}>{stepLabel(step)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -291,8 +333,7 @@ export default function AgentScreen() {
   const [isActing, setIsActing] = useState(false);
   const [digestLoading, setDigestLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const loadingMsgIdRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_BAR_HEIGHT = Platform.select({ ios: 49, android: 56, web: 84, default: 49 }) as number;
@@ -310,7 +351,7 @@ export default function AgentScreen() {
   });
   const suggestions = suggestionsData?.suggestions ?? [];
 
-  useEffect(() => () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); }, []);
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
@@ -323,10 +364,6 @@ export default function AgentScreen() {
       .slice(-20),
     []
   );
-
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
-  }, []);
 
   const handleCatchMeUp = useCallback(async () => {
     if (digestLoading || isSending) return;
@@ -356,13 +393,15 @@ export default function AgentScreen() {
     const trimmed = text.trim();
     if (!trimmed || isSending) return;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setInputText("");
     setIsSending(true);
-    stopPolling();
 
     const userMsg: ChatMessage = { id: uuid(), role: "user", content: trimmed };
     const loadingId = uuid();
-    loadingMsgIdRef.current = loadingId;
     const loadingMsg: ChatMessage = { id: loadingId, role: "loading", content: "", steps: [] };
 
     setMessages((prev) => [...prev, userMsg, loadingMsg]);
@@ -373,10 +412,11 @@ export default function AgentScreen() {
       const currentMsgs = [...messages, userMsg];
       const history = buildHistory(currentMsgs);
 
-      const res = await fetch(`${apiBaseUrl}/api/agent/start`, {
+      const res = await fetch(`${apiBaseUrl}/api/agent/stream`, {
         method: "POST",
         headers,
         body: JSON.stringify({ task: trimmed, history }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -387,62 +427,94 @@ export default function AgentScreen() {
         return;
       }
 
-      const { jobId } = await res.json() as { jobId: string };
+      if (!res.body) {
+        setMessages((prev) => prev.map((m) => m.id === loadingId ? { ...m, role: "assistant" as const, content: "Streaming not supported." } : m));
+        setIsSending(false);
+        return;
+      }
 
-      pollTimerRef.current = setInterval(async () => {
-        try {
-          const pollHeaders = await authHeaders();
-          const pollRes = await fetch(`${apiBaseUrl}/api/agent/jobs/${jobId}`, { headers: pollHeaders });
-          if (!pollRes.ok) return;
-          const job = await pollRes.json() as {
-            status: "running" | "done" | "error";
-            steps?: AgentStep[];
-            answer?: string;
-            error?: string;
-            pendingEmail?: PendingEmail;
-            pendingCalendarEvent?: PendingCalendarEvent;
-          };
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let doneReceived = false;
 
-          if (job.steps && job.steps.length > 0) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          let event: Record<string, unknown>;
+          try { event = JSON.parse(raw) as Record<string, unknown>; } catch { continue; }
+
+          const type = event.type as string;
+
+          if (type === "token") {
+            const token = event.content as string;
             setMessages((prev) => prev.map((m) =>
-              m.id === loadingId ? { ...m, steps: job.steps } : m
+              m.id === loadingId ? { ...m, content: (m.content || "") + token } : m
             ));
-          }
-
-          if (job.status === "done" || job.status === "error") {
-            stopPolling();
-            setIsSending(false);
-
-            const answer = job.status === "error"
-              ? (job.error || "Something went wrong. Please try again.")
-              : (job.answer || "Done!");
-
-            const assistantMsg: ChatMessage = { id: uuid(), role: "assistant", content: answer };
-            const extras: ChatMessage[] = [];
-
-            if (job.pendingEmail) {
-              extras.push({ id: uuid(), role: "confirm-email", content: "", pendingEmail: job.pendingEmail });
-            }
-            if (job.pendingCalendarEvent) {
-              extras.push({ id: uuid(), role: "confirm-event", content: "", pendingCalendarEvent: job.pendingCalendarEvent });
-            }
-
-            setMessages((prev) => [
-              ...prev.filter((m) => m.id !== loadingId),
-              assistantMsg,
-              ...extras,
-            ]);
             scrollToBottom();
+          } else if (type === "step") {
+            const step = event.step as AgentStep;
+            setMessages((prev) => prev.map((m) =>
+              m.id === loadingId ? { ...m, steps: [...(m.steps ?? []), step] } : m
+            ));
+          } else if (type === "done") {
+            doneReceived = true;
+            const answer = (event.answer as string) || "";
+            setMessages((prev) => {
+              const inProgress = prev.find((m) => m.id === loadingId);
+              const stepsFromLoading = inProgress?.steps ?? [];
+              return [
+                ...prev.filter((m) => m.id !== loadingId),
+                { id: uuid(), role: "assistant" as const, content: answer, steps: stepsFromLoading },
+              ];
+            });
+            scrollToBottom();
+            setIsSending(false);
+          } else if (type === "pending_email") {
+            const data = event.data as PendingEmail;
+            setMessages((prev) => [...prev, { id: uuid(), role: "confirm-email" as const, content: "", pendingEmail: data }]);
+            scrollToBottom();
+          } else if (type === "pending_event") {
+            const data = event.data as PendingCalendarEvent;
+            setMessages((prev) => [...prev, { id: uuid(), role: "confirm-event" as const, content: "", pendingCalendarEvent: data }]);
+            scrollToBottom();
+          } else if (type === "error") {
+            doneReceived = true;
+            const errMsg = (event.message as string) || "Something went wrong.";
+            setMessages((prev) => prev.map((m) =>
+              m.id === loadingId ? { ...m, role: "assistant" as const, content: errMsg } : m
+            ));
+            setIsSending(false);
           }
-        } catch {}
-      }, 1500);
+        }
+      }
 
-    } catch {
-      stopPolling();
+      if (!doneReceived) {
+        setMessages((prev) => prev.map((m) =>
+          m.id === loadingId && m.role === "loading" ? { ...m, role: "assistant" as const } : m
+        ));
+        setIsSending(false);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setIsSending(false);
+        return;
+      }
+      setMessages((prev) => prev.map((m) =>
+        m.id === loadingId ? { ...m, role: "assistant" as const, content: "Network error. Please try again." } : m
+      ));
       setIsSending(false);
-      setMessages((prev) => prev.map((m) => m.id === loadingId ? { ...m, role: "assistant" as const, content: "Network error. Please try again." } : m));
     }
-  }, [messages, isSending, apiBaseUrl, authHeaders, buildHistory, scrollToBottom, stopPolling]);
+  }, [messages, isSending, apiBaseUrl, authHeaders, buildHistory, scrollToBottom]);
 
   const handleApproveEmail = useCallback(async (email: PendingEmail, msgId: string) => {
     if (isActing) return;
@@ -520,7 +592,6 @@ export default function AgentScreen() {
       borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
     },
     headerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    headerIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.foreground, alignItems: "center", justifyContent: "center" },
     title: { fontSize: 22, fontFamily: "Inter_700Bold", color: colors.foreground, letterSpacing: -0.3 },
     subtitle: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 2 },
     messageList: { flex: 1 },
@@ -667,9 +738,8 @@ export default function AgentScreen() {
               )}
             </TouchableOpacity>
           </View>
-
           {!isEmpty && (
-            <TouchableOpacity style={styles.clearBtn} onPress={() => { stopPolling(); setMessages([]); setIsSending(false); }}>
+            <TouchableOpacity style={styles.clearBtn} onPress={() => { abortRef.current?.abort(); setMessages([]); setIsSending(false); }}>
               <Text style={styles.clearBtnText}>Clear conversation</Text>
             </TouchableOpacity>
           )}

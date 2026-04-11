@@ -8,3 +8,5 @@ export * from "./scheduledEmails";
 export * from "./gmailWatches";
 export * from "./expoPushTokens";
 export * from "./emailCategories";
+export * from "./agentConversations";
+export * from "./agentMessages";

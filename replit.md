@@ -90,6 +90,37 @@ ReplyAI is a production Gmail AI auto-responder. Users connect Gmail, browse the
 - `artifacts/replyai/src/pages/` — All page components
 - `lib/db/src/schema/` — Database schema
 
+## Agent API Routes
+- POST /api/agent/stream — SSE streaming agent endpoint (real-time token + step events)
+- POST /api/agent/run — Non-streaming agent run (returns full answer)
+- POST /api/agent/start — Async agent start (returns jobId)
+- GET /api/agent/jobs/:jobId — Poll async agent job
+- POST /api/agent/send — Send a drafted email
+- POST /api/agent/create-event — Create a confirmed calendar event
+- GET /api/agent/suggestions — Get personalized action suggestions
+- GET /api/agent/conversations — List user's past conversations
+- GET /api/agent/conversations/:id — Get conversation with messages
+- DELETE /api/agent/conversations/:id — Delete a conversation
+
+## Agent DB Tables
+- `agent_conversations` — id, userId (FK → users), title, createdAt, updatedAt
+- `agent_messages` — id, conversationId (FK → agent_conversations), role, content, stepsData (JSON), createdAt
+
+## Agent SSE Protocol
+Events sent from `/api/agent/stream`:
+- `{"type":"step","step":{...}}` — Tool execution step
+- `{"type":"token","content":"..."}` — Streaming text token
+- `{"type":"pending_email","data":{...}}` — Email needs confirmation
+- `{"type":"pending_event","data":{...}}` — Calendar event needs confirmation
+- `{"type":"done","answer":"...","conversationId":123}` — Completion
+- `{"type":"error","message":"..."}` — Error
+
+## Mobile App
+- Expo (iOS-first) with React Native
+- SSE streaming for agent chat (fetch + ReadableStream)
+- Markdown rendering via react-native-markdown-display
+- Model: anthropic/claude-3.5-sonnet via OpenRouter
+
 ## Stripe Setup (TODO)
 1. Connect Stripe via Replit integrations, or set STRIPE_SECRET_KEY env var
 2. Run `pnpm --filter @workspace/scripts exec tsx src/seedStripe.ts` to create products/prices

@@ -33,8 +33,8 @@ const BASE_RADIUS = 8;
 export const THEMES: ThemeDef[] = [
   {
     id: "default",
-    label: "Default",
-    swatch: "#141414",
+    label: "Silver",
+    swatch: "#A8A9AD",
     dark: false,
     palette: {
       background: "#ffffff",

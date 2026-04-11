@@ -5,7 +5,7 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Image, Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
 
 function NativeTabLayout() {
@@ -16,7 +16,9 @@ function NativeTabLayout() {
         <Label>Inbox</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="agent">
-        <Icon sf={{ default: "sparkles", selected: "sparkles" }} />
+        <Icon>
+          <Image source={require("@/assets/images/icon.png")} style={{ width: 26, height: 26, borderRadius: 6 }} />
+        </Icon>
         <Label>Agent</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="calendar">
@@ -78,12 +80,17 @@ function ClassicTabLayout() {
         name="agent"
         options={{
           title: "Agent",
-          tabBarIcon: ({ focused }) =>
-            isIOS ? (
-              <SymbolView name="sparkles" tintColor={focused ? colors.foreground : colors.mutedForeground} size={24} />
-            ) : (
-              <Feather name="zap" size={22} color={focused ? colors.foreground : colors.mutedForeground} />
-            ),
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require("@/assets/images/icon.png")}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                opacity: focused ? 1 : 0.5,
+              }}
+            />
+          ),
         }}
       />
       <Tabs.Screen

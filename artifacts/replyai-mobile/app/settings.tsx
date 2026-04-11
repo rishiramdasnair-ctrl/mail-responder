@@ -1410,7 +1410,7 @@ export default function SettingsScreen() {
             <Text style={styles.signOutText}>Sign out</Text>
           </TouchableOpacity>
 
-          <Text style={styles.versionText}>ReplyAI · v1.0</Text>
+          <Text style={styles.versionText}>v1.0</Text>
         </ScrollView>
       )}
     </View>

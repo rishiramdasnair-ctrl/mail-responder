@@ -69,13 +69,19 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "onboarding";
 
-    SecureStore.getItemAsync("onboarding_complete").then((val) => {
-      const onboardingDone = !!val;
+    Promise.all([
+      SecureStore.getItemAsync("onboarding_complete"),
+      SecureStore.getItemAsync("gmail_connected"),
+    ]).then(([onboardingVal, gmailVal]) => {
+      const onboardingDone = !!onboardingVal;
+      const gmailConnected = !!gmailVal;
+      const fullySetUp = onboardingDone && gmailConnected;
+
       if (!isSignedIn && !inAuthGroup) {
         router.replace(SIGN_IN_ROUTE);
       } else if (isSignedIn && inAuthGroup) {
-        router.replace(onboardingDone ? "/" : ("/onboarding" as any));
-      } else if (isSignedIn && !inAuthGroup && !inOnboarding && !onboardingDone) {
+        router.replace(fullySetUp ? "/" : ("/onboarding" as any));
+      } else if (isSignedIn && !inAuthGroup && !inOnboarding && !fullySetUp) {
         router.replace("/onboarding" as any);
       }
     });

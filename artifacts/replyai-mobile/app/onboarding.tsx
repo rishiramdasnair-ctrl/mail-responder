@@ -323,6 +323,7 @@ export default function OnboardingScreen() {
         preferEphemeralSession: false,
       });
       if (result.type === "success" && result.url.startsWith("replyai://oauth-success")) {
+        await SecureStore.setItemAsync("gmail_connected", "1");
         setConnectStatus("done");
         qc.invalidateQueries({ queryKey: ["gmail-accounts"] });
         qc.invalidateQueries({ queryKey: ["priority-inbox"] });
@@ -505,7 +506,6 @@ export default function OnboardingScreen() {
                     icon="mail"
                   />
                 )}
-                <PressBtn label="I'll do this later" onPress={advance} variant="ghost" />
               </View>
 
               <Text style={styles.legalNote}>

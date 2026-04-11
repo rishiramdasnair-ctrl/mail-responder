@@ -36,6 +36,7 @@ router.get("/settings", requireAuth, async (req, res) => {
       emailSignature: s.emailSignature,
       darkMode: s.darkMode,
       notifications: s.notifications,
+      followUpWindowDays: s.followUpWindowDays,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching settings");
@@ -63,6 +64,7 @@ router.put("/settings", requireAuth, async (req, res) => {
       emailSignature: updated.emailSignature,
       darkMode: updated.darkMode,
       notifications: updated.notifications,
+      followUpWindowDays: updated.followUpWindowDays,
     });
   } catch (err) {
     req.log.error({ err }, "Error updating settings");

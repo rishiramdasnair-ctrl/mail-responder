@@ -32,6 +32,7 @@ import scheduledEmailRouter from "./scheduledEmail";
 import pushTokenRouter from "./pushToken";
 import accountRouter from "./account";
 import categoriesRouter from "./categories";
+import followUpRemindersRouter from "./followUpReminders";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(scheduledEmailRouter);
 router.use(pushTokenRouter);
 router.use(accountRouter);
 router.use(categoriesRouter);
+router.use(followUpRemindersRouter);
 
 export default router;

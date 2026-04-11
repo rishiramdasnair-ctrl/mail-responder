@@ -719,7 +719,59 @@ export default function ComposeScreen() {
       }
 
       allowBackRef.current = true;
-      router.back();
+      const sentMessageId = (data as any).messageId || "";
+      const sentThreadId = (data as any).threadId || sentMessageId;
+
+      // Show follow-up reminder prompt
+      Alert.alert(
+        "Set Follow-up Reminder?",
+        "Remind you to follow up if no reply?",
+        [
+          { text: "No thanks", style: "cancel", onPress: () => router.back() },
+          {
+            text: "In 3 days",
+            onPress: async () => {
+              try {
+                const hdrs = await authHeaders();
+                await fetch(`${apiBaseUrl}/api/follow-up-reminders`, {
+                  method: "POST",
+                  headers: hdrs,
+                  body: JSON.stringify({
+                    messageId: sentMessageId,
+                    threadId: sentThreadId,
+                    accountEmail: selectedAccount || "",
+                    subject: subject.trim(),
+                    toEmail: allTo[0] || "",
+                    days: 3,
+                  }),
+                });
+              } catch {}
+              router.back();
+            },
+          },
+          {
+            text: "In 7 days",
+            onPress: async () => {
+              try {
+                const hdrs = await authHeaders();
+                await fetch(`${apiBaseUrl}/api/follow-up-reminders`, {
+                  method: "POST",
+                  headers: hdrs,
+                  body: JSON.stringify({
+                    messageId: sentMessageId,
+                    threadId: sentThreadId,
+                    accountEmail: selectedAccount || "",
+                    subject: subject.trim(),
+                    toEmail: allTo[0] || "",
+                    days: 7,
+                  }),
+                });
+              } catch {}
+              router.back();
+            },
+          },
+        ],
+      );
       showToast("Email sent successfully", "success");
     } catch {
       Alert.alert("Error", "Could not send email. Check your connection and try again.");

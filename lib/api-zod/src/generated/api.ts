@@ -300,6 +300,7 @@ export const UpdateSettingsBody = zod.object({
   emailSignature: zod.string().optional(),
   darkMode: zod.boolean().optional(),
   notifications: zod.boolean().optional(),
+  followUpWindowDays: zod.number().int().min(1).max(30).nullable().optional(),
 });
 
 export const UpdateSettingsResponse = zod.object({
@@ -308,4 +309,5 @@ export const UpdateSettingsResponse = zod.object({
   emailSignature: zod.string().optional(),
   darkMode: zod.boolean().optional(),
   notifications: zod.boolean().optional(),
+  followUpWindowDays: zod.number().int().nullable().optional(),
 });

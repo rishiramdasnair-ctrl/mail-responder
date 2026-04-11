@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { useGetSettings, useUpdateSettings, getGetSettingsQueryKey } from "@workspace/api-client-react";
-import { Loader2, Mail, CheckCircle2, AlertCircle, Plus, Trash2, AlertTriangle, Tag } from "lucide-react";
+import { Loader2, Mail, CheckCircle2, AlertCircle, Plus, Trash2, AlertTriangle, Tag, AlarmClock } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useClerk } from "@clerk/react";
@@ -49,6 +49,8 @@ export default function Settings() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [classifyingInbox, setClassifyingInbox] = useState(false);
+  const [followUpWindowDays, setFollowUpWindowDays] = useState<number | null>(3);
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
   
   const { data: settings, isLoading: isLoadingSettings } = useGetSettings();
   const updateSettings = useUpdateSettings();
@@ -202,8 +204,30 @@ export default function Settings() {
         darkMode: settings.darkMode || false,
         notifications: settings.notifications ?? true,
       });
+      if ((settings as any).followUpWindowDays !== undefined) {
+        setFollowUpWindowDays((settings as any).followUpWindowDays ?? null);
+      }
     }
   }, [settings, form]);
+
+  const saveFollowUpWindow = async (days: number | null) => {
+    setSavingFollowUp(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ followUpWindowDays: days }),
+      });
+      if (!res.ok) throw new Error();
+      queryClient.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
+      toast({ title: "Follow-up reminder updated" });
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    } finally {
+      setSavingFollowUp(false);
+    }
+  };
 
   const onSubmit = (data: SettingsFormValues) => {
     updateSettings.mutate(
@@ -475,6 +499,47 @@ export default function Settings() {
                 </form>
               </Form>
             )}
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold mb-1 pb-2 border-b flex items-center gap-2">
+              <AlarmClock className="w-5 h-5" />
+              Follow-up Reminders
+            </h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              After sending an email, ReplyAI can prompt you to set a follow-up reminder. Configure the default window here, or turn it off.
+            </p>
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {[null, 2, 3, 5, 7, 14].map(d => (
+                  <button
+                    key={d ?? "off"}
+                    onClick={() => setFollowUpWindowDays(d)}
+                    className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                      followUpWindowDays === d
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-background text-foreground border-border hover:border-foreground/40"
+                    }`}
+                  >
+                    {d === null ? "Off" : `${d} days`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {followUpWindowDays === null
+                  ? "Follow-up reminders are disabled. You won't be prompted after sending emails."
+                  : `After sending an email, ReplyAI will prompt you to set a ${followUpWindowDays}-day follow-up reminder by default.`}
+              </p>
+              <Button
+                size="sm"
+                onClick={() => saveFollowUpWindow(followUpWindowDays)}
+                disabled={savingFollowUp}
+                className="gap-2"
+              >
+                {savingFollowUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlarmClock className="w-4 h-4" />}
+                Save
+              </Button>
+            </div>
           </section>
 
           <section>

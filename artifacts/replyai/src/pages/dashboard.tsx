@@ -52,6 +52,9 @@ import {
   LogOut,
   Zap,
   RotateCcw,
+  Bell,
+  BellOff,
+  AlarmClock,
 } from "lucide-react";
 import { format, isToday, isTomorrow, isThisWeek, parseISO, startOfDay, isSameDay } from "date-fns";
 
@@ -626,6 +629,176 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
         {composeBody}
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface FollowUpReminderInfo {
+  messageId: string;
+  threadId: string;
+  accountEmail: string;
+  subject: string;
+  toEmail: string;
+}
+
+function FollowUpReminderDialog({
+  open,
+  onOpenChange,
+  info,
+  defaultDays,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  info: FollowUpReminderInfo | null;
+  defaultDays?: number | null;
+}) {
+  const { toast } = useToast();
+  const [selectedDays, setSelectedDays] = useState<number>(defaultDays ?? 3);
+  const [saving, setSaving] = useState(false);
+
+  const dayOptions = [2, 3, 5, 7, 14];
+
+  const handleSave = async () => {
+    if (!info) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/follow-up-reminders", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageId: info.messageId,
+          threadId: info.threadId,
+          accountEmail: info.accountEmail,
+          subject: info.subject,
+          toEmail: info.toEmail,
+          days: selectedDays,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to set reminder");
+      toast({ title: "Reminder set", description: `We'll remind you to follow up in ${selectedDays} days if no reply.` });
+      queryClient.invalidateQueries({ queryKey: ["follow-up-reminders"] });
+      onOpenChange(false);
+    } catch {
+      toast({ title: "Failed to set reminder", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[380px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlarmClock className="w-5 h-5 text-primary" />
+            Set Follow-up Reminder
+          </DialogTitle>
+        </DialogHeader>
+        <div className="py-2 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Remind you to follow up if no reply by:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {dayOptions.map(d => (
+              <button
+                key={d}
+                onClick={() => setSelectedDays(d)}
+                className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                  selectedDays === d
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-background text-foreground border-border hover:border-foreground/40"
+                }`}
+              >
+                {d} days
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Due: {new Date(Date.now() + selectedDays * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+          </p>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Skip
+          </Button>
+          <Button onClick={handleSave} disabled={saving} className="gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlarmClock className="w-4 h-4" />}
+            Set Reminder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface FollowUpReminder {
+  id: number;
+  messageId: string;
+  threadId: string;
+  accountEmail: string;
+  subject: string | null;
+  toEmail: string | null;
+  dueAt: string;
+  status: string;
+  snoozedUntil: string | null;
+}
+
+function useFollowUpReminders() {
+  return useQuery<{ reminders: FollowUpReminder[] }>({
+    queryKey: ["follow-up-reminders"],
+    queryFn: async () => {
+      const res = await fetch("/api/follow-up-reminders/all", { credentials: "include" });
+      if (!res.ok) return { reminders: [] };
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+}
+
+function FollowUpBanner({ reminders, onDismiss, onSnooze, onThreadClick }: {
+  reminders: FollowUpReminder[];
+  onDismiss: (id: number) => void;
+  onSnooze: (id: number) => void;
+  onThreadClick: (threadId: string, accountEmail: string) => void;
+}) {
+  if (!reminders.length) return null;
+
+  return (
+    <div className="mx-0 border-b bg-amber-50/70 dark:bg-amber-950/20">
+      {reminders.slice(0, 3).map(r => (
+        <div key={r.id} className="flex items-center gap-2 px-4 py-2.5 border-b last:border-b-0 border-amber-100 dark:border-amber-900">
+          <AlarmClock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+          <button
+            className="flex-1 min-w-0 text-left"
+            onClick={() => onThreadClick(r.threadId, r.accountEmail)}
+          >
+            <span className="text-xs font-medium text-amber-800 dark:text-amber-200">Follow up</span>
+            {r.subject && (
+              <span className="text-xs text-amber-700 dark:text-amber-300 ml-1 truncate">— {r.subject}</span>
+            )}
+            {r.toEmail && (
+              <span className="text-xs text-amber-600 dark:text-amber-400 ml-1">to {r.toEmail}</span>
+            )}
+          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => onSnooze(r.id)}
+              className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-600 dark:text-amber-400"
+              title="Snooze 2 days"
+            >
+              <Clock className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => onDismiss(r.id)}
+              className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-600 dark:text-amber-400"
+              title="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1886,6 +2059,8 @@ export default function Dashboard() {
   const [calendlyDrafts, setCalendlyDrafts] = useState<Record<string, string>>({});
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [selectedThreadAccount, setSelectedThreadAccount] = useState<string | null>(null);
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
+  const [followUpInfo, setFollowUpInfo] = useState<FollowUpReminderInfo | null>(null);
 
   const { data: gmailAccountsData, refetch: refetchAccounts } = useQuery({
     queryKey: ["gmail-accounts"],
@@ -2079,6 +2254,33 @@ export default function Dashboard() {
 
   const { data: calendarData } = useCalendarEvents();
   const { data: connectorsData } = useConnectorIds();
+  const { data: followUpRemindersData, refetch: refetchFollowUpReminders } = useFollowUpReminders();
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json() as Promise<{ followUpWindowDays?: number | null; defaultTone?: string }>;
+    },
+    staleTime: 300_000,
+  });
+  const defaultFollowUpDays = settingsData?.followUpWindowDays ?? null;
+
+  const dueReminders = (followUpRemindersData?.reminders ?? []).filter(r => {
+    const now = new Date();
+    const due = new Date(r.dueAt);
+    if (due > now) return false;
+    if (r.snoozedUntil && new Date(r.snoozedUntil) > now) return false;
+    return r.status === "pending";
+  });
+
+  // Build a set of thread IDs that have pending follow-up reminders (for badge display)
+  const pendingReminderThreadIds = new Set(
+    (followUpRemindersData?.reminders ?? [])
+      .filter(r => r.status === "pending")
+      .map(r => r.threadId)
+  );
+
   const driveConnected = connectorsData?.connectors.some(c => c.connectorId === "google-drive") ?? false;
   const hubspotConnected = connectorsData?.connectors.some(c => c.connectorId === "hubspot") ?? false;
   const contactsConnected = connectorsData?.connectors.some(c => c.connectorId === "google-contacts") ?? false;
@@ -2162,6 +2364,28 @@ export default function Dashboard() {
     }
   }, [calendarContext]);
 
+  const handleDismissReminder = async (id: number) => {
+    try {
+      await fetch(`/api/follow-up-reminders/${id}/dismiss`, { method: "POST", credentials: "include" });
+      queryClient.invalidateQueries({ queryKey: ["follow-up-reminders"] });
+      refetchFollowUpReminders();
+    } catch {}
+  };
+
+  const handleSnoozeReminder = async (id: number) => {
+    try {
+      await fetch(`/api/follow-up-reminders/${id}/snooze`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: 2 }),
+      });
+      queryClient.invalidateQueries({ queryKey: ["follow-up-reminders"] });
+      refetchFollowUpReminders();
+      toast({ title: "Snoozed", description: "Reminder snoozed for 2 days." });
+    } catch {}
+  };
+
   const handleSend = (content: string, tone: string) => {
     if (!threadData || !selectedThreadId) return;
     const lastMessage = threadData.messages[threadData.messages.length - 1];
@@ -2175,9 +2399,20 @@ export default function Dashboard() {
         account: threadAccount,
       },
       {
-        onSuccess: () => {
+        onSuccess: (data: any) => {
           toast({ title: "Reply sent", description: `Sent ${tone} reply successfully.` });
           queryClient.invalidateQueries({ queryKey: ["inbox"] });
+          // Show follow-up reminder prompt (if not disabled in settings)
+          if (defaultFollowUpDays !== 0) {
+            setFollowUpInfo({
+              messageId: data?.messageId || lastMessage.id || "",
+              threadId: selectedThreadId!,
+              accountEmail: threadAccount || "",
+              subject: lastMessage.subject || "",
+              toEmail: lastMessage.from || "",
+            });
+            setShowFollowUpDialog(true);
+          }
           setSelectedThreadId(null);
         },
         onError: () => {
@@ -2359,6 +2594,19 @@ export default function Dashboard() {
             )}
           </div>
           
+          {/* Due follow-up reminders banner */}
+          {dueReminders.length > 0 && (
+            <FollowUpBanner
+              reminders={dueReminders}
+              onDismiss={handleDismissReminder}
+              onSnooze={handleSnoozeReminder}
+              onThreadClick={(threadId, accountEmail) => {
+                setSelectedThreadId(threadId);
+                setSelectedThreadAccount(accountEmail || null);
+              }}
+            />
+          )}
+
           <ScrollArea className="flex-1 pb-16 md:pb-0">
             {isLoadingInbox ? (
               <div className="p-4 space-y-4">
@@ -2436,6 +2684,11 @@ export default function Dashboard() {
                           <div className="flex items-center gap-1 shrink-0">
                             {thread.isStarred && (
                               <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                            )}
+                            {pendingReminderThreadIds.has(thread.threadId) && (
+                              <span title="Follow-up reminder set">
+                                <AlarmClock className="w-3 h-3 text-amber-500 shrink-0" />
+                              </span>
                             )}
                             {isUnifiedInbox && thread.accountEmail && gmailAccounts.length > 1 && (
                               <span
@@ -2795,6 +3048,13 @@ export default function Dashboard() {
       )}
 
       <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
+
+      <FollowUpReminderDialog
+        open={showFollowUpDialog}
+        onOpenChange={setShowFollowUpDialog}
+        info={followUpInfo}
+        defaultDays={defaultFollowUpDays ?? 3}
+      />
     </AppLayout>
   );
 }

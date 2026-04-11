@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -10,6 +10,7 @@ export const userSettingsTable = pgTable("user_settings", {
   emailSignature: text("email_signature"),
   darkMode: boolean("dark_mode").notNull().default(false),
   notifications: boolean("notifications").notNull().default(true),
+  followUpWindowDays: integer("follow_up_window_days"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

@@ -12,3 +12,4 @@ export * from "./agentConversations";
 export * from "./agentMessages";
 export * from "./contactProfiles";
 export * from "./emailTones";
+export * from "./followUpReminders";

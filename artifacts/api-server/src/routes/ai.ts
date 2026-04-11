@@ -5,8 +5,8 @@ import { getReqUserId } from "../lib/getReqAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
 import { GenerateRepliesBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { usersTable, replyHistoryTable, connectorsTable, contactProfilesTable } from "@workspace/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { usersTable, replyHistoryTable, connectorsTable, contactProfilesTable, followUpRemindersTable } from "@workspace/db/schema";
+import { eq, and, desc, sql, lte, or, isNull } from "drizzle-orm";
 import { openrouter as openai, FAST_MODEL } from "../lib/openrouter";
 import rateLimit from "express-rate-limit";
 import { getGmailClientForUser, getCalendarClientForUser, getHeader } from "../lib/gmailClient";
@@ -538,6 +538,33 @@ router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
       }
     } catch { /* Teams not connected */ }
 
+    // --- Follow-up reminders ---
+    try {
+      const now = new Date();
+      const dueReminders = await db.select()
+        .from(followUpRemindersTable)
+        .where(
+          and(
+            eq(followUpRemindersTable.userId, userId),
+            eq(followUpRemindersTable.status, "pending"),
+            lte(followUpRemindersTable.dueAt, now),
+            or(
+              isNull(followUpRemindersTable.snoozedUntil),
+              lte(followUpRemindersTable.snoozedUntil, now),
+            ),
+          )
+        );
+
+      if (dueReminders.length > 0) {
+        const items = dueReminders.slice(0, 5).map(r => {
+          const subj = r.subject ? `"${r.subject}"` : "(no subject)";
+          const to = r.toEmail ? ` to ${r.toEmail}` : "";
+          return `• Follow up${to}: ${subj}`;
+        });
+        sections.push(`FOLLOW-UP REMINDERS (${dueReminders.length})\n${items.join("\n")}`);
+      }
+    } catch { /* follow-up reminders non-fatal */ }
+
     if (!sections.length) {
       res.json({ digest: "No connected accounts yet. Connect Gmail, Calendar, Slack, or Teams in Settings to get your daily briefing." });
       return;
@@ -566,6 +593,9 @@ For each upcoming meeting that has a [Fathom] context attached, write one senten
 COMMS
 One or two sentences covering Slack/Teams highlights if any.
 
+FOLLOW-UPS
+If there are any follow-up reminders due, list them briefly. One line each. Omit section if none.
+
 ACTION ITEMS
 • [Most critical thing to do]
 • [Second priority]
@@ -573,7 +603,7 @@ ACTION ITEMS
 (Max 3 bullets. Omit section if nothing urgent.)
 
 Rules:
-- Be concise and direct — max 220 words total
+- Be concise and direct — max 250 words total
 - Only reference actual data from the snapshot
 - Omit any section header if that system is not in the snapshot
 - When [Fathom] context is present for a meeting, lead with the most relevant prep point from that summary

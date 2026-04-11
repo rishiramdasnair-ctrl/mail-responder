@@ -697,7 +697,7 @@ router.post("/gmail/send", requireAuth, emailSendRateLimit, async (req, res) => 
       requestBody: { raw, threadId: body.threadId },
     });
 
-    res.json({ messageId: result.data.id, success: true });
+    res.json({ messageId: result.data.id, threadId: body.threadId || result.data.threadId, success: true });
   } catch (err) {
     req.log.error({ err }, "Error sending reply");
     res.status(500).json({ error: "Failed to send reply" });

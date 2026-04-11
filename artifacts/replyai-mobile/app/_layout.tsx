@@ -15,7 +15,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import AnimatedSplash from "@/components/AnimatedSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -23,6 +22,12 @@ import { InboxSheetProvider } from "@/contexts/InboxSheetContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { useAuth } from "@/hooks/useAuth";
 import { usePushToken } from "@/hooks/usePushToken";
+
+type AnimatedSplashProps = { onComplete: () => void };
+const AnimatedSplash: React.ComponentType<AnimatedSplashProps> | null =
+  Platform.OS !== "web"
+    ? (require("@/components/AnimatedSplash") as { default: React.ComponentType<AnimatedSplashProps> }).default
+    : null;
 
 SplashScreen.preventAutoHideAsync();
 
@@ -137,7 +142,7 @@ export default function RootLayout() {
           </InboxSheetProvider>
         </ThemeProvider>
       </SafeAreaProvider>
-      {showSplash && (
+      {showSplash && AnimatedSplash && (
         <AnimatedSplash onComplete={() => setShowSplash(false)} />
       )}
     </AuthProvider>

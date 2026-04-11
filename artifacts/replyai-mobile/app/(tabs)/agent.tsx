@@ -13,12 +13,17 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Modal,
+  Alert,
+  Animated,
 } from "react-native";
 import Markdown from "react-native-markdown-display";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { Audio } from "expo-av";
+import { fetch } from "expo/fetch";
+import * as FileSystem from "expo-file-system";
 import { useAuth } from "@/hooks/useAuth";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
@@ -467,8 +472,106 @@ export default function AgentScreen() {
   const [digestLoading, setDigestLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const handleVoicePress = useCallback(async () => {
+    if (isTranscribing) return;
+
+    if (isRecording) {
+      setIsRecording(false);
+      const recording = recordingRef.current;
+      recordingRef.current = null;
+      if (!recording) return;
+      try {
+        await recording.stopAndUnloadAsync();
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        const uri = recording.getURI();
+        if (!uri) return;
+
+        setIsTranscribing(true);
+        try {
+          const allHeaders = await authHeaders();
+          const formData = new FormData();
+          if (Platform.OS === "web") {
+            const blob = await fetch(uri).then((r) => r.blob());
+            formData.append("audio", blob, "audio.webm");
+          } else {
+            const fileInfo = await FileSystem.getInfoAsync(uri);
+            if (!fileInfo.exists) return;
+            formData.append("audio", {
+              uri,
+              name: "audio.m4a",
+              type: "audio/m4a",
+            } as unknown as Blob);
+          }
+          const res = await fetch(`${apiBaseUrl}/api/ai/transcribe`, {
+            method: "POST",
+            headers: { Authorization: allHeaders["Authorization"] },
+            body: formData,
+          });
+          if (res.ok) {
+            const data = await res.json() as { text?: string };
+            if (data.text) {
+              setInputText((prev) => (prev ? `${prev} ${data.text}` : data.text!));
+            }
+          }
+        } catch {
+          Alert.alert("Transcription failed", "Could not transcribe your recording. Please try again.");
+        } finally {
+          setIsTranscribing(false);
+        }
+      } catch {
+        setIsTranscribing(false);
+      }
+      return;
+    }
+
+    if (Platform.OS === "web") {
+      Alert.alert("Not supported", "Voice input is not supported in the web browser.");
+      return;
+    }
+
+    const { status, canAskAgain } = await Audio.getPermissionsAsync();
+    if (status !== "granted") {
+      if (!canAskAgain) {
+        Alert.alert(
+          "Microphone Access Required",
+          "ReplyAI needs microphone access to transcribe your voice. Please enable it in Settings.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+      const result = await Audio.requestPermissionsAsync();
+      if (result.status !== "granted") {
+        Alert.alert(
+          "Microphone Denied",
+          "ReplyAI needs microphone access to use voice input. You can enable it in your device settings.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
+
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
+      setIsRecording(true);
+    } catch {
+      Alert.alert("Recording failed", "Could not start recording. Please try again.");
+    }
+  }, [isRecording, isTranscribing, apiBaseUrl, authHeaders]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_BAR_HEIGHT = Platform.select({ ios: 49, android: 56, web: 84, default: 49 }) as number;
@@ -487,6 +590,32 @@ export default function AgentScreen() {
   const suggestions = suggestionsData?.suggestions ?? [];
 
   useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  useEffect(() => {
+    return () => {
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+        recordingRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isRecording) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.25, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulseLoopRef.current = loop;
+      loop.start();
+    } else {
+      pulseLoopRef.current?.stop();
+      pulseLoopRef.current = null;
+      pulseAnim.setValue(1);
+    }
+  }, [isRecording, pulseAnim]);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
@@ -766,6 +895,8 @@ export default function AgentScreen() {
     },
     sendBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.foreground, alignItems: "center", justifyContent: "center" },
     sendBtnDisabled: { opacity: 0.35 },
+    micBtn: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+    micBtnRecording: { backgroundColor: "#ef4444", borderColor: "#ef4444" },
     clearBtn: { paddingHorizontal: 4, paddingVertical: 4, alignSelf: "center", marginTop: 6 },
     clearBtnText: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
   });
@@ -879,22 +1010,42 @@ export default function AgentScreen() {
           )}
 
           <View style={styles.inputRow}>
+            {Platform.OS !== "web" && (
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <TouchableOpacity
+                  style={[styles.micBtn, isRecording && styles.micBtnRecording]}
+                  onPress={handleVoicePress}
+                  disabled={isSending || isTranscribing}
+                  activeOpacity={0.8}
+                >
+                  {isTranscribing ? (
+                    <ActivityIndicator color={colors.mutedForeground} size="small" />
+                  ) : (
+                    <Feather
+                      name="mic"
+                      size={18}
+                      color={isRecording ? "#fff" : colors.mutedForeground}
+                    />
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
+            )}
             <TextInput
               style={styles.textInput}
               value={inputText}
               onChangeText={setInputText}
-              placeholder="Ask anything about your email or calendar…"
-              placeholderTextColor={colors.mutedForeground}
+              placeholder={isRecording ? "Recording… tap mic to stop" : "Ask anything about your email or calendar…"}
+              placeholderTextColor={isRecording ? "#ef4444" : colors.mutedForeground}
               multiline
               selectionColor={colors.foreground}
               returnKeyType="default"
-              editable={!isSending}
+              editable={!isSending && !isRecording}
               blurOnSubmit={false}
             />
             <TouchableOpacity
-              style={[styles.sendBtn, (!inputText.trim() || isSending) && styles.sendBtnDisabled]}
+              style={[styles.sendBtn, (!inputText.trim() || isSending || isRecording) && styles.sendBtnDisabled]}
               onPress={() => sendMessage(inputText)}
-              disabled={!inputText.trim() || isSending}
+              disabled={!inputText.trim() || isSending || isRecording}
               activeOpacity={0.8}
             >
               {isSending ? (

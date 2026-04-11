@@ -1,4 +1,5 @@
 import { Router, Request } from "express";
+import multer from "multer";
 import { requireAuth } from "../lib/requireAuth";
 import { getReqUserId } from "../lib/getReqAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
@@ -579,6 +580,49 @@ Rules:
   } catch (err) {
     req.log.error({ err }, "Error generating digest");
     res.status(500).json({ error: "Failed to generate digest" });
+  }
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+const transcribeRateLimit = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => getReqUserId(req) ?? "anon",
+  validate: { xForwardedForHeader: false },
+  handler: (_req, res) => {
+    res.status(429).json({ error: "Too many transcription requests. Please wait a moment.", code: "RATE_LIMITED" });
+  },
+});
+
+router.post("/ai/transcribe", requireAuth, transcribeRateLimit, upload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "No audio file provided" });
+      return;
+    }
+
+    const { buffer, mimetype, originalname } = req.file;
+    const filename = originalname || `audio.${mimetype.split("/")[1] || "m4a"}`;
+
+    const { File } = await import("node:buffer");
+    const slicedBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    const audioFile = new File([slicedBuffer], filename, { type: mimetype || "audio/m4a" });
+
+    const transcription = await openai.audio.transcriptions.create({
+      model: "openai/whisper-large-v3",
+      file: audioFile as unknown as Parameters<typeof openai.audio.transcriptions.create>[0]["file"],
+    });
+
+    res.json({ text: transcription.text });
+  } catch (err) {
+    req.log.error({ err }, "Error transcribing audio");
+    res.status(500).json({ error: "Failed to transcribe audio" });
   }
 });
 

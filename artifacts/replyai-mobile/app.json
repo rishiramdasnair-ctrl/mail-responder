@@ -21,11 +21,13 @@
         "NSCalendarsUsageDescription": "ReplyAI accesses your calendar to help schedule meetings from emails.",
         "NSCalendarsWriteOnlyAccessUsageDescription": "ReplyAI creates calendar events from emails.",
         "NSRemindersUsageDescription": "ReplyAI may create reminders for follow-up emails.",
+        "NSMicrophoneUsageDescription": "ReplyAI uses your microphone to transcribe voice messages into text for the AI agent.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.replyai.mobile"
+      "package": "com.replyai.mobile",
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {
       "favicon": "./assets/images/icon.png"

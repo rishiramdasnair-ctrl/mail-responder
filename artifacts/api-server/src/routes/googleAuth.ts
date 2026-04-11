@@ -153,6 +153,9 @@ router.get("/auth/google/callback", async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
 
+  let isMobile = false;
+  let isMobileSignin = false;
+
   try {
     const { code, state, error } = req.query;
 
@@ -174,8 +177,8 @@ router.get("/auth/google/callback", async (req, res) => {
     }
 
     const { userId: stateUserId, addAccount, platform } = statePayload;
-    const isMobile = platform === "mobile";
-    const isMobileSignin = platform === "mobile-signin";
+    isMobile = platform === "mobile";
+    isMobileSignin = platform === "mobile-signin";
 
     let tokens;
     try {
@@ -217,6 +220,29 @@ router.get("/auth/google/callback", async (req, res) => {
     // For mobile sign-in, derive userId from Google sub
     const userId = isMobileSignin ? `google_${googleSub}` : stateUserId;
 
+    // Upsert the user FIRST (before gmail_accounts, which has a FK to users)
+    const updated = await db.update(usersTable)
+      .set({
+        googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
+        ...(tokens.refresh_token ? { googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token } : {}),
+        googleTokenExpiresAt: expiresAt,
+        googleEmail,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, userId))
+      .returning({ id: usersTable.id });
+
+    if (updated.length === 0) {
+      await db.insert(usersTable).values({
+        id: userId,
+        email: googleEmail,
+        googleEmail,
+        googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
+        googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? null,
+        googleTokenExpiresAt: expiresAt,
+      }).onConflictDoNothing();
+    }
+
     // Determine if this should be the primary account
     const existingAccounts = await db.select({ id: gmailAccountsTable.id })
       .from(gmailAccountsTable)
@@ -250,34 +276,6 @@ router.get("/auth/google/callback", async (req, res) => {
       });
     }
 
-    // Also update users table for backward compatibility (primary account only)
-    if (!addAccount || isFirstAccount || shouldBePrimary) {
-      const updated = await db.update(usersTable)
-        .set({
-          googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
-          ...(tokens.refresh_token ? { googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token } : {}),
-          googleTokenExpiresAt: expiresAt,
-          googleEmail,
-          updatedAt: new Date(),
-        })
-        .where(eq(usersTable.id, userId))
-        .returning({ id: usersTable.id });
-
-      if (updated.length === 0) {
-        await db.insert(usersTable).values({
-          id: userId,
-          email: googleEmail,
-          googleEmail,
-          googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
-          googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? null,
-          googleTokenExpiresAt: expiresAt,
-        }).onConflictDoNothing();
-      }
-    } else {
-      // Ensure user exists
-      await getOrCreateUser(userId);
-    }
-
     if (isMobileSignin) {
       // Issue our own session token — no Clerk dependency
       const sessionToken = createSessionToken(userId, googleEmail);
@@ -291,8 +289,10 @@ router.get("/auth/google/callback", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[google-callback] unexpected error");
-    if ((err as any)?.message?.includes("mobile-signin")) {
+    if (isMobileSignin) {
       res.redirect(`replyai://signin-error?error=server_error`);
+    } else if (isMobile) {
+      res.redirect(`replyai://oauth-error?error=server_error`);
     } else {
       res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
     }

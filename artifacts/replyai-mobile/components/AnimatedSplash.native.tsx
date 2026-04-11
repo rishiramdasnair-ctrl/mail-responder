@@ -1,22 +1,8 @@
-import React, { useEffect } from "react";
-import { StyleSheet, View } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  useAnimatedReaction,
-  withDelay,
-  withTiming,
-  runOnJS,
-  Easing,
-  type SharedValue,
-} from "react-native-reanimated";
+import React, { useEffect, useRef } from "react";
+import { Animated, Easing, StyleSheet, View } from "react-native";
 
 const LOGO_W = 184;
 const LOGO_H = 160;
-const FLY_DISTANCE = 130;
-const FLY_DURATION = 450;
-const FADE_DURATION = 370;
-const MAX_STAGGER = 120;
 
 type BarDef = {
   left: number;
@@ -49,43 +35,17 @@ const BARS: BarDef[] = [
   { left: 172, top: 35, w: 8, h: 98, dir: "right", staggerMs: 120, tyOffset: -16 },
 ];
 
+const FLY_DISTANCE = 130;
+const FLY_DURATION = 450;
+
 type BarViewProps = {
   def: BarDef;
-  trigger: SharedValue<number>;
+  progress: Animated.Value;
 };
 
-function BarView({ def, trigger }: BarViewProps) {
-  const tx = useSharedValue(0);
-  const ty = useSharedValue(0);
-  const opacity = useSharedValue(1);
-
+function BarView({ def, progress }: BarViewProps) {
   const targetTx = def.dir === "left" ? -FLY_DISTANCE : FLY_DISTANCE;
-  const easing = Easing.out(Easing.cubic);
-  const fadeEasing = Easing.out(Easing.quad);
-
-  useAnimatedReaction(
-    () => trigger.value,
-    (val) => {
-      "worklet";
-      if (val === 1) {
-        tx.value = withDelay(def.staggerMs, withTiming(targetTx, { duration: FLY_DURATION, easing }));
-        ty.value = withDelay(def.staggerMs, withTiming(def.tyOffset, { duration: FLY_DURATION, easing }));
-        opacity.value = withDelay(def.staggerMs, withTiming(0, { duration: FADE_DURATION, easing: fadeEasing }));
-      }
-    }
-  );
-
-  const style = useAnimatedStyle(() => {
-    "worklet";
-    return {
-      transform: [
-        { translateX: tx.value },
-        { translateY: ty.value },
-        { rotate: `${tx.value * 0.09}deg` },
-      ],
-      opacity: opacity.value,
-    };
-  });
+  const targetRot = def.dir === "left" ? "-11deg" : "11deg";
 
   return (
     <Animated.View
@@ -99,43 +59,74 @@ function BarView({ def, trigger }: BarViewProps) {
           borderRadius: def.w / 2,
           backgroundColor: "#000000",
         },
-        style,
+        {
+          transform: [
+            {
+              translateX: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, targetTx],
+              }),
+            },
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, def.tyOffset],
+              }),
+            },
+            {
+              rotate: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: ["0deg", targetRot],
+              }),
+            },
+          ],
+          opacity: progress.interpolate({
+            inputRange: [0, 0.75],
+            outputRange: [1, 0],
+            extrapolate: "clamp",
+          }),
+        },
       ]}
     />
   );
 }
 
 export default function AnimatedSplash({ onComplete }: { onComplete: () => void }) {
-  const trigger = useSharedValue(0);
-  const overlayOpacity = useSharedValue(1);
+  const overlayOpacity = useRef(new Animated.Value(1)).current;
+  const barAnims = useRef(BARS.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    trigger.value = 1;
+    const easing = Easing.out(Easing.cubic);
 
-    const totalMs = MAX_STAGGER + FLY_DURATION + 80;
-    const t = setTimeout(() => {
-      overlayOpacity.value = withTiming(0, { duration: 200 }, (finished) => {
-        "worklet";
-        if (finished) runOnJS(onComplete)();
-      });
-    }, totalMs);
-
-    return () => clearTimeout(t);
+    Animated.parallel(
+      barAnims.map((anim, i) =>
+        Animated.sequence([
+          Animated.delay(BARS[i].staggerMs),
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: FLY_DURATION,
+            easing,
+            useNativeDriver: true,
+          }),
+        ])
+      )
+    ).start(() => {
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => onComplete());
+    });
   }, []);
-
-  const overlayStyle = useAnimatedStyle(() => {
-    "worklet";
-    return { opacity: overlayOpacity.value };
-  });
 
   return (
     <Animated.View
-      style={[StyleSheet.absoluteFillObject, styles.overlay, overlayStyle]}
+      style={[StyleSheet.absoluteFillObject, styles.overlay, { opacity: overlayOpacity }]}
       pointerEvents="none"
     >
       <View style={styles.logoContainer}>
         {BARS.map((bar, i) => (
-          <BarView key={i} def={bar} trigger={trigger} />
+          <BarView key={i} def={bar} progress={barAnims[i]} />
         ))}
       </View>
     </Animated.View>

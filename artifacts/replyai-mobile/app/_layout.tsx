@@ -9,12 +9,13 @@ import * as SecureStore from "expo-secure-store";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import AnimatedSplash from "@/components/AnimatedSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -88,6 +89,8 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  const [showSplash, setShowSplash] = useState(false);
+
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const style = document.createElement("style");
@@ -107,6 +110,9 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
+      if (Platform.OS !== "web") {
+        setShowSplash(true);
+      }
     }
   }, [fontsLoaded, fontError]);
 
@@ -131,6 +137,9 @@ export default function RootLayout() {
           </InboxSheetProvider>
         </ThemeProvider>
       </SafeAreaProvider>
+      {showSplash && (
+        <AnimatedSplash onComplete={() => setShowSplash(false)} />
+      )}
     </AuthProvider>
   );
 }

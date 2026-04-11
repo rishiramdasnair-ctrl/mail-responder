@@ -387,7 +387,7 @@ export default function OnboardingScreen() {
             {/* Hero: logo + orbiting pills */}
             <Animated.View style={[styles.heroArea, { transform: [{ scale: heroScale }], opacity: heroOpacity }]}>
               <View style={styles.logoMark}>
-                <Logo size={54} color="#fff" />
+                <Logo size={72} color="#000" />
               </View>
               {/* Feature pills floating around */}
               <Animated.View style={[styles.pill, styles.pillTL, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>
@@ -685,15 +685,8 @@ const styles = StyleSheet.create({
   logoMark: {
     width: 88,
     height: 88,
-    borderRadius: 24,
-    backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 12,
   },
   pill: {
     position: "absolute",

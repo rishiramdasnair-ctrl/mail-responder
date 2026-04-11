@@ -23,6 +23,7 @@ import { PrioritySection, type PriorityEmail } from "@/components/PrioritySectio
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useGmailAccounts } from "@/hooks/useGmailAccounts";
+import Logo from "@/components/Logo";
 import { useGmailCategories } from "@/hooks/useGmailCategories";
 import { useInboxSheet } from "@/contexts/InboxSheetContext";
 
@@ -535,7 +536,10 @@ export default function InboxScreen() {
             {headerTitle ? (
               <Text style={styles.title}>{headerTitle}</Text>
             ) : (
-              <Text style={[styles.title, { color: colors.foreground }]}>ReplyAI</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Logo size={22} color={colors.foreground} />
+                <Text style={[styles.title, { color: colors.foreground }]}>ReplyAI</Text>
+              </View>
             )}
           </View>
         </View>
@@ -625,7 +629,10 @@ export default function InboxScreen() {
               }}
               hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
             >
-              <Text style={styles.title}>ReplyAI</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Logo size={22} color={colors.foreground} />
+                <Text style={styles.title}>ReplyAI</Text>
+              </View>
               {unreadCount > 0 && (
                 <View style={styles.unreadBadge}>
                   <Text style={styles.unreadText}>{unreadCount}</Text>

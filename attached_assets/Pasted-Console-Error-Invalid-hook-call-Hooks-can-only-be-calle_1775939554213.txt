@@ -1,0 +1,30 @@
+Console Error
+Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one... See More
+Call Stack
+
+Source Map
+This call stack is not symbolicated. Some features are unavailable such as viewing the function name or tapping to open files.
+Object.addLog
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:1115:32
+registerError
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:915:22
+console.error
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:840:31
+Proxy.<anonymous>
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/__replco/static/devtools/injected.js:37:27
+printWarning
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:131734:36
+error
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:131711:13
+resolveDispatcher
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:132950:13
+useState
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:132976:26
+useFonts
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:162191:53
+RootLayout
+https://46fefe74-a4d5-4777-b249-adfa07fad569-00-73xc0evm8vs0.expo.picard.replit.dev/node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/entry.bundle:161867:73
+Showing all frames

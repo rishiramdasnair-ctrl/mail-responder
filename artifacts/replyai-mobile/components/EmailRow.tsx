@@ -14,6 +14,8 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import * as Haptics from "expo-haptics";
 
+export type EmailTone = "Urgent" | "Demanding" | "Friendly" | "Informational" | "Neutral";
+
 export interface EmailThread {
   id: string;
   threadId: string;
@@ -29,6 +31,25 @@ export interface EmailThread {
   isStarred: boolean;
   labelIds: string[];
   accountEmail?: string;
+  tone?: EmailTone;
+}
+
+const TONE_BADGE_STYLES: Record<EmailTone, { bg: string; text: string; label: string }> = {
+  Urgent: { bg: "#FF2D5518", text: "#FF2D55", label: "Urgent" },
+  Demanding: { bg: "#FF6B3518", text: "#FF6B35", label: "Demanding" },
+  Friendly: { bg: "#34C75918", text: "#34C759", label: "Friendly" },
+  Informational: { bg: "#007AFF18", text: "#007AFF", label: "Info" },
+  Neutral: { bg: "transparent", text: "#8E8E93", label: "Neutral" },
+};
+
+function TonePill({ tone }: { tone: EmailTone }) {
+  if (tone === "Neutral") return null;
+  const s = TONE_BADGE_STYLES[tone];
+  return (
+    <View style={{ backgroundColor: s.bg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, alignSelf: "flex-start" }}>
+      <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: s.text, letterSpacing: 0.3 }}>{s.label}</Text>
+    </View>
+  );
 }
 
 interface EmailRowProps {
@@ -279,9 +300,14 @@ export function EmailRow({ email, onPress, onStar, onTrash, onRestore, onMarkRea
           }]} numberOfLines={1}>
             {email.subject || "(no subject)"}
           </Text>
-          <Text style={[styles.snippet, { color: email.isUnread ? colors.mutedForeground : colors.border }]} numberOfLines={2}>
-            {email.snippet}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+            <Text style={[styles.snippet, { color: email.isUnread ? colors.mutedForeground : colors.border, flex: 1 }]} numberOfLines={2}>
+              {email.snippet}
+            </Text>
+            {email.tone && email.tone !== "Neutral" && (
+              <TonePill tone={email.tone} />
+            )}
+          </View>
         </View>
         {email.isStarred && (
           <View style={styles.starIcon}>

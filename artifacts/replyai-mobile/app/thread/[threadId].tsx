@@ -20,6 +20,102 @@ import { ActionSheet } from "@/components/ActionSheet";
 import { EmailBodyRenderer } from "@/components/EmailBodyRenderer";
 import { AttachmentsSection, type Attachment } from "@/components/AttachmentViewer";
 
+interface ContactProfile {
+  senderEmail: string;
+  emailCount: number;
+  avgResponseTimeHours: number | null;
+  emailsPerWeek: number | null;
+  inferredTone: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+}
+
+function ContactIntelligenceCard({ senderEmail, apiBaseUrl, authHeaders }: {
+  senderEmail: string;
+  apiBaseUrl: string;
+  authHeaders: () => Promise<Record<string, string>>;
+}) {
+  const colors = useColors();
+  const { data, isLoading } = useQuery<ContactProfile>({
+    queryKey: ["contact-profile", senderEmail, apiBaseUrl],
+    queryFn: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/ai/contact-profile?email=${encodeURIComponent(senderEmail)}`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!senderEmail,
+    staleTime: 5 * 60_000,
+  });
+
+  if (isLoading || !data || data.emailCount === 0) return null;
+
+  const formatResponseTime = (hours: number | null) => {
+    if (hours === null) return null;
+    if (hours < 1) return `${Math.round(hours * 60)}m`;
+    if (hours < 24) return `${Math.round(hours)}h`;
+    return `${Math.round(hours / 24)}d`;
+  };
+
+  const toneColors: Record<string, { bg: string; text: string }> = {
+    Urgent: { bg: "#FF2D5518", text: "#FF2D55" },
+    Demanding: { bg: "#FF6B3518", text: "#FF6B35" },
+    Friendly: { bg: "#34C75918", text: "#34C759" },
+    Informational: { bg: "#007AFF18", text: "#007AFF" },
+    Neutral: { bg: colors.muted, text: colors.mutedForeground },
+  };
+
+  const tc = data.inferredTone ? (toneColors[data.inferredTone] ?? toneColors.Neutral) : null;
+
+  return (
+    <View style={{
+      marginHorizontal: 16,
+      marginBottom: 12,
+      backgroundColor: colors.muted,
+      borderRadius: 12,
+      padding: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <View style={{ width: 18, height: 18, borderRadius: 5, backgroundColor: "#7C3AED", alignItems: "center", justifyContent: "center" }}>
+          <Feather name="user" size={10} color="#fff" />
+        </View>
+        <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Contact Intelligence
+        </Text>
+      </View>
+      <View style={{ gap: 5 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Feather name="mail" size={12} color={colors.mutedForeground} />
+          <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+            {data.emailCount} email{data.emailCount !== 1 ? "s" : ""} in history{data.emailsPerWeek !== null ? <Text style={{ fontFamily: "Inter_500Medium", color: colors.foreground }}> ({data.emailsPerWeek}/wk)</Text> : null}
+          </Text>
+        </View>
+        {data.avgResponseTimeHours !== null && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Feather name="clock" size={12} color={colors.mutedForeground} />
+            <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+              Avg response: <Text style={{ fontFamily: "Inter_500Medium", color: colors.foreground }}>{formatResponseTime(data.avgResponseTimeHours)}</Text>
+            </Text>
+          </View>
+        )}
+        {data.inferredTone && tc && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Feather name="zap" size={12} color={colors.mutedForeground} />
+            <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+              Preferred tone:{" "}
+            </Text>
+            <View style={{ backgroundColor: tc.bg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: tc.text }}>{data.inferredTone}</Text>
+            </View>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
 interface EmailMessage {
   id: string;
   threadId: string;
@@ -534,6 +630,19 @@ export default function ThreadScreen() {
                   authHeaders={authHeaders}
                 />
               ))}
+
+              {(() => {
+                const firstMsg = thread.messages[0];
+                const senderEmail = firstMsg?.fromEmail;
+                if (!senderEmail) return null;
+                return (
+                  <ContactIntelligenceCard
+                    senderEmail={senderEmail}
+                    apiBaseUrl={apiBaseUrl}
+                    authHeaders={authHeaders}
+                  />
+                );
+              })()}
             </ScrollView>
 
             <View style={styles.footer}>

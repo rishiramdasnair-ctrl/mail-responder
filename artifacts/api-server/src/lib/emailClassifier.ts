@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
-import { userEmailCategoriesTable, DEFAULT_CATEGORIES } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { userEmailCategoriesTable, emailTonesTable, DEFAULT_CATEGORIES } from "@workspace/db/schema";
+import { eq, and, inArray } from "drizzle-orm";
 import { gmail_v1 } from "googleapis";
 import { getGmailClientForUser } from "./gmailClient";
 
@@ -128,6 +128,59 @@ interface OpenRouterResponse {
   error?: { message?: string };
 }
 
+export type EmailTone = "Urgent" | "Demanding" | "Friendly" | "Informational" | "Neutral";
+
+const EMAIL_TONES: EmailTone[] = ["Urgent", "Demanding", "Friendly", "Informational", "Neutral"];
+
+export async function classifyEmailTone(
+  subject: string,
+  snippet: string
+): Promise<EmailTone> {
+  const fallback: EmailTone = "Neutral";
+  const prompt = `Classify the tone of this email into exactly one of: ${EMAIL_TONES.join(", ")}.
+
+Subject: ${subject || "(no subject)"}
+Preview: ${(snippet || "").slice(0, 200)}
+
+Tone definitions:
+- Urgent: requires immediate action, deadline pressure, time-sensitive
+- Demanding: assertive, high expectations, strong ask or complaint
+- Friendly: warm, positive, conversational, casual
+- Informational: neutral update, announcement, FYI, no strong ask
+- Neutral: standard professional communication, no clear emotional tone
+
+Return only the tone label, nothing else.`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://replyai.app",
+        "X-Title": "ReplyAI",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-001",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 10,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!res.ok) return fallback;
+
+    const data: OpenRouterResponse = await res.json();
+    if (data.error?.message) return fallback;
+
+    const raw = (data.choices?.[0]?.message?.content ?? "").trim();
+    const matched = EMAIL_TONES.find((t) => t.toLowerCase() === raw.toLowerCase());
+    return matched ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function classifyEmail(
   subject: string,
   snippet: string,
@@ -180,6 +233,55 @@ Rules:
   return fallback;
 }
 
+/**
+ * Classify tone for a thread and persist to the email_tones table.
+ * Fire-and-forget safe — all errors are swallowed.
+ */
+export async function persistEmailTone(
+  userId: string,
+  threadId: string,
+  subject: string,
+  snippet: string
+): Promise<void> {
+  try {
+    const tone = await classifyEmailTone(subject, snippet);
+    await db
+      .insert(emailTonesTable)
+      .values({ userId, threadId, tone })
+      .onConflictDoUpdate({
+        target: [emailTonesTable.userId, emailTonesTable.threadId],
+        set: { tone, classifiedAt: new Date() },
+      });
+  } catch {
+    // silent — tone is non-critical
+  }
+}
+
+/**
+ * Batch-lookup persisted tones for a list of threadIds.
+ * Returns a map of threadId → tone string.
+ */
+export async function getPersistedTones(
+  userId: string,
+  threadIds: string[]
+): Promise<Record<string, string>> {
+  if (threadIds.length === 0) return {};
+  try {
+    const rows = await db
+      .select({ threadId: emailTonesTable.threadId, tone: emailTonesTable.tone })
+      .from(emailTonesTable)
+      .where(
+        and(
+          eq(emailTonesTable.userId, userId),
+          inArray(emailTonesTable.threadId, threadIds)
+        )
+      );
+    return Object.fromEntries(rows.map(r => [r.threadId, r.tone]));
+  } catch {
+    return {};
+  }
+}
+
 export async function classifyAndLabelMessage(
   userId: string,
   accountEmail: string | undefined,
@@ -190,7 +292,11 @@ export async function classifyAndLabelMessage(
   const enabled = await getEnabledCategories(userId);
   if (enabled.length === 0) return null;
 
-  const category = await classifyEmail(subject, snippet, enabled);
+  // Classify category and tone in parallel
+  const [category] = await Promise.all([
+    classifyEmail(subject, snippet, enabled),
+    persistEmailTone(userId, threadId, subject, snippet),
+  ]);
 
   const gmail = await getGmailClientForUser(userId, accountEmail);
   const normalizedAccount = accountEmail ?? "";

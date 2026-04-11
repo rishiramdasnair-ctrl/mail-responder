@@ -5,8 +5,8 @@ import { getReqUserId } from "../lib/getReqAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
 import { GenerateRepliesBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { usersTable, replyHistoryTable, connectorsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { usersTable, replyHistoryTable, connectorsTable, contactProfilesTable } from "@workspace/db/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { openrouter as openai, FAST_MODEL } from "../lib/openrouter";
 import rateLimit from "express-rate-limit";
 import { getGmailClientForUser, getCalendarClientForUser, getHeader } from "../lib/gmailClient";
@@ -14,6 +14,7 @@ import { getTeamsToken, teamsGet } from "../lib/teamsClient";
 import { decryptConnectorConfig } from "../lib/tokenCrypto";
 import { getFathomToken } from "./fathom";
 import { google } from "googleapis";
+import { classifyEmailTone } from "../lib/emailClassifier";
 
 const router = Router();
 
@@ -59,6 +60,18 @@ router.post("/ai/generate", requireAuth, aiRateLimit, async (req, res) => {
       ? `\n\nCalendar context (next 7 days):\n${calendarContext}\n\nUse the calendar above to:\n- Suggest specific available times when scheduling is requested (times NOT listed as busy)\n- Avoid proposing times that conflict with existing events\n- Acknowledge busy days when relevant`
       : "";
 
+    // Fetch recent sent emails for reply memory / style matching
+    const recentReplies = await db
+      .select({ replySent: replyHistoryTable.replySent, tone: replyHistoryTable.tone })
+      .from(replyHistoryTable)
+      .where(and(eq(replyHistoryTable.userId, userId), eq(replyHistoryTable.wasSent, true)))
+      .orderBy(desc(replyHistoryTable.createdAt))
+      .limit(5);
+
+    const styleSection = recentReplies.length > 0
+      ? `\n\nUser writing style examples (recent sent emails — mirror vocabulary, length, and sign-off patterns):\n${recentReplies.map((r, i) => `[Example ${i + 1}]: ${r.replySent.slice(0, 300)}`).join("\n\n")}\n\nApply the user's observed style subtly in the "casual" and "fast" suggestions.`
+      : "";
+
     const systemPrompt = `You are ReplyAI, an expert AI secretary and email assistant. Generate 3 distinct reply suggestions for the given email.
 
 Tone guidelines:
@@ -66,7 +79,7 @@ Tone guidelines:
 2. "casual" — Friendly and conversational. Natural, warm, like writing to a colleague you know well.
 3. "fast" — Ultra-brief. 1-2 sentences only. The fastest possible response that's still complete and clear.
 
-For each suggestion, also provide a 1-line "reasoning" explaining why this reply works.${calendarSection}
+For each suggestion, also provide a 1-line "reasoning" explaining why this reply works.${calendarSection}${styleSection}
 
 Respond ONLY with a valid JSON object in this exact format:
 {
@@ -623,6 +636,138 @@ router.post("/ai/transcribe", requireAuth, transcribeRateLimit, upload.single("a
   } catch (err) {
     req.log.error({ err }, "Error transcribing audio");
     res.status(500).json({ error: "Failed to transcribe audio" });
+  }
+});
+
+// Tone classification endpoint for inbox emails
+router.post("/ai/classify-tone", requireAuth, async (req, res) => {
+  try {
+    const { subject, snippet } = req.body as { subject?: string; snippet?: string };
+    if (!subject && !snippet) {
+      res.status(400).json({ error: "subject or snippet required" });
+      return;
+    }
+    const tone = await classifyEmailTone(subject || "", snippet || "");
+    res.json({ tone });
+  } catch (err) {
+    req.log.error({ err }, "Error classifying tone");
+    res.status(500).json({ error: "Failed to classify tone" });
+  }
+});
+
+// Batch tone classification for a list of emails
+router.post("/ai/classify-tones", requireAuth, async (req, res) => {
+  try {
+    const emails = req.body?.emails as Array<{ id: string; subject?: string; snippet?: string }>;
+    if (!Array.isArray(emails) || emails.length === 0) {
+      res.status(400).json({ error: "emails array required" });
+      return;
+    }
+    const results = await Promise.all(
+      emails.slice(0, 50).map(async (e) => ({
+        id: e.id,
+        tone: await classifyEmailTone(e.subject || "", e.snippet || ""),
+      }))
+    );
+    res.json({ tones: results });
+  } catch (err) {
+    req.log.error({ err }, "Error classifying tones");
+    res.status(500).json({ error: "Failed to classify tones" });
+  }
+});
+
+// Contact profile endpoint — builds profile from reply history and updates contact_profiles table
+router.get("/ai/contact-profile", requireAuth, async (req, res) => {
+  try {
+    const userId = getReqUserId(req)!;
+    const senderEmail = req.query.email as string;
+    if (!senderEmail) {
+      res.status(400).json({ error: "email query param required" });
+      return;
+    }
+
+    // Fetch all reply history for this sender
+    const replies = await db
+      .select()
+      .from(replyHistoryTable)
+      .where(and(eq(replyHistoryTable.userId, userId), eq(replyHistoryTable.fromEmail, senderEmail)))
+      .orderBy(desc(replyHistoryTable.createdAt));
+
+    const emailCount = replies.length;
+    const firstSeenAt = replies.length > 0 ? replies[replies.length - 1].createdAt : null;
+    const lastSeenAt = replies.length > 0 ? replies[0].createdAt : null;
+
+    // Compute average response time (time between email receipt and reply creation)
+    // We approximate using createdAt timestamps of consecutive replies
+    let avgResponseTimeHours: number | null = null;
+    if (replies.length >= 2) {
+      const diffs: number[] = [];
+      for (let i = 0; i < replies.length - 1; i++) {
+        const diff = replies[i].createdAt.getTime() - replies[i + 1].createdAt.getTime();
+        if (diff > 0) diffs.push(diff / (1000 * 60 * 60));
+      }
+      if (diffs.length > 0) {
+        avgResponseTimeHours = Math.round((diffs.reduce((a, b) => a + b, 0) / diffs.length) * 10) / 10;
+      }
+    }
+
+    // Compute inferred tone from tone distribution in replies
+    const toneCounts: Record<string, number> = {};
+    for (const r of replies) {
+      if (r.tone) toneCounts[r.tone] = (toneCounts[r.tone] ?? 0) + 1;
+    }
+    const inferredTone = Object.keys(toneCounts).length > 0
+      ? Object.entries(toneCounts).sort((a, b) => b[1] - a[1])[0][0]
+      : null;
+
+    // Upsert contact profile
+    if (emailCount > 0) {
+      await db
+        .insert(contactProfilesTable)
+        .values({
+          userId,
+          senderEmail,
+          emailCount,
+          avgResponseTimeHours,
+          inferredTone,
+          firstSeenAt: firstSeenAt ?? new Date(),
+          lastSeenAt: lastSeenAt ?? new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [contactProfilesTable.userId, contactProfilesTable.senderEmail],
+          set: {
+            emailCount,
+            avgResponseTimeHours,
+            inferredTone,
+            lastSeenAt: lastSeenAt ?? new Date(),
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    // Compute emails-per-week frequency over the observed window
+    let emailsPerWeek: number | null = null;
+    if (firstSeenAt && lastSeenAt && emailCount >= 2) {
+      const windowMs = lastSeenAt.getTime() - firstSeenAt.getTime();
+      const windowWeeks = windowMs / (1000 * 60 * 60 * 24 * 7);
+      if (windowWeeks >= 0.1) {
+        emailsPerWeek = Math.round((emailCount / windowWeeks) * 10) / 10;
+      }
+    }
+
+    res.json({
+      senderEmail,
+      emailCount,
+      avgResponseTimeHours,
+      emailsPerWeek,
+      inferredTone,
+      firstSeenAt,
+      lastSeenAt,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching contact profile");
+    res.status(500).json({ error: "Failed to fetch contact profile" });
   }
 });
 

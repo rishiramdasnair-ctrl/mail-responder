@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { EmailRow, EmailThread } from "@/components/EmailRow";
+import { EmailRow, EmailThread, type EmailTone } from "@/components/EmailRow";
 import { PrioritySection, type PriorityEmail } from "@/components/PrioritySection";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
@@ -26,6 +26,56 @@ import { useGmailAccounts } from "@/hooks/useGmailAccounts";
 import Logo from "@/components/Logo";
 import { useGmailCategories } from "@/hooks/useGmailCategories";
 import { useInboxSheet } from "@/contexts/InboxSheetContext";
+
+function useEmailTones(threads: EmailThread[], apiBaseUrl: string, authHeaders: () => Promise<Record<string, string>>) {
+  const [clientTones, setClientTones] = useState<Record<string, EmailTone>>({});
+  const classifiedRef = useRef<Set<string>>(new Set());
+
+  // Extract server-provided tones (included in thread data from API)
+  const serverTones = useMemo(() => {
+    const map: Record<string, EmailTone> = {};
+    for (const t of threads) {
+      if ((t as any).tone && t.threadId) map[t.threadId] = (t as any).tone as EmailTone;
+    }
+    return map;
+  }, [threads.map(t => `${t.threadId}:${(t as any).tone}`).join(",")]);
+
+  useEffect(() => {
+    // Only classify threads with no server-provided tone
+    const needsClassification = threads.filter(t =>
+      !classifiedRef.current.has(t.threadId) && !serverTones[t.threadId]
+    );
+    if (needsClassification.length === 0) return;
+
+    const batch = needsClassification.slice(0, 20);
+    batch.forEach(t => classifiedRef.current.add(t.threadId));
+
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/ai/classify-tones`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            emails: batch.map(t => ({ id: t.threadId, subject: t.subject, snippet: t.snippet })),
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json() as { tones: Array<{ id: string; tone: EmailTone }> };
+        if (data.tones) {
+          setClientTones(prev => {
+            const next = { ...prev };
+            for (const item of data.tones) next[item.id] = item.tone;
+            return next;
+          });
+        }
+      } catch { /* silent */ }
+    })();
+  }, [threads.map(t => t.threadId).join(",")]);
+
+  // Server tones override client tones
+  return useMemo(() => ({ ...clientTones, ...serverTones }), [clientTones, serverTones]);
+}
 
 const PAGE_SIZE = 50;
 
@@ -155,6 +205,8 @@ export default function InboxScreen() {
   const visibleThreads = selectedAccount === "all"
     ? allThreads
     : allThreads.filter((t) => t.accountEmail === selectedAccount);
+
+  const emailTones = useEmailTones(visibleThreads, apiBaseUrl, authHeaders);
 
   const onPressEmail = (email: EmailThread) => {
     router.push({
@@ -821,7 +873,7 @@ export default function InboxScreen() {
         keyExtractor={(item) => item.threadId || item.id}
         renderItem={({ item }) => (
           <EmailRow
-            email={item}
+            email={{ ...item, tone: emailTones[item.threadId] }}
             onPress={onPressEmail}
             onStar={activeFolder !== "TRASH" ? onStar : undefined}
             onTrash={activeFolder !== "TRASH" ? onTrash : undefined}

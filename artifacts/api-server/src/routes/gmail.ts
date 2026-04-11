@@ -10,7 +10,7 @@ import {
   extractAttachments,
   getConnectedGmailAccounts,
 } from "../lib/gmailClient";
-import { resolveLabelNameToId } from "../lib/emailClassifier";
+import { resolveLabelNameToId, getPersistedTones, persistEmailTone } from "../lib/emailClassifier";
 import { SendReplyBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { emailSnoozesTable, gmailAccountsTable } from "@workspace/db/schema";
@@ -234,8 +234,27 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
       return (isNaN(dB) ? 0 : dB) - (isNaN(dA) ? 0 : dA);
     });
 
+    // Attach persisted tones from DB; kick off background classification for any missing ones
+    const threadIds = allEmails.map((e: any) => e.threadId).filter(Boolean);
+    const toneMap = await getPersistedTones(userId, threadIds);
+
+    // For threads with no persisted tone, kick off background classification (fire-and-forget)
+    const unclassified = allEmails.filter((e: any) => e.threadId && !toneMap[e.threadId]);
+    if (unclassified.length > 0) {
+      Promise.all(
+        unclassified.slice(0, 30).map((e: any) =>
+          persistEmailTone(userId, e.threadId, e.subject ?? "", e.snippet ?? "")
+        )
+      ).catch(() => {});
+    }
+
+    const threadsWithTones = allEmails.map((e: any) => ({
+      ...e,
+      tone: toneMap[e.threadId] ?? null,
+    }));
+
     res.json({
-      threads: allEmails,
+      threads: threadsWithTones,
       nextPageToken: Object.keys(nextPageTokenMap).length > 0 ? JSON.stringify(nextPageTokenMap) : undefined,
     });
   } catch (err: any) {

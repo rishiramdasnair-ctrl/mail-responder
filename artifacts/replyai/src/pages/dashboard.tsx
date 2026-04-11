@@ -671,6 +671,166 @@ function useCreateCalendarEvent() {
 }
 
 
+type EmailTone = "Urgent" | "Demanding" | "Friendly" | "Informational" | "Neutral";
+
+const TONE_CONFIG: Record<EmailTone, { label: string; className: string }> = {
+  Urgent: { label: "Urgent", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800" },
+  Demanding: { label: "Demanding", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800" },
+  Friendly: { label: "Friendly", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800" },
+  Informational: { label: "Info", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
+  Neutral: { label: "Neutral", className: "bg-secondary text-muted-foreground border-border" },
+};
+
+function ToneBadge({ tone }: { tone: EmailTone }) {
+  const config = TONE_CONFIG[tone];
+  if (!config) return null;
+  if (tone === "Neutral") return null;
+  return (
+    <span className={`shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold border ${config.className}`}>
+      {config.label}
+    </span>
+  );
+}
+
+function useEmailTones(threads: Array<{ threadId: string; subject?: string; snippet?: string; tone?: string | null }>) {
+  const [clientTones, setClientTones] = useState<Record<string, EmailTone>>({});
+  const classifiedRef = useRef<Set<string>>(new Set());
+
+  // Seed known tones from server-provided data
+  const serverTones = useMemo(() => {
+    const map: Record<string, EmailTone> = {};
+    for (const t of threads) {
+      if (t.tone && t.threadId) map[t.threadId] = t.tone as EmailTone;
+    }
+    return map;
+  }, [threads.map(t => `${t.threadId}:${t.tone}`).join(",")]);
+
+  useEffect(() => {
+    // Only classify threads that have no server-provided tone
+    const needsClassification = threads.filter(t =>
+      !classifiedRef.current.has(t.threadId) && !serverTones[t.threadId]
+    );
+    if (needsClassification.length === 0) return;
+
+    const batch = needsClassification.slice(0, 30);
+    batch.forEach(t => classifiedRef.current.add(t.threadId));
+
+    (async () => {
+      try {
+        const res = await fetch("/api/ai/classify-tones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            emails: batch.map(t => ({ id: t.threadId, subject: t.subject, snippet: t.snippet })),
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json() as { tones: Array<{ id: string; tone: EmailTone }> };
+        if (data.tones) {
+          setClientTones(prev => {
+            const next = { ...prev };
+            for (const item of data.tones) next[item.id] = item.tone;
+            return next;
+          });
+        }
+      } catch { /* silent — tone classification is non-critical */ }
+    })();
+  }, [threads.map(t => t.threadId).join(",")]);
+
+  // Merge: server tones take priority, client tones fill in gaps
+  return useMemo(() => ({ ...clientTones, ...serverTones }), [clientTones, serverTones]);
+}
+
+interface ContactProfile {
+  senderEmail: string;
+  emailCount: number;
+  avgResponseTimeHours: number | null;
+  emailsPerWeek: number | null;
+  inferredTone: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+}
+
+function useContactProfile(email: string | null | undefined) {
+  return useQuery<ContactProfile>({
+    queryKey: ["contact-profile", email],
+    queryFn: async () => {
+      if (!email) throw new Error("No email");
+      const res = await fetch(`/api/ai/contact-profile?email=${encodeURIComponent(email)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!email,
+    staleTime: 5 * 60_000,
+  });
+}
+
+function ContactIntelligencePanel({ senderEmail }: { senderEmail: string }) {
+  const { data, isLoading } = useContactProfile(senderEmail);
+
+  if (isLoading) return null;
+  if (!data || data.emailCount === 0) return null;
+
+  const formatResponseTime = (hours: number | null) => {
+    if (hours === null) return null;
+    if (hours < 1) return `${Math.round(hours * 60)}m`;
+    if (hours < 24) return `${Math.round(hours)}h`;
+    return `${Math.round(hours / 24)}d`;
+  };
+
+  const toneColor = data.inferredTone ? TONE_CONFIG[data.inferredTone as EmailTone]?.className : null;
+
+  return (
+    <div className="mx-0 mt-3 rounded-lg border bg-card p-3 text-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-5 h-5 rounded bg-violet-500 flex items-center justify-center shrink-0">
+          <User className="w-3 h-3 text-white" />
+        </div>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contact Intelligence</span>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">
+            {data.emailCount} email{data.emailCount !== 1 ? "s" : ""} in history
+            {data.emailsPerWeek !== null && (
+              <span className="ml-1 text-foreground font-medium">({data.emailsPerWeek}/wk)</span>
+            )}
+          </span>
+        </div>
+        {data.avgResponseTimeHours !== null && (
+          <div className="flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground">
+              Avg response time: <span className="font-medium text-foreground">{formatResponseTime(data.avgResponseTimeHours)}</span>
+            </span>
+          </div>
+        )}
+        {data.inferredTone && (
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground">
+              Preferred tone:{" "}
+              <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold border ${toneColor}`}>
+                {data.inferredTone}
+              </span>
+            </span>
+          </div>
+        )}
+        {data.lastSeenAt && (
+          <div className="flex items-center gap-2">
+            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground">
+              Last contact: {(() => { try { return format(new Date(data.lastSeenAt), "MMM d, yyyy"); } catch { return ""; } })()}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface HubSpotContact {
   id: string;
   email: string | null;
@@ -1915,6 +2075,8 @@ export default function Dashboard() {
     enabled: !!selectedThreadId,
   });
 
+  const emailTones = useEmailTones(allThreads.map(t => ({ threadId: t.threadId, subject: t.subject, snippet: t.snippet, tone: (t as any).tone })));
+
   const { data: calendarData } = useCalendarEvents();
   const { data: connectorsData } = useConnectorIds();
   const driveConnected = connectorsData?.connectors.some(c => c.connectorId === "google-drive") ?? false;
@@ -2289,9 +2451,14 @@ export default function Dashboard() {
                         <span className={`text-sm truncate w-full ${thread.isUnread ? "font-semibold text-foreground" : "text-foreground/70"}`}>
                           {thread.subject || "(No subject)"}
                         </span>
-                        <span className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-relaxed">
-                          {thread.snippet}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-xs text-muted-foreground line-clamp-2 leading-relaxed flex-1 min-w-0">
+                            {thread.snippet}
+                          </span>
+                          {emailTones[thread.threadId] && (
+                            <ToneBadge tone={emailTones[thread.threadId]} />
+                          )}
+                        </div>
                       </button>
                       {/* Quick-action buttons on hover */}
                       <div className="absolute right-2 top-2 hidden group-hover:flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded border border-border/50 shadow-sm p-0.5">
@@ -2460,6 +2627,9 @@ export default function Dashboard() {
                             attachments={attachments}
                             driveConnected={driveConnected}
                           />
+                        )}
+                        {threadOriginatorEmail && (
+                          <ContactIntelligencePanel senderEmail={threadOriginatorEmail} />
                         )}
                         {contactsConnected && threadOriginatorEmail && (
                           <GoogleContactPanel senderEmail={threadOriginatorEmail} />

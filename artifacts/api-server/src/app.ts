@@ -10,6 +10,23 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import type { Request } from "express";
 
+// Validate required Clerk env vars at startup — fail fast rather than serving
+// with a silently broken auth layer.
+const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+logger.info(
+  {
+    hasClerkSecretKey: Boolean(clerkSecretKey),
+    clerkSecretKeyPrefix: clerkSecretKey ? clerkSecretKey.slice(0, 10) : null,
+    hasClerkPublishableKey: Boolean(clerkPublishableKey),
+  },
+  "Clerk key configuration at startup",
+);
+if (!clerkSecretKey || !clerkPublishableKey) {
+  logger.error("CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY must be set — exiting");
+  process.exit(1);
+}
+
 const app: Express = express();
 
 app.use(
@@ -108,9 +125,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Clerk middleware MUST run before any limiter that calls getAuth()
 // IMPORTANT: publishableKey must match the mobile app's Clerk instance (saved-seasnail-79)
+// Keys are validated at startup above — no fallbacks here.
 app.use(clerkMiddleware({
-  secretKey: process.env.CLERK_SECRET_KEY,
-  publishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? "pk_test_c2F2ZWQtc2Vhc25haWwtNzkuY2xlcmsuYWNjb3VudHMuZGV2JA",
+  secretKey: clerkSecretKey,
+  publishableKey: clerkPublishableKey,
 }));
 
 // --- Rate limiting (tiered, applied after Clerk auth context is available) ---

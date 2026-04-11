@@ -12,6 +12,7 @@ export const AgentRunBody = zod.object({
     .optional()
     .default([]),
   sessionId: zod.string().optional(),
+  conversationId: zod.number().int().positive().optional(),
 });
 
 export const AgentSendBody = zod.object({

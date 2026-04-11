@@ -1067,21 +1067,35 @@ async function saveAgentConversation(
   task: string,
   answer: string,
   steps: AgentStep[],
+  existingConversationId?: number,
 ): Promise<number> {
+  const newMessages = [
+    { role: "user" as const, content: task },
+    {
+      role: "assistant" as const,
+      content: answer,
+      stepsData: steps.length ? JSON.stringify(steps) : null,
+    },
+  ];
+
+  if (existingConversationId) {
+    await db.insert(agentMessages).values(
+      newMessages.map((m) => ({ ...m, conversationId: existingConversationId }))
+    );
+    await db.update(agentConversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(agentConversations.id, existingConversationId));
+    return existingConversationId;
+  }
+
   const title = task.slice(0, 80);
   const [conv] = await db
     .insert(agentConversations)
     .values({ userId, title, createdAt: new Date(), updatedAt: new Date() })
     .returning();
-  await db.insert(agentMessages).values([
-    { conversationId: conv.id, role: "user", content: task },
-    {
-      conversationId: conv.id,
-      role: "assistant",
-      content: answer,
-      stepsData: steps.length ? JSON.stringify(steps) : null,
-    },
-  ]);
+  await db.insert(agentMessages).values(
+    newMessages.map((m) => ({ ...m, conversationId: conv.id }))
+  );
   return conv.id;
 }
 
@@ -1104,17 +1118,35 @@ router.post("/agent/stream", requireAuth, async (req, res) => {
       res.end();
       return;
     }
-    const { task, history: rawHistory = [], sessionId: incomingSessionId } = parsed.data;
+    const { task, history: rawHistory = [], sessionId: incomingSessionId, conversationId: reqConversationId } = parsed.data;
     if (task.length > 2000) {
       send({ type: "error", message: "task must be under 2000 characters" });
       res.end();
       return;
     }
 
+    let effectiveHistory = rawHistory.slice(-20);
+    let existingConversationId: number | undefined;
+
+    if (reqConversationId) {
+      const [conv] = await db.select().from(agentConversations)
+        .where(and(eq(agentConversations.id, reqConversationId), eq(agentConversations.userId, userId)));
+      if (conv) {
+        existingConversationId = conv.id;
+        const existingMsgs = await db.select().from(agentMessages)
+          .where(eq(agentMessages.conversationId, conv.id))
+          .orderBy(agentMessages.createdAt);
+        effectiveHistory = existingMsgs
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
+          .slice(-20);
+      }
+    }
+
     const result = await runAgentCore(
       userId,
       task,
-      rawHistory.slice(-20),
+      effectiveHistory,
       incomingSessionId,
       (step) => send({ type: "step", step }),
       (token) => send({ type: "token", content: token }),
@@ -1123,12 +1155,12 @@ router.post("/agent/stream", requireAuth, async (req, res) => {
     if (result.pendingEmail) send({ type: "pending_email", data: result.pendingEmail });
     if (result.pendingCalendarEvent) send({ type: "pending_event", data: result.pendingCalendarEvent });
 
-    const conversationId = await saveAgentConversation(userId, task, result.answer, result.steps);
+    const savedConversationId = await saveAgentConversation(userId, task, result.answer, result.steps, existingConversationId);
 
     send({
       type: "done",
       answer: result.answer,
-      conversationId,
+      conversationId: savedConversationId,
       ...(result.browserWasUsed ? { sessionId: result.sessionId } : {}),
     });
   } catch (err: unknown) {

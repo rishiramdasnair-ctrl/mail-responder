@@ -12,6 +12,7 @@ import {
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
+  Modal,
 } from "react-native";
 import Markdown from "react-native-markdown-display";
 import { Feather } from "@expo/vector-icons";
@@ -72,6 +73,19 @@ interface Suggestion {
   label: string;
   prompt: string;
   icon: "mail" | "calendar" | "globe" | "search";
+}
+
+interface ConversationSummary {
+  id: number;
+  title: string;
+  updatedAt: string;
+}
+
+interface ConversationMessage {
+  id: number;
+  role: string;
+  content: string;
+  stepsData: string | null;
 }
 
 const ICON_MAP: Record<string, FeatherName> = {
@@ -316,6 +330,123 @@ function getGreeting() {
   return "Good evening";
 }
 
+function formatRelativeDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 60) return diffMins <= 1 ? "just now" : `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch { return ""; }
+}
+
+function HistoryModal({
+  visible,
+  onClose,
+  onOpenConversation,
+  apiBaseUrl,
+  authHeaders,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onOpenConversation: (id: number, msgs: ConversationMessage[]) => void;
+  apiBaseUrl: string;
+  authHeaders: () => Promise<Record<string, string>>;
+}) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [openingId, setOpeningId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setLoading(true);
+    authHeaders().then((headers) =>
+      fetch(`${apiBaseUrl}/api/agent/conversations`, { headers })
+        .then((r) => r.ok ? r.json() as Promise<{ conversations: ConversationSummary[] }> : { conversations: [] })
+        .then((data) => setConversations(data.conversations ?? []))
+        .catch(() => setConversations([]))
+        .finally(() => setLoading(false))
+    );
+  }, [visible, apiBaseUrl, authHeaders]);
+
+  const handleOpen = async (id: number) => {
+    setOpeningId(id);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/agent/conversations/${id}`, { headers });
+      if (!res.ok) return;
+      const data = await res.json() as { messages: ConversationMessage[] };
+      onOpenConversation(id, data.messages ?? []);
+    } catch { /* ignore */ } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const s = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)" },
+    sheet: {
+      position: "absolute", bottom: 0, left: 0, right: 0,
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      paddingBottom: insets.bottom + 16,
+      maxHeight: "80%",
+    },
+    handle: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 12, marginBottom: 4 },
+    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14 },
+    title: { fontSize: 17, fontFamily: "Inter_600SemiBold", color: colors.foreground },
+    closeBtn: { padding: 4 },
+    empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 },
+    emptyText: { fontSize: 14, color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+    item: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+    itemTitle: { fontSize: 14, fontFamily: "Inter_400Regular", color: colors.foreground, flex: 1, marginRight: 12 },
+    itemDate: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
+  });
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={s.overlay} />
+      </TouchableWithoutFeedback>
+      <View style={s.sheet}>
+        <View style={s.handle} />
+        <View style={s.header}>
+          <Text style={s.title}>Conversation History</Text>
+          <TouchableOpacity style={s.closeBtn} onPress={onClose}>
+            <Feather name="x" size={20} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
+        {loading ? (
+          <View style={s.empty}><ActivityIndicator color={colors.mutedForeground} /></View>
+        ) : conversations.length === 0 ? (
+          <View style={s.empty}><Text style={s.emptyText}>No conversations yet</Text></View>
+        ) : (
+          <FlatList
+            data={conversations}
+            keyExtractor={(c) => String(c.id)}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={s.item} onPress={() => handleOpen(item.id)} activeOpacity={0.7} disabled={openingId === item.id}>
+                <Text style={s.itemTitle} numberOfLines={2}>{item.title}</Text>
+                {openingId === item.id
+                  ? <ActivityIndicator size="small" color={colors.mutedForeground} />
+                  : <Text style={s.itemDate}>{formatRelativeDate(item.updatedAt)}</Text>
+                }
+              </TouchableOpacity>
+            )}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
+    </Modal>
+  );
+}
+
 export default function AgentScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -332,6 +463,8 @@ export default function AgentScreen() {
   const [isSending, setIsSending] = useState(false);
   const [isActing, setIsActing] = useState(false);
   const [digestLoading, setDigestLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -389,6 +522,19 @@ export default function AgentScreen() {
     setDigestLoading(false);
   }, [digestLoading, isSending, apiBaseUrl, authHeaders]);
 
+  const handleOpenConversation = useCallback((id: number, msgs: ConversationMessage[]) => {
+    const chatMsgs: ChatMessage[] = msgs.map((m) => ({
+      id: uuid(),
+      role: m.role === "user" ? "user" as const : "assistant" as const,
+      content: m.content,
+      steps: m.stepsData ? (JSON.parse(m.stepsData) as AgentStep[]) : undefined,
+    }));
+    setMessages(chatMsgs);
+    setActiveConversationId(id);
+    setShowHistory(false);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || isSending) return;
@@ -411,11 +557,12 @@ export default function AgentScreen() {
       const headers = await authHeaders();
       const currentMsgs = [...messages, userMsg];
       const history = buildHistory(currentMsgs);
+      const convId = activeConversationId;
 
       const res = await fetch(`${apiBaseUrl}/api/agent/stream`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ task: trimmed, history }),
+        body: JSON.stringify({ task: trimmed, history, ...(convId ? { conversationId: convId } : {}) }),
         signal: controller.signal,
       });
 
@@ -469,6 +616,8 @@ export default function AgentScreen() {
           } else if (type === "done") {
             doneReceived = true;
             const answer = (event.answer as string) || "";
+            const newConvId = typeof event.conversationId === "number" ? event.conversationId : null;
+            if (newConvId) setActiveConversationId(newConvId);
             setMessages((prev) => {
               const inProgress = prev.find((m) => m.id === loadingId);
               const stepsFromLoading = inProgress?.steps ?? [];
@@ -514,7 +663,7 @@ export default function AgentScreen() {
       ));
       setIsSending(false);
     }
-  }, [messages, isSending, apiBaseUrl, authHeaders, buildHistory, scrollToBottom]);
+  }, [messages, isSending, apiBaseUrl, authHeaders, buildHistory, scrollToBottom, activeConversationId]);
 
   const handleApproveEmail = useCallback(async (email: PendingEmail, msgId: string) => {
     if (isActing) return;
@@ -622,13 +771,28 @@ export default function AgentScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { justifyContent: "space-between" }]}>
           <View>
             <Text style={styles.title}>Agent</Text>
             <Text style={styles.subtitle}>AI assistant for email &amp; calendar</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => setShowHistory(true)}
+            style={{ padding: 8 }}
+            activeOpacity={0.7}
+          >
+            <Feather name="clock" size={20} color={colors.mutedForeground} />
+          </TouchableOpacity>
         </View>
       </View>
+
+      <HistoryModal
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        onOpenConversation={handleOpenConversation}
+        apiBaseUrl={apiBaseUrl}
+        authHeaders={authHeaders}
+      />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         {isEmpty ? (
@@ -739,8 +903,8 @@ export default function AgentScreen() {
             </TouchableOpacity>
           </View>
           {!isEmpty && (
-            <TouchableOpacity style={styles.clearBtn} onPress={() => { abortRef.current?.abort(); setMessages([]); setIsSending(false); }}>
-              <Text style={styles.clearBtnText}>Clear conversation</Text>
+            <TouchableOpacity style={styles.clearBtn} onPress={() => { abortRef.current?.abort(); setMessages([]); setIsSending(false); setActiveConversationId(null); }}>
+              <Text style={styles.clearBtnText}>New conversation</Text>
             </TouchableOpacity>
           )}
         </View>

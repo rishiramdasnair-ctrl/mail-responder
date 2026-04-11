@@ -5,8 +5,9 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Image, Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import Logo from "@/components/Logo";
 
 function NativeTabLayout() {
   return (
@@ -17,7 +18,7 @@ function NativeTabLayout() {
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="agent">
         <Icon>
-          <Image source={require("@/assets/images/icon.png")} style={{ width: 26, height: 26, borderRadius: 6 }} />
+          <Logo size={24} color="#000000" />
         </Icon>
         <Label>Agent</Label>
       </NativeTabs.Trigger>
@@ -81,14 +82,9 @@ function ClassicTabLayout() {
         options={{
           title: "Agent",
           tabBarIcon: ({ focused }) => (
-            <Image
-              source={require("@/assets/images/icon.png")}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 6,
-                opacity: focused ? 1 : 0.5,
-              }}
+            <Logo
+              size={24}
+              color={focused ? colors.foreground : colors.mutedForeground}
             />
           ),
         }}

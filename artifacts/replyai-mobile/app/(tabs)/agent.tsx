@@ -17,7 +17,7 @@ import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { useUser } from "@clerk/clerk-expo";
+import { useAuth } from "@/hooks/useAuth";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { ConnectorStrip } from "@/components/ConnectorStrip";
@@ -278,7 +278,7 @@ export default function AgentScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { apiBaseUrl, authHeaders } = useApiClient();
-  const { user } = useUser();
+  const { user } = useAuth();
   const rawFirst = user?.firstName || user?.username || null;
   const firstName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1) : null;
 

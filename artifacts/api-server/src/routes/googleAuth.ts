@@ -6,7 +6,8 @@ import { db } from "@workspace/db";
 import { usersTable, connectorsTable, gmailAccountsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getOrCreateUser } from "../lib/getOrCreateUser";
-import { createOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { createOAuthState, createSigninOAuthState, verifyOAuthState } from "../lib/oauthState";
+import { createSessionToken } from "../lib/sessionToken";
 import { getConnectedGmailAccounts } from "../lib/gmailClient";
 import { maybeEncrypt } from "../lib/tokenCrypto";
 import { logger } from "../lib/logger";
@@ -42,6 +43,34 @@ const GMAIL_SCOPES = [
 ];
 
 const GSUITE_EXTENSION_CONNECTORS = ["google-drive", "google-contacts"];
+
+// Public: returns Google OAuth URL for initial sign-in (no auth required)
+router.get("/auth/google/signin-url", async (_req, res) => {
+  try {
+    const oAuth2Client = getOAuthClient();
+    let state: string;
+    try {
+      state = createSigninOAuthState();
+    } catch {
+      res.status(500).json({ error: "OAuth not configured" });
+      return;
+    }
+    const url = oAuth2Client.generateAuthUrl({
+      access_type: "offline",
+      scope: GMAIL_SCOPES,
+      prompt: "consent",
+      state,
+    });
+    res.json({ url });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("GOOGLE_CLIENT_ID")) {
+      res.status(500).json({ error: "OAuth not configured" });
+    } else {
+      res.status(500).json({ error: "Failed to generate OAuth URL" });
+    }
+  }
+});
 
 // Mobile-specific: returns the OAuth URL as JSON so mobile can fetch with auth headers
 // then open the URL in expo-web-browser
@@ -146,8 +175,9 @@ router.get("/auth/google/callback", async (req, res) => {
       return;
     }
 
-    const { userId, addAccount, platform } = statePayload;
+    const { userId: stateUserId, addAccount, platform } = statePayload;
     const isMobile = platform === "mobile";
+    const isMobileSignin = platform === "mobile-signin";
 
     let tokens;
     try {
@@ -156,7 +186,9 @@ router.get("/auth/google/callback", async (req, res) => {
     } catch (tokenErr: unknown) {
       const msg = tokenErr instanceof Error ? tokenErr.message : "Unknown error";
       req.log.error({ err: msg }, "[google-callback] token exchange FAILED");
-      if (isMobile) {
+      if (isMobileSignin) {
+        res.redirect(`replyai://signin-error?error=callback_failed`);
+      } else if (isMobile) {
         res.redirect(`replyai://oauth-error?error=callback_failed`);
       } else {
         res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
@@ -165,7 +197,9 @@ router.get("/auth/google/callback", async (req, res) => {
     }
 
     if (!tokens.access_token) {
-      if (isMobile) {
+      if (isMobileSignin) {
+        res.redirect(`replyai://signin-error?error=callback_failed`);
+      } else if (isMobile) {
         res.redirect(`replyai://oauth-error?error=callback_failed`);
       } else {
         res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
@@ -178,8 +212,12 @@ router.get("/auth/google/callback", async (req, res) => {
     const oauth2 = google.oauth2({ version: "v2", auth: oAuth2Client });
     const userInfo = await oauth2.userinfo.get();
     const googleEmail = userInfo.data.email || "";
+    const googleSub = userInfo.data.id || "";
 
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
+
+    // For mobile sign-in, derive userId from Google sub
+    const userId = isMobileSignin ? `google_${googleSub}` : stateUserId;
 
     // Determine if this should be the primary account
     const existingAccounts = await db.select({ id: gmailAccountsTable.id })
@@ -242,7 +280,11 @@ router.get("/auth/google/callback", async (req, res) => {
       await getOrCreateUser(userId);
     }
 
-    if (isMobile) {
+    if (isMobileSignin) {
+      // Issue our own session token — no Clerk dependency
+      const sessionToken = createSessionToken(userId, googleEmail);
+      res.redirect(`replyai://signin-success?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(googleEmail)}&userId=${encodeURIComponent(userId)}`);
+    } else if (isMobile) {
       const event = addAccount ? "account_added" : "connected";
       res.redirect(`replyai://oauth-success?event=${event}&email=${encodeURIComponent(googleEmail)}`);
     } else {
@@ -251,7 +293,11 @@ router.get("/auth/google/callback", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[google-callback] unexpected error");
-    res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+    if ((err as any)?.message?.includes("mobile-signin")) {
+      res.redirect(`replyai://signin-error?error=server_error`);
+    } else {
+      res.redirect(`${frontendUrl}/settings?gmail_error=callback_failed`);
+    }
   }
 });
 

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@/hooks/useAuth";
 
 export const API_BASE = (() => {
   const url = process.env.EXPO_PUBLIC_API_URL;

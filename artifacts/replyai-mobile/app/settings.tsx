@@ -24,7 +24,6 @@ import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
 import { Link, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useUser } from "@clerk/clerk-expo";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -74,10 +73,9 @@ export default function SettingsScreen() {
   const { themeId, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
-  const { user } = useUser();
 
   const [editingName, setEditingName] = useState(false);
   const [editFirst, setEditFirst] = useState("");
@@ -386,7 +384,7 @@ export default function SettingsScreen() {
     const capitalized = first.charAt(0).toUpperCase() + first.slice(1);
     setSavingName(true);
     try {
-      await user?.update({ firstName: capitalized, lastName: last || undefined });
+      await (user as any)?.update?.({ firstName: capitalized, lastName: last || undefined });
       await qc.invalidateQueries({ queryKey: ["auth-me"] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditingName(false);

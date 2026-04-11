@@ -5,7 +5,7 @@ interface OAuthStatePayload {
   nonce: string;
   exp: number;
   addAccount?: boolean;
-  platform?: "mobile";
+  platform?: "mobile" | "mobile-signin";
 }
 
 function getSecret(): string {
@@ -27,7 +27,19 @@ export function createOAuthState(userId: string, addAccount = false, platform?: 
   return `${data}.${mac}`;
 }
 
-export function verifyOAuthState(state: string): { userId: string; addAccount: boolean; platform?: "mobile" } | null {
+export function createSigninOAuthState(): string {
+  const payload: OAuthStatePayload = {
+    userId: "",
+    nonce: randomUUID(),
+    exp: Date.now() + 10 * 60 * 1000,
+    platform: "mobile-signin",
+  };
+  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const mac = createHmac("sha256", getSecret()).update(data).digest("base64url");
+  return `${data}.${mac}`;
+}
+
+export function verifyOAuthState(state: string): { userId: string; addAccount: boolean; platform?: "mobile" | "mobile-signin" } | null {
   try {
     const dotIdx = state.lastIndexOf(".");
     if (dotIdx < 0) return null;

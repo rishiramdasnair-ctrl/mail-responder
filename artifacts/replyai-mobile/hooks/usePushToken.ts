@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@/hooks/useAuth";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api-server`;
 

@@ -5,7 +5,6 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -20,11 +19,11 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { InboxSheetProvider } from "@/contexts/InboxSheetContext";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { usePushToken } from "@/hooks/usePushToken";
 
 SplashScreen.preventAutoHideAsync();
-
-const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,26 +33,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
-const tokenCache = {
-  async getToken(key: string) {
-    try {
-      return SecureStore.getItemAsync(key);
-    } catch {
-      return null;
-    }
-  },
-  async saveToken(key: string, value: string) {
-    try {
-      await SecureStore.setItemAsync(key, value);
-    } catch {}
-  },
-  async deleteToken(key: string) {
-    try {
-      await SecureStore.deleteItemAsync(key);
-    } catch {}
-  },
-};
 
 const SIGN_IN_ROUTE = "/(auth)/sign-in" as const;
 
@@ -134,26 +113,24 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <SafeAreaProvider>
-          <ThemeProvider>
-            <InboxSheetProvider>
-              <ErrorBoundary>
-                <QueryClientProvider client={queryClient}>
-                  <GestureHandlerRootView style={{ flex: 1 }}>
-                    <KeyboardProvider>
-                      <ToastProvider>
-                        <RootLayoutNav />
-                      </ToastProvider>
-                    </KeyboardProvider>
-                  </GestureHandlerRootView>
-                </QueryClientProvider>
-              </ErrorBoundary>
-            </InboxSheetProvider>
-          </ThemeProvider>
-        </SafeAreaProvider>
-      </ClerkLoaded>
-    </ClerkProvider>
+    <AuthProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <InboxSheetProvider>
+            <ErrorBoundary>
+              <QueryClientProvider client={queryClient}>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <KeyboardProvider>
+                    <ToastProvider>
+                      <RootLayoutNav />
+                    </ToastProvider>
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </QueryClientProvider>
+            </ErrorBoundary>
+          </InboxSheetProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </AuthProvider>
   );
 }

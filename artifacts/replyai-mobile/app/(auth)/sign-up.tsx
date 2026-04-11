@@ -7,20 +7,23 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { useOAuth } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
-import { makeRedirectUri } from "expo-auth-session";
+import * as SecureStore from "expo-secure-store";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useColors } from "@/hooks/useColors";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { API_BASE } from "@/hooks/useApiClient";
 
 WebBrowser.maybeCompleteAuthSession();
+
+const SIGNIN_REDIRECT = "replyai://signin-success";
 
 export default function SignUpScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+  const { signIn } = useAuthContext();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,19 +31,35 @@ export default function SignUpScreen() {
     try {
       setIsLoading(true);
       setError(null);
-      const { createdSessionId, setActive } = await startOAuthFlow({
-        redirectUrl: makeRedirectUri({ scheme: "replyai", path: "oauth-callback" }),
-      });
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId });
+      const base = API_BASE || `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+      const urlRes = await fetch(`${base}/api/auth/google/signin-url`);
+      if (!urlRes.ok) {
+        setError("Couldn't start sign-up. Please try again.");
+        return;
       }
+      const { url } = (await urlRes.json()) as { url: string };
+      const result = await WebBrowser.openAuthSessionAsync(url, SIGNIN_REDIRECT, {
+        showInRecents: true,
+        preferEphemeralSession: false,
+      });
+      if (result.type !== "success") return;
+      const params = new URL(result.url).searchParams;
+      const token = params.get("token");
+      const email = params.get("email") ?? "";
+      const userId = params.get("userId") ?? "";
+      if (!token) {
+        setError("Sign-up failed — no token received. Please try again.");
+        return;
+      }
+      await SecureStore.setItemAsync("gmail_connected", "1");
+      await signIn(token, email, userId);
     } catch (err) {
       console.error("OAuth error", err);
       setError("Sign-up failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  }, [startOAuthFlow]);
+  }, [signIn]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;

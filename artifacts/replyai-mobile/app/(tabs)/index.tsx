@@ -14,7 +14,7 @@ import {
   ActionSheetIOS,
 } from "react-native";
 import { useRouter, Link } from "expo-router";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@/hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

@@ -10,49 +10,69 @@ export function Scene5() {
 
   useEffect(() => {
     const timers = [
-      setTimeout(() => setPhase(1), 500),  // REPLY
-      setTimeout(() => setPhase(2), 1200), // AI
-      setTimeout(() => setPhase(3), 2000), // Tagline
-      setTimeout(() => setPhase(4), 4000), // Exit
+      setTimeout(() => setPhase(1), 400),  // 'Reply'
+      setTimeout(() => setPhase(2), 1000), // 'AI' snaps in
+      setTimeout(() => setPhase(3), 1800), // Tagline
+      setTimeout(() => setPhase(4), 3800), // Final slow zoom
     ];
     return () => timers.forEach(t => clearTimeout(t));
   }, []);
 
   return (
     <motion.div 
-      className="absolute inset-0 flex flex-col items-center justify-center z-20"
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, filter: 'blur(20px)' }}
+      className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
       transition={{ duration: 1, ease: easings.expoOut }}
     >
-      <div className="flex flex-col items-center text-center">
-        <motion.div 
-          className="font-display leading-[0.8]"
-          initial={{ opacity: 0, y: 40 }}
-          animate={phase >= 1 ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.8, ease: easings.expoOut }}
-        >
-          <span className="text-[8vw] font-medium tracking-tight text-white/80 uppercase">Reply</span>
-        </motion.div>
-        
-        <motion.div
-          className="font-display leading-[0.8]"
-          initial={{ opacity: 0, y: 40, scale: 0.9 }}
-          animate={phase >= 2 ? { opacity: 1, y: 0, scale: 1 } : {}}
-          transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-        >
-          <span className="text-[18vw] font-black tracking-tighter text-white">AI</span>
-        </motion.div>
-      </div>
-
-      <motion.div
-        className="mt-12 text-2xl font-sans text-secondary/60 tracking-widest uppercase"
-        initial={{ opacity: 0 }}
-        animate={phase >= 3 ? { opacity: 1 } : {}}
-        transition={{ duration: 1, ease: "linear" }}
+      <motion.div 
+        className="flex flex-col items-center text-center relative"
+        animate={phase >= 4 ? { scale: 1.05 } : { scale: 1 }}
+        transition={{ duration: 5, ease: "linear" }}
       >
-        Never miss what matters.
+        <div className="flex items-center justify-center gap-4 mb-4">
+          {/* Logo Mark */}
+          <motion.div
+            className="w-12 h-12 bg-white flex items-center justify-center"
+            initial={{ rotate: -90, scale: 0, opacity: 0 }}
+            animate={phase >= 1 ? { rotate: 0, scale: 1, opacity: 1 } : {}}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+          >
+            <div className="w-4 h-4 bg-black rounded-full" />
+          </motion.div>
+          
+          <div className="flex items-baseline font-display">
+            <motion.span 
+              className="text-[8vw] font-medium tracking-tight text-white leading-none"
+              initial={{ opacity: 0, x: -20 }}
+              animate={phase >= 1 ? { opacity: 1, x: 0 } : {}}
+              transition={{ duration: 0.8, ease: easings.expoOut }}
+            >
+              Reply
+            </motion.span>
+            
+            <motion.span
+              className="text-[8vw] font-black tracking-tighter text-white leading-none"
+              initial={{ opacity: 0, x: 20 }}
+              animate={phase >= 2 ? { opacity: 1, x: 0 } : {}}
+              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+            >
+              AI
+            </motion.span>
+          </div>
+        </div>
+
+        <div className="overflow-hidden mt-8">
+          <motion.div
+            className="text-[1.5vw] font-sans text-white/50 tracking-[0.2em] uppercase"
+            initial={{ y: '100%' }}
+            animate={phase >= 3 ? { y: '0%' } : { y: '100%' }}
+            transition={{ duration: 0.8, ease: easings.expoOut }}
+          >
+            Never miss what matters.
+          </motion.div>
+        </div>
       </motion.div>
     </motion.div>
   );

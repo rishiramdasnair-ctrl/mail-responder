@@ -6,27 +6,28 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
-  Image,
 } from "react-native";
-import { useOAuth } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
-import { makeRedirectUri } from "expo-auth-session";
+import * as SecureStore from "expo-secure-store";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import Logo from "@/components/Logo";
-
 import { Link } from "expo-router";
 import { useColors } from "@/hooks/useColors";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { API_BASE } from "@/hooks/useApiClient";
 
 type FeatherName = ComponentProps<typeof Feather>["name"];
 
 WebBrowser.maybeCompleteAuthSession();
 
+const SIGNIN_REDIRECT = "replyai://signin-success";
+
 export default function SignInScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+  const { signIn } = useAuthContext();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,19 +35,50 @@ export default function SignInScreen() {
     try {
       setIsLoading(true);
       setError(null);
-      const { createdSessionId, setActive } = await startOAuthFlow({
-        redirectUrl: makeRedirectUri({ scheme: "replyai", path: "oauth-callback" }),
-      });
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId });
+
+      // 1. Fetch the Google OAuth URL from the backend
+      const base = API_BASE || `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+      const urlRes = await fetch(`${base}/api/auth/google/signin-url`);
+      if (!urlRes.ok) {
+        setError("Couldn't start sign-in. Please try again.");
+        return;
       }
+      const { url } = (await urlRes.json()) as { url: string };
+
+      // 2. Open in browser and wait for redirect back to replyai://
+      const result = await WebBrowser.openAuthSessionAsync(url, SIGNIN_REDIRECT, {
+        showInRecents: true,
+        preferEphemeralSession: false,
+      });
+
+      if (result.type !== "success") {
+        return;
+      }
+
+      // 3. Parse token, email, userId from the redirect URL
+      const redirectUrl = result.url;
+      const params = new URL(redirectUrl).searchParams;
+      const token = params.get("token");
+      const email = params.get("email") ?? "";
+      const userId = params.get("userId") ?? "";
+
+      if (!token) {
+        setError("Sign-in failed — no token received. Please try again.");
+        return;
+      }
+
+      // 4. Google OAuth also grants Gmail access — mark gmail as connected
+      await SecureStore.setItemAsync("gmail_connected", "1");
+
+      // 5. Store session — AuthGuard will route to onboarding
+      await signIn(token, email, userId);
     } catch (err) {
       console.error("OAuth error", err);
       setError("Sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  }, [startOAuthFlow]);
+  }, [signIn]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;

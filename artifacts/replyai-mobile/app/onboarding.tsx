@@ -25,7 +25,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useApiClient } from "@/hooks/useApiClient";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@/hooks/useAuth";
+import * as Haptics from "expo-haptics";
 
 type FeatherName = ComponentProps<typeof Feather>["name"];
 WebBrowser.maybeCompleteAuthSession();
@@ -101,7 +102,10 @@ function PressBtn({
   icon?: FeatherName;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
-  const onIn = () => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, tension: 300, friction: 10 }).start();
+  const onIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, tension: 300, friction: 10 }).start();
+  };
   const onOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200, friction: 8 }).start();
   const isPrimary = variant === "primary";
   return (
@@ -182,6 +186,8 @@ export default function OnboardingScreen() {
   const [connectError, setConnectError] = useState("");
   const [connectHint, setConnectHint] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState<ToneOption>("professional");
+  const [typewriterText, setTypewriterText] = useState("");
+  const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentStep = STEPS[stepIndex];
 
@@ -235,6 +241,37 @@ export default function OnboardingScreen() {
   }))).current;
   const doneTitleAnim = useRef(new Animated.Value(0)).current;
   const doneSubAnim = useRef(new Animated.Value(0)).current;
+  const bgFlash = useRef(new Animated.Value(0)).current;
+
+  // ── Auto-advance connect step if Gmail already connected ─────────────────
+  useEffect(() => {
+    if (currentStep !== "connect") return;
+    SecureStore.getItemAsync("gmail_connected").then((val) => {
+      if (val === "1" && connectStatus === "idle") {
+        setConnectStatus("done");
+        setTimeout(advance, 900);
+      }
+    });
+  }, [currentStep]);
+
+  // ── Typewriter for connect-done ──────────────────────────────────────────
+  const startTypewriter = useCallback((fullText: string) => {
+    if (typewriterRef.current) clearInterval(typewriterRef.current);
+    setTypewriterText("");
+    let i = 0;
+    typewriterRef.current = setInterval(() => {
+      i++;
+      setTypewriterText(fullText.slice(0, i));
+      if (i >= fullText.length) {
+        clearInterval(typewriterRef.current!);
+        typewriterRef.current = null;
+      }
+    }, 38);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (typewriterRef.current) clearInterval(typewriterRef.current); };
+  }, []);
 
   // ── Logo pulse (loops while on welcome step) ─────────────────────────────
   const logoPulseLoop = useRef<Animated.CompositeAnimation | null>(null);
@@ -291,6 +328,7 @@ export default function OnboardingScreen() {
   // ── Tone selection spring ────────────────────────────────────────────────
   const selectTone = useCallback((id: ToneOption, idx: number) => {
     setSelectedTone(id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     TONES.forEach((_, i) => {
       Animated.spring(toneScales[i], {
         toValue: i === idx ? 1.03 : 0.98,
@@ -355,8 +393,16 @@ export default function OnboardingScreen() {
       checkRing.setValue(0);
       doneTitleAnim.setValue(0);
       doneSubAnim.setValue(0);
+      bgFlash.setValue(0);
       confettiAnims.forEach(({ p, op, rot }) => { p.setValue(0); op.setValue(0); rot.setValue(0); });
       ringAnims.forEach(({ scale, op }) => { scale.setValue(0); op.setValue(0); });
+
+      // Celebratory bg flash
+      Animated.sequence([
+        Animated.timing(bgFlash, { toValue: 1, duration: 180, useNativeDriver: true }),
+        Animated.timing(bgFlash, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       // Checkmark + ring burst
       setTimeout(() => {
@@ -467,7 +513,9 @@ export default function OnboardingScreen() {
       await qc.invalidateQueries();
       setConnectStatus("done");
       await SecureStore.setItemAsync("gmail_connected", "1");
-      setTimeout(advance, 900);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      startTypewriter("Gmail synced · Calendar connected · AI ready");
+      setTimeout(advance, 2200);
     } catch (e: any) {
       setConnectStatus("error");
       setConnectError(e?.message?.includes("Session unavailable") ? "Session unavailable — please sign out and back in." : "Something went wrong. Please try again.");
@@ -485,6 +533,19 @@ export default function OnboardingScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff", paddingTop: topPad, paddingBottom: bottomPad }}>
+
+      {/* ── Celebratory bg flash overlay (done step) ── */}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: "#000",
+            opacity: bgFlash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.07] }),
+            zIndex: 0,
+            pointerEvents: "none",
+          },
+        ]}
+      />
 
       {/* ── Header ── */}
       <View style={{ paddingHorizontal: 24, paddingTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -684,9 +745,17 @@ export default function OnboardingScreen() {
 
               <View style={{ marginTop: 24, gap: 12 }}>
                 {connectStatus === "done" ? (
-                  <View style={styles.successRow}>
-                    <Feather name="check-circle" size={20} color="#000" />
-                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#000" }}>Connected! Moving on…</Text>
+                  <View>
+                    <View style={styles.successRow}>
+                      <Feather name="check-circle" size={20} color="#000" />
+                      <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#000" }}>Connected!</Text>
+                    </View>
+                    {typewriterText.length > 0 && (
+                      <Text style={{ marginTop: 10, fontSize: 12, fontFamily: "Inter_500Medium", color: "#999", textAlign: "center", letterSpacing: 0.2 }}>
+                        {typewriterText}
+                        <Text style={{ color: "#000" }}>|</Text>
+                      </Text>
+                    )}
                   </View>
                 ) : (
                   <PressBtn

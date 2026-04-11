@@ -81,7 +81,6 @@ router.get("/debug/auth-check", (req, res) => {
     userId: auth?.userId ?? null,
     sessionId: auth?.sessionId ?? null,
     hasClerkSecretKey: !!process.env.CLERK_SECRET_KEY,
-    clerkKeyPrefix: process.env.CLERK_SECRET_KEY?.substring(0, 10) ?? null,
   });
 });
 

@@ -17,7 +17,6 @@ const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY;
 logger.info(
   {
     hasClerkSecretKey: Boolean(clerkSecretKey),
-    clerkSecretKeyPrefix: clerkSecretKey ? clerkSecretKey.slice(0, 10) : null,
     hasClerkPublishableKey: Boolean(clerkPublishableKey),
   },
   "Clerk key configuration at startup",

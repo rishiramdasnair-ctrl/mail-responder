@@ -22,7 +22,6 @@ const easings = {
 
 export function Scene1() {
   const [phase, setPhase] = useState(0);
-  const [count, setCount] = useState(0);
 
   useEffect(() => {
     const timers = [
@@ -33,50 +32,38 @@ export function Scene1() {
     return () => timers.forEach(t => clearTimeout(t));
   }, []);
 
-  useEffect(() => {
-    if (phase === 1) {
-      let c = 0;
-      const interval = setInterval(() => {
-        c += Math.floor(Math.random() * 5) + 1;
-        if (c > 134) c = 134;
-        setCount(c);
-        if (c === 134) clearInterval(interval);
-      }, 50);
-      return () => clearInterval(interval);
-    }
-    return undefined;
-  }, [phase]);
-
   return (
     <motion.div 
-      className="absolute inset-0 flex items-center justify-center z-20"
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ scale: 1.1, opacity: 0, filter: 'blur(10px)' }}
+      className="absolute inset-0 flex items-center justify-center z-20 bg-background"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 1.1, filter: 'blur(20px)' }}
       transition={{ duration: 0.8, ease: easings.expoOut }}
     >
       <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
-        {/* Email noise */}
+        {/* Email items rushing in */}
         {subjects.map((sub, i) => (
           <motion.div
             key={i}
-            className="absolute bg-highlight px-6 py-3 rounded-lg border border-white/5 shadow-2xl backdrop-blur-sm whitespace-nowrap text-sm text-secondary font-medium tracking-wide"
+            className="absolute bg-highlight px-6 py-4 border border-white/20 whitespace-nowrap text-xs text-secondary font-sans uppercase tracking-widest shadow-2xl backdrop-blur-md"
             initial={{ 
-              x: (i % 2 === 0 ? '-120vw' : '120vw'), 
-              y: `${20 + (i * 5)}vh`,
+              x: i % 2 === 0 ? '-120vw' : '120vw', 
+              y: `${10 + (i * 7)}vh`,
               opacity: 0,
-              scale: 0.8
+              scale: 0.8,
+              rotate: i % 2 === 0 ? -2 : 2
             }}
             animate={phase >= 1 ? {
-              x: `${(i % 3) * 10}vw`,
-              y: `${10 + (i * 7)}vh`,
-              opacity: phase === 2 ? 0.3 : 1, // Dim when frozen
-              scale: phase === 2 ? 0.9 : 1,
+              x: `${(i % 3) * 15 + 10}vw`,
+              y: `${15 + (i * 6)}vh`,
+              opacity: phase === 2 ? 0.2 : 1, // Dim when frozen
+              scale: phase === 2 ? 0.95 : 1,
+              rotate: 0
             } : {}}
             transition={{
-              duration: phase === 2 ? 0.2 : (1.5 + Math.random()),
-              delay: phase === 2 ? 0 : i * 0.1,
-              ease: phase === 2 ? "linear" : easings.expoOut
+              duration: phase === 2 ? 0.3 : (1.2 + (i % 3) * 0.2),
+              delay: phase === 2 ? 0 : i * 0.05,
+              ease: phase === 2 ? "linear" : [0.22, 1, 0.36, 1]
             }}
             style={{ zIndex: 10 + i }}
           >
@@ -84,25 +71,28 @@ export function Scene1() {
           </motion.div>
         ))}
 
-        {/* Counter */}
+        {/* Chaos lines */}
+        {[...Array(10)].map((_, i) => (
+          <motion.div
+            key={`line-${i}`}
+            className="absolute bg-white/10 h-[1px] w-full"
+            style={{ top: `${(i + 1) * 10}vh` }}
+            initial={{ scaleX: 0, opacity: 0 }}
+            animate={phase >= 1 ? { scaleX: phase === 2 ? 0 : 1, opacity: phase === 2 ? 0 : 0.5 } : {}}
+            transition={{ duration: 1.5, delay: i * 0.1, ease: easings.expoOut }}
+          />
+        ))}
+
+        {/* Owerwhelm text */}
         <motion.div 
-          style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 50 }}
-          initial={{ opacity: 0, scale: 0.8, filter: 'blur(20px)' }}
-          animate={phase >= 1 ? { opacity: 1, scale: 1, filter: 'blur(0px)' } : {}}
-          transition={{ duration: 1, ease: easings.expoOut }}
+          className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-50 mix-blend-difference"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={phase >= 2 ? { opacity: 1, scale: 1 } : {}}
+          transition={{ duration: 0.8, ease: easings.expoOut }}
         >
-          <div className="text-center">
-            <motion.h1 
-              className="text-[15vw] font-display font-bold leading-none text-white tracking-tighter"
-              animate={phase === 2 ? { color: '#ff4444', scale: 1.05 } : {}}
-              transition={{ duration: 0.3 }}
-            >
-              {count}
-            </motion.h1>
-            <p className="text-2xl text-secondary/60 font-sans tracking-widest uppercase mt-4">
-              Unread Messages
-            </p>
-          </div>
+          <h1 className="text-[25vw] font-display font-bold leading-none text-white tracking-tighter uppercase">
+            OVERLOAD
+          </h1>
         </motion.div>
       </div>
     </motion.div>

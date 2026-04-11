@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  Easing,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -44,50 +45,103 @@ const TONES: Array<{ id: ToneOption; label: string; desc: string; icon: FeatherN
 
 // Email cards shown in "connect" step hero
 const PREVIEW_EMAILS = [
-  { from: "Sarah K.", subject: "URGENT: Q3 Report Needed", time: "2m ago" },
-  { from: "Marcus B.", subject: "Re: Product launch timeline", time: "14m ago" },
-  { from: "Priya N.", subject: "Quick question about pricing", time: "1h ago" },
-  { from: "Tom H.", subject: "Follow up from yesterday", time: "3h ago" },
+  { from: "Sarah K.", subject: "URGENT: Q3 Report Needed", time: "2m ago", urgent: true },
+  { from: "Marcus B.", subject: "Re: Product launch timeline", time: "14m ago", urgent: false },
+  { from: "Priya N.", subject: "Quick question about pricing", time: "1h ago", urgent: false },
+  { from: "Tom H.", subject: "Follow up from yesterday", time: "3h ago", urgent: false },
 ];
 
 // Confetti seeds
-const CONFETTI = Array.from({ length: 16 }, (_, i) => ({
-  angle: (i / 16) * Math.PI * 2,
-  r: 55 + (i % 4) * 20,
-  delay: i * 25,
-  size: 6 + (i % 3) * 3,
+const CONFETTI = Array.from({ length: 20 }, (_, i) => ({
+  angle: (i / 20) * Math.PI * 2,
+  r: 60 + (i % 5) * 18,
+  delay: i * 20,
+  size: 5 + (i % 4) * 3,
+  shape: i % 3, // 0=circle, 1=square, 2=diamond
 }));
 
+// Particles for welcome step
+const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
+  x: (i / 8) * SW * 0.8 + SW * 0.1,
+  size: 3 + (i % 3) * 2,
+  delay: i * 120,
+  startY: SH * 0.45,
+  endY: SH * 0.1,
+  opacity: 0.08 + (i % 4) * 0.04,
+}));
+
+// Expanding rings for done step
+const RINGS = [0, 1, 2].map((i) => ({ delay: i * 200, maxScale: 3.5 + i * 1.2 }));
+
 // ─── Mini helpers ────────────────────────────────────────────────────────────
-function useSpring(toValue: number, config = { tension: 80, friction: 7 }) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.spring(anim, { toValue, useNativeDriver: true, ...config }).start();
-  }, [toValue]);
-  return anim;
+function wordStyle(anim: Animated.Value) {
+  return {
+    opacity: anim,
+    transform: [
+      { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) },
+      { scale: anim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.88, 1.04, 1] }) },
+    ],
+  };
 }
 
-// Floating ambient orb
-function Orb({ size, top, left, delay, opacity }: { size: number; top: number; left: number; delay: number; opacity: number }) {
-  const scale = useRef(new Animated.Value(0.8)).current;
-  const op = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(op, { toValue: opacity, duration: 900, delay, useNativeDriver: true }).start();
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 1.18, duration: 3200 + delay * 2, useNativeDriver: true }),
-        Animated.timing(scale, { toValue: 0.82, duration: 3600 + delay, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
+// Press-scale button
+function PressBtn({
+  label,
+  onPress,
+  loading,
+  disabled,
+  variant = "primary",
+  icon,
+}: {
+  label: string;
+  onPress: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  variant?: "primary" | "ghost";
+  icon?: FeatherName;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const onIn = () => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, tension: 300, friction: 10 }).start();
+  const onOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200, friction: 8 }).start();
+  const isPrimary = variant === "primary";
   return (
-    <Animated.View
-      style={{ position: "absolute", width: size, height: size, borderRadius: size / 2, top, left, opacity: op, transform: [{ scale }] }}
-    />
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={onIn}
+        onPressOut={onOut}
+        disabled={disabled || loading}
+        activeOpacity={1}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          paddingVertical: 16,
+          paddingHorizontal: 28,
+          borderRadius: 16,
+          backgroundColor: isPrimary ? (disabled ? "#ccc" : "#000") : "transparent",
+          borderWidth: isPrimary ? 0 : 1.5,
+          borderColor: "#000",
+          opacity: disabled ? 0.55 : 1,
+        }}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={isPrimary ? "#fff" : "#000"} />
+        ) : (
+          <>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_600SemiBold", color: isPrimary ? "#fff" : "#000" }}>
+              {label}
+            </Text>
+            {icon && <Feather name={icon} size={17} color={isPrimary ? "#fff" : "#000"} />}
+          </>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
-// Dot step indicator
+// Step dots
 function StepDots({ current, total }: { current: number; total: number }) {
   return (
     <View style={{ flexDirection: "row", gap: 6, justifyContent: "center" }}>
@@ -111,63 +165,6 @@ function StepDots({ current, total }: { current: number; total: number }) {
   );
 }
 
-// Press-scale button
-function PressBtn({
-  label,
-  onPress,
-  loading,
-  disabled,
-  variant = "primary",
-  icon,
-}: {
-  label: string;
-  onPress: () => void;
-  loading?: boolean;
-  disabled?: boolean;
-  variant?: "primary" | "ghost";
-  icon?: FeatherName;
-}) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const onIn = () => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, tension: 300, friction: 10 }).start();
-  const onOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200, friction: 8 }).start();
-  const isPrimary = variant === "primary";
-  return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <TouchableOpacity
-        onPress={onPress}
-        onPressIn={onIn}
-        onPressOut={onOut}
-        disabled={disabled || loading}
-        activeOpacity={1}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          paddingVertical: 17,
-          paddingHorizontal: 28,
-          borderRadius: 16,
-          backgroundColor: isPrimary ? "#000" : "transparent",
-          borderWidth: isPrimary ? 0 : 1.5,
-          borderColor: isPrimary ? undefined : "#e5e5e5",
-          opacity: disabled ? 0.45 : 1,
-        }}
-      >
-        {loading ? (
-          <ActivityIndicator color={isPrimary ? "#fff" : "#000"} size="small" />
-        ) : (
-          <>
-            {icon && <Feather name={icon} size={17} color={isPrimary ? "#fff" : "#000"} />}
-            <Text style={{ fontSize: 16, fontFamily: "Inter_600SemiBold", color: isPrimary ? "#fff" : "#000" }}>
-              {label}
-            </Text>
-          </>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export default function OnboardingScreen() {
   const colors = useColors();
@@ -176,6 +173,9 @@ export default function OnboardingScreen() {
   const qc = useQueryClient();
   const { apiBaseUrl, authHeaders } = useApiClient();
   const { signOut } = useAuth();
+
+  const topPad = Math.max(insets.top, 16);
+  const bottomPad = Math.max(insets.bottom, 16);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [connectStatus, setConnectStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -194,91 +194,213 @@ export default function OnboardingScreen() {
   const heroScale = useRef(new Animated.Value(0.88)).current;
   const heroOpacity = useRef(new Animated.Value(0)).current;
 
-  // Welcome word anims
+  // Welcome: word anims + sub + pills
   const w1 = useRef(new Animated.Value(0)).current;
   const w2 = useRef(new Animated.Value(0)).current;
   const w3 = useRef(new Animated.Value(0)).current;
   const subAnim = useRef(new Animated.Value(0)).current;
   const pillsAnim = useRef(new Animated.Value(0)).current;
 
-  // Connect step anims
+  // Welcome: logo pulse (continuous breathing)
+  const logoPulse = useRef(new Animated.Value(1)).current;
+  const logoGlow = useRef(new Animated.Value(0)).current;
+
+  // Welcome: rising particles
+  const particleAnims = useRef(PARTICLES.map(() => ({
+    y: new Animated.Value(0),
+    op: new Animated.Value(0),
+  }))).current;
+
+  // Connect step
   const cardAnims = useRef(PREVIEW_EMAILS.map(() => new Animated.Value(0))).current;
   const badgeAnim = useRef(new Animated.Value(0)).current;
+  const scanLineY = useRef(new Animated.Value(0)).current;
 
   // Tone step
-  const [toneKey, setToneKey] = useState("t0");
   const toneAnims = useRef(TONES.map(() => new Animated.Value(0))).current;
+  const toneScales = useRef(TONES.map(() => new Animated.Value(1))).current;
 
   // Done step
   const checkAnim = useRef(new Animated.Value(0)).current;
-  const checkScale = useRef(new Animated.Value(0.4)).current;
-  const confettiAnims = useRef(CONFETTI.map(() => ({ p: new Animated.Value(0), op: new Animated.Value(0) }))).current;
+  const checkScale = useRef(new Animated.Value(0.3)).current;
+  const checkRing = useRef(new Animated.Value(0)).current;
+  const confettiAnims = useRef(CONFETTI.map(() => ({
+    p: new Animated.Value(0),
+    op: new Animated.Value(0),
+    rot: new Animated.Value(0),
+  }))).current;
+  const ringAnims = useRef(RINGS.map(() => ({
+    scale: new Animated.Value(0),
+    op: new Animated.Value(0),
+  }))).current;
   const doneTitleAnim = useRef(new Animated.Value(0)).current;
+  const doneSubAnim = useRef(new Animated.Value(0)).current;
+
+  // ── Logo pulse (loops while on welcome step) ─────────────────────────────
+  const logoPulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const startLogoPulse = useCallback(() => {
+    logoPulse.setValue(1);
+    logoGlow.setValue(0);
+    logoPulseLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(logoPulse, { toValue: 1.08, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(logoGlow, { toValue: 1, duration: 800, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(logoPulse, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(logoGlow, { toValue: 0, duration: 800, useNativeDriver: true }),
+        ]),
+      ])
+    );
+    logoPulseLoop.current.start();
+  }, []);
+
+  const stopLogoPulse = useCallback(() => {
+    logoPulseLoop.current?.stop();
+    logoPulse.setValue(1);
+    logoGlow.setValue(0);
+  }, []);
+
+  // ── Rising particles (welcome step) ─────────────────────────────────────
+  const startParticles = useCallback(() => {
+    particleAnims.forEach(({ y, op }, i) => {
+      y.setValue(0);
+      op.setValue(0);
+      const delay = PARTICLES[i].delay + 600;
+      setTimeout(() => {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(op, { toValue: PARTICLES[i].opacity, duration: 400, useNativeDriver: true }),
+            Animated.timing(y, { toValue: 1, duration: 3200, easing: Easing.linear, useNativeDriver: true }),
+            Animated.timing(op, { toValue: 0, duration: 400, useNativeDriver: true }),
+          ])
+        ).start();
+      }, delay);
+    });
+  }, []);
+
+  // ── Scan line (connect step) ─────────────────────────────────────────────
+  const startScanLine = useCallback(() => {
+    scanLineY.setValue(0);
+    Animated.loop(
+      Animated.timing(scanLineY, { toValue: 1, duration: 2200, easing: Easing.linear, useNativeDriver: true })
+    ).start();
+  }, []);
+
+  // ── Tone selection spring ────────────────────────────────────────────────
+  const selectTone = useCallback((id: ToneOption, idx: number) => {
+    setSelectedTone(id);
+    TONES.forEach((_, i) => {
+      Animated.spring(toneScales[i], {
+        toValue: i === idx ? 1.03 : 0.98,
+        tension: 300,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
+      // Return unselected back to 1 after a moment
+      if (i !== idx) {
+        setTimeout(() => {
+          Animated.spring(toneScales[i], { toValue: 1, tension: 200, friction: 12, useNativeDriver: true }).start();
+        }, 180);
+      }
+    });
+  }, [toneScales]);
 
   // ── Animate step in ──────────────────────────────────────────────────────
   const animateStepIn = useCallback((step: Step) => {
-    heroScale.setValue(0.88);
+    heroScale.setValue(0.85);
     heroOpacity.setValue(0);
     Animated.parallel([
-      Animated.spring(heroScale, { toValue: 1, tension: 70, friction: 8, useNativeDriver: true }),
-      Animated.timing(heroOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.spring(heroScale, { toValue: 1, tension: 65, friction: 8, useNativeDriver: true }),
+      Animated.timing(heroOpacity, { toValue: 1, duration: 320, useNativeDriver: true }),
     ]).start();
 
     if (step === "welcome") {
       [w1, w2, w3, subAnim, pillsAnim].forEach((a) => a.setValue(0));
-      Animated.stagger(80, [
-        Animated.spring(w1, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
-        Animated.spring(w2, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
-        Animated.spring(w3, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
+      Animated.stagger(100, [
+        Animated.spring(w1, { toValue: 1, tension: 90, friction: 7, useNativeDriver: true }),
+        Animated.spring(w2, { toValue: 1, tension: 90, friction: 7, useNativeDriver: true }),
+        Animated.spring(w3, { toValue: 1, tension: 90, friction: 7, useNativeDriver: true }),
       ]).start();
-      setTimeout(() => Animated.timing(subAnim, { toValue: 1, duration: 380, useNativeDriver: true }).start(), 320);
-      setTimeout(() => Animated.timing(pillsAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start(), 500);
+      setTimeout(() => Animated.spring(subAnim, { toValue: 1, tension: 80, friction: 9, useNativeDriver: true }).start(), 350);
+      setTimeout(() => Animated.spring(pillsAnim, { toValue: 1, tension: 70, friction: 8, useNativeDriver: true }).start(), 520);
+      setTimeout(startLogoPulse, 700);
+      startParticles();
+    } else {
+      stopLogoPulse();
     }
 
     if (step === "connect") {
       cardAnims.forEach((a) => a.setValue(0));
       badgeAnim.setValue(0);
-      Animated.stagger(90, cardAnims.map((a) =>
-        Animated.spring(a, { toValue: 1, tension: 80, friction: 9, useNativeDriver: true })
+      Animated.stagger(100, cardAnims.map((a) =>
+        Animated.spring(a, { toValue: 1, tension: 75, friction: 8, useNativeDriver: true })
       )).start();
-      setTimeout(() => Animated.spring(badgeAnim, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }).start(), 420);
+      setTimeout(() => Animated.spring(badgeAnim, { toValue: 1, tension: 90, friction: 8, useNativeDriver: true }).start(), 480);
+      setTimeout(startScanLine, 800);
     }
 
     if (step === "tone") {
       toneAnims.forEach((a) => a.setValue(0));
-      setToneKey(`t${Date.now()}`);
-      Animated.stagger(80, toneAnims.map((a) =>
-        Animated.spring(a, { toValue: 1, tension: 85, friction: 8, useNativeDriver: true })
+      toneScales.forEach((a) => a.setValue(1));
+      Animated.stagger(90, toneAnims.map((a) =>
+        Animated.spring(a, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true })
       )).start();
     }
 
     if (step === "done") {
       checkAnim.setValue(0);
       checkScale.setValue(0.3);
+      checkRing.setValue(0);
       doneTitleAnim.setValue(0);
-      confettiAnims.forEach(({ p, op }) => { p.setValue(0); op.setValue(0); });
+      doneSubAnim.setValue(0);
+      confettiAnims.forEach(({ p, op, rot }) => { p.setValue(0); op.setValue(0); rot.setValue(0); });
+      ringAnims.forEach(({ scale, op }) => { scale.setValue(0); op.setValue(0); });
+
+      // Checkmark + ring burst
       setTimeout(() => {
         Animated.parallel([
-          Animated.timing(checkAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-          Animated.spring(checkScale, { toValue: 1, tension: 60, friction: 6, useNativeDriver: true }),
+          Animated.spring(checkScale, { toValue: 1, tension: 55, friction: 5, useNativeDriver: true }),
+          Animated.timing(checkAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
         ]).start();
-      }, 100);
-      setTimeout(() => Animated.timing(doneTitleAnim, { toValue: 1, duration: 420, useNativeDriver: true }).start(), 500);
-      confettiAnims.forEach(({ p, op }, i) => {
-        const delay = CONFETTI[i].delay + 250;
+        Animated.sequence([
+          Animated.spring(checkRing, { toValue: 1.4, tension: 80, friction: 5, useNativeDriver: true }),
+          Animated.spring(checkRing, { toValue: 1, tension: 200, friction: 10, useNativeDriver: true }),
+        ]).start();
+      }, 80);
+
+      // Expanding rings
+      RINGS.forEach(({ delay: rd }, ri) => {
+        setTimeout(() => {
+          ringAnims[ri].op.setValue(0.5);
+          Animated.parallel([
+            Animated.timing(ringAnims[ri].scale, { toValue: RINGS[ri].maxScale, duration: 1400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+            Animated.timing(ringAnims[ri].op, { toValue: 0, duration: 1400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          ]).start();
+        }, 120 + rd);
+      });
+
+      // Confetti burst
+      confettiAnims.forEach(({ p, op, rot }, i) => {
+        const delay = CONFETTI[i].delay + 220;
         setTimeout(() => {
           Animated.parallel([
-            Animated.spring(p, { toValue: 1, tension: 35, friction: 6, useNativeDriver: true }),
+            Animated.spring(p, { toValue: 1, tension: 30, friction: 5, useNativeDriver: true }),
             Animated.sequence([
-              Animated.timing(op, { toValue: 1, duration: 120, useNativeDriver: true }),
-              Animated.delay(350),
-              Animated.timing(op, { toValue: 0, duration: 350, useNativeDriver: true }),
+              Animated.timing(op, { toValue: 1, duration: 100, useNativeDriver: true }),
+              Animated.delay(380),
+              Animated.timing(op, { toValue: 0, duration: 400, useNativeDriver: true }),
             ]),
+            Animated.timing(rot, { toValue: 1, duration: 900, useNativeDriver: true }),
           ]).start();
         }, delay);
       });
+
+      setTimeout(() => Animated.spring(doneTitleAnim, { toValue: 1, tension: 75, friction: 9, useNativeDriver: true }).start(), 480);
+      setTimeout(() => Animated.spring(doneSubAnim, { toValue: 1, tension: 70, friction: 10, useNativeDriver: true }).start(), 680);
     }
-  }, []);
+  }, [startLogoPulse, stopLogoPulse, startParticles, startScanLine]);
 
   useEffect(() => { animateStepIn(currentStep); }, [currentStep]);
 
@@ -286,17 +408,17 @@ export default function OnboardingScreen() {
   const advance = useCallback(() => {
     if (stepIndex >= STEPS.length - 1) return;
     Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 110, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: -24, duration: 110, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 0.96, duration: 110, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: -28, duration: 110, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 110, useNativeDriver: true }),
     ]).start(() => {
       setStepIndex((i) => i + 1);
-      slideAnim.setValue(30);
-      scaleAnim.setValue(0.96);
+      slideAnim.setValue(32);
+      scaleAnim.setValue(0.95);
       Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 240, useNativeDriver: true }),
-        Animated.spring(slideAnim, { toValue: 0, tension: 85, friction: 10, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, tension: 85, friction: 10, useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.spring(slideAnim, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, tension: 80, friction: 10, useNativeDriver: true }),
       ]).start();
     });
   }, [stepIndex]);
@@ -331,52 +453,40 @@ export default function OnboardingScreen() {
         showInRecents: true,
         preferEphemeralSession: false,
       });
-      if (result.type === "success" && result.url.startsWith("replyai://oauth-success")) {
-        await SecureStore.setItemAsync("gmail_connected", "1");
-        setConnectStatus("done");
-        qc.invalidateQueries({ queryKey: ["gmail-accounts"] });
-        qc.invalidateQueries({ queryKey: ["priority-inbox"] });
-        setTimeout(() => advance(), 700);
-      } else if (result.type === "cancel") {
+      if (result.type !== "success") {
         setConnectStatus("idle");
-      } else {
-        setConnectStatus("error");
-        setConnectError("Google connection failed. Please try again.");
+        return;
       }
-    } catch {
+      const callbackUrl = result.url;
+      const successRes = await fetch(`${apiBaseUrl}/api/auth/google/mobile-callback?url=${encodeURIComponent(callbackUrl)}`, { headers });
+      if (!successRes.ok) {
+        setConnectStatus("error");
+        setConnectError("Google authorization failed. Please try again.");
+        return;
+      }
+      await qc.invalidateQueries();
+      setConnectStatus("done");
+      await SecureStore.setItemAsync("gmail_connected", "1");
+      setTimeout(advance, 900);
+    } catch (e: any) {
       setConnectStatus("error");
-      setConnectError("Network error. Check your connection and try again.");
+      setConnectError(e?.message?.includes("Session unavailable") ? "Session unavailable — please sign out and back in." : "Something went wrong. Please try again.");
     }
   }, [apiBaseUrl, authHeaders, qc, advance]);
 
-  // ── Finish ───────────────────────────────────────────────────────────────
+  // ── Finish onboarding ────────────────────────────────────────────────────
   const finish = useCallback(async () => {
     await SecureStore.setItemAsync("onboarding_complete", "1");
-    await SecureStore.setItemAsync("ai_tone", selectedTone);
-    router.replace("/");
-  }, [selectedTone, router]);
+    router.replace("/(tabs)");
+  }, [router]);
 
-  const topPad = Platform.OS === "web" ? 24 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 32 : insets.bottom;
-
-  // ── Render ───────────────────────────────────────────────────────────────
-  const wordStyle = (a: Animated.Value) => ({
-    opacity: a,
-    transform: [
-      { translateY: a.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) },
-      { scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
-    ],
-  });
+  // ── Confetti rotation interpolation ─────────────────────────────────────
+  const rotateRange = ["0deg", "360deg"];
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff", paddingTop: topPad, paddingBottom: bottomPad }}>
-      {/* ── Ambient orbs (behind everything) ── */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Orb size={SW * 0.9} top={SH * -0.12} left={SW * -0.25} delay={0} opacity={0.04} />
-        <Orb size={SW * 0.65} top={SH * 0.55} left={SW * 0.35} delay={400} opacity={0.035} />
-      </View>
 
-      {/* ── Header: step dots + skip ── */}
+      {/* ── Header ── */}
       <View style={{ paddingHorizontal: 24, paddingTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <StepDots current={stepIndex} total={STEPS.length} />
         {stepIndex === 0 && (
@@ -392,22 +502,58 @@ export default function OnboardingScreen() {
         {/* ╔══════════ WELCOME ══════════╗ */}
         {currentStep === "welcome" && (
           <View style={{ flex: 1 }}>
+            {/* Floating particles */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              {PARTICLES.map((p, i) => (
+                <Animated.View
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    left: p.x,
+                    width: p.size,
+                    height: p.size,
+                    borderRadius: p.size / 2,
+                    backgroundColor: "#000",
+                    opacity: particleAnims[i].op,
+                    transform: [{
+                      translateY: particleAnims[i].y.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [p.startY, p.endY],
+                      }),
+                    }],
+                  }}
+                />
+              ))}
+            </View>
+
             {/* Hero: logo + orbiting pills */}
             <Animated.View style={[styles.heroArea, { transform: [{ scale: heroScale }], opacity: heroOpacity }]}>
-              <View style={styles.logoMark}>
+              {/* Glow ring behind logo */}
+              <Animated.View style={{
+                position: "absolute",
+                width: 130,
+                height: 130,
+                borderRadius: 65,
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderColor: "#000",
+                opacity: logoGlow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.08] }),
+                transform: [{ scale: logoPulse.interpolate({ inputRange: [1, 1.08], outputRange: [1.2, 1.6] }) }],
+              }} />
+              <Animated.View style={[styles.logoMark, { transform: [{ scale: logoPulse }] }]}>
                 <Logo size={72} color="#000" />
-              </View>
-              {/* Feature pills floating around */}
-              <Animated.View style={[styles.pill, styles.pillTL, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>
+              </Animated.View>
+              {/* Feature pills */}
+              <Animated.View style={[styles.pill, styles.pillTL, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }, { scale: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
                 <Feather name="zap" size={11} color="#000" /><Text style={styles.pillText}>AI replies</Text>
               </Animated.View>
-              <Animated.View style={[styles.pill, styles.pillTR, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>
+              <Animated.View style={[styles.pill, styles.pillTR, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }, { scale: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
                 <Feather name="calendar" size={11} color="#000" /><Text style={styles.pillText}>Calendar</Text>
               </Animated.View>
-              <Animated.View style={[styles.pill, styles.pillBL, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
+              <Animated.View style={[styles.pill, styles.pillBL, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }, { scale: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
                 <Feather name="inbox" size={11} color="#000" /><Text style={styles.pillText}>Priority inbox</Text>
               </Animated.View>
-              <Animated.View style={[styles.pill, styles.pillBR, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
+              <Animated.View style={[styles.pill, styles.pillBR, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }, { scale: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
                 <Feather name="clock" size={11} color="#000" /><Text style={styles.pillText}>Save hours</Text>
               </Animated.View>
             </Animated.View>
@@ -421,7 +567,7 @@ export default function OnboardingScreen() {
                   </Animated.Text>
                 ))}
               </View>
-              <Animated.Text style={[styles.body, { opacity: subAnim, marginTop: 12 }]}>
+              <Animated.Text style={[styles.body, { opacity: subAnim, marginTop: 12, transform: [{ translateY: subAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }]}>
                 ReplyAI reads your Gmail, drafts smart replies and schedules meetings — so you can focus on what actually matters.
               </Animated.Text>
               <View style={{ marginTop: 32 }}>
@@ -435,38 +581,58 @@ export default function OnboardingScreen() {
         {/* ╔══════════ CONNECT ══════════╗ */}
         {currentStep === "connect" && (
           <View style={{ flex: 1 }}>
-            {/* Hero: animated email card stack */}
             <Animated.View style={[styles.heroArea, { transform: [{ scale: heroScale }], opacity: heroOpacity, justifyContent: "center", paddingHorizontal: 20 }]}>
-              <View style={{ gap: 8 }}>
-                {PREVIEW_EMAILS.map((email, i) => (
-                  <Animated.View
-                    key={i}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      backgroundColor: "#f9f9f9",
-                      borderRadius: 12,
-                      paddingHorizontal: 14,
-                      paddingVertical: 11,
-                      borderWidth: 1,
-                      borderColor: "#ebebeb",
-                      opacity: cardAnims[i],
-                      transform: [
-                        { translateX: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) },
-                        { scale: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
-                      ],
-                    }}
-                  >
-                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "#000", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                      <Text style={{ color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{email.from[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#000" }} numberOfLines={1}>{email.from}</Text>
-                      <Text style={{ fontSize: 12, color: "#666", fontFamily: "Inter_400Regular" }} numberOfLines={1}>{email.subject}</Text>
-                    </View>
-                    <Text style={{ fontSize: 11, color: "#aaa", fontFamily: "Inter_400Regular" }}>{email.time}</Text>
-                  </Animated.View>
-                ))}
+              <View style={{ width: "100%", position: "relative" }}>
+                {/* AI scan line */}
+                <Animated.View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    height: 1.5,
+                    backgroundColor: "#000",
+                    opacity: 0.12,
+                    zIndex: 10,
+                    transform: [{
+                      translateY: scanLineY.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, PREVIEW_EMAILS.length * 70],
+                      }),
+                    }],
+                  }}
+                />
+                <View style={{ gap: 8 }}>
+                  {PREVIEW_EMAILS.map((email, i) => (
+                    <Animated.View
+                      key={i}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: "#f9f9f9",
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
+                        paddingVertical: 11,
+                        borderWidth: 1,
+                        borderColor: email.urgent ? "#e8e8e8" : "#ebebeb",
+                        opacity: cardAnims[i],
+                        transform: [
+                          { translateY: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [36, 0] }) },
+                          { scale: cardAnims[i].interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.9, 1.02, 1] }) },
+                        ],
+                      }}
+                    >
+                      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "#000", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                        <Text style={{ color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{email.from[0]}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#000" }} numberOfLines={1}>{email.from}</Text>
+                        <Text style={{ fontSize: 12, color: "#666", fontFamily: "Inter_400Regular" }} numberOfLines={1}>{email.subject}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: "#aaa", fontFamily: "Inter_400Regular" }}>{email.time}</Text>
+                    </Animated.View>
+                  ))}
+                </View>
               </View>
 
               {/* Gmail + Calendar badge */}
@@ -476,7 +642,10 @@ export default function OnboardingScreen() {
                 marginTop: 14,
                 justifyContent: "center",
                 opacity: badgeAnim,
-                transform: [{ translateY: badgeAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                transform: [
+                  { translateY: badgeAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+                  { scale: badgeAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.85, 1.04, 1] }) },
+                ],
               }}>
                 {([{ icon: "mail" as FeatherName, label: "Gmail" }, { icon: "calendar" as FeatherName, label: "Calendar" }]).map((b) => (
                   <View key={b.label} style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#000", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 }}>
@@ -540,9 +709,8 @@ export default function OnboardingScreen() {
         {/* ╔══════════ TONE ══════════╗ */}
         {currentStep === "tone" && (
           <View style={{ flex: 1 }}>
-            {/* Hero: animated tone cards preview */}
             <Animated.View style={[styles.heroArea, { transform: [{ scale: heroScale }], opacity: heroOpacity, justifyContent: "center", paddingHorizontal: 28 }]}>
-              <View style={{ gap: 10 }}>
+              <View style={{ gap: 10, width: "100%" }}>
                 {TONES.map((tone, i) => {
                   const selected = selectedTone === tone.id;
                   return (
@@ -551,14 +719,17 @@ export default function OnboardingScreen() {
                       style={{
                         opacity: toneAnims[i],
                         transform: [
-                          { translateY: toneAnims[i].interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
-                          { scale: toneAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
+                          { translateY: toneAnims[i].interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+                          { scale: Animated.multiply(
+                              toneAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }),
+                              toneScales[i]
+                            ) },
                         ],
                       }}
                     >
                       <TouchableOpacity
-                        onPress={() => setSelectedTone(tone.id)}
-                        activeOpacity={0.82}
+                        onPress={() => selectTone(tone.id, i)}
+                        activeOpacity={0.85}
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
@@ -621,29 +792,61 @@ export default function OnboardingScreen() {
         {/* ╔══════════ DONE ══════════╗ */}
         {currentStep === "done" && (
           <View style={{ flex: 1 }}>
-            {/* Hero: big check + confetti */}
             <Animated.View style={[styles.heroArea, { transform: [{ scale: heroScale }], opacity: heroOpacity, justifyContent: "center", alignItems: "center" }]}>
-              {/* Confetti dots */}
-              {CONFETTI.map((seed, i) => (
+
+              {/* Expanding rings */}
+              {RINGS.map((_, ri) => (
                 <Animated.View
-                  key={i}
+                  key={ri}
+                  pointerEvents="none"
                   style={{
                     position: "absolute",
-                    width: seed.size,
-                    height: seed.size,
-                    borderRadius: seed.size / 2,
-                    backgroundColor: i % 4 === 0 ? "#000" : i % 4 === 1 ? "#555" : i % 4 === 2 ? "#aaa" : "#e0e0e0",
-                    opacity: confettiAnims[i].op,
-                    transform: [
-                      { translateX: confettiAnims[i].p.interpolate({ inputRange: [0, 1], outputRange: [0, Math.cos(seed.angle) * seed.r] }) },
-                      { translateY: confettiAnims[i].p.interpolate({ inputRange: [0, 1], outputRange: [0, Math.sin(seed.angle) * seed.r] }) },
-                      { scale: confettiAnims[i].p.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1.4, 0.9] }) },
-                    ],
+                    width: 100,
+                    height: 100,
+                    borderRadius: 50,
+                    borderWidth: 1.5,
+                    borderColor: "#000",
+                    opacity: ringAnims[ri].op,
+                    transform: [{ scale: ringAnims[ri].scale }],
                   }}
                 />
               ))}
 
-              {/* Check circle */}
+              {/* Confetti dots */}
+              {CONFETTI.map((seed, i) => {
+                const rot = confettiAnims[i].rot.interpolate({ inputRange: [0, 1], outputRange: rotateRange });
+                return (
+                  <Animated.View
+                    key={i}
+                    style={{
+                      position: "absolute",
+                      width: seed.size,
+                      height: seed.size,
+                      borderRadius: seed.shape === 0 ? seed.size / 2 : seed.shape === 1 ? 2 : 0,
+                      backgroundColor: i % 5 === 0 ? "#000" : i % 5 === 1 ? "#333" : i % 5 === 2 ? "#777" : i % 5 === 3 ? "#aaa" : "#d4d4d4",
+                      opacity: confettiAnims[i].op,
+                      transform: [
+                        { translateX: confettiAnims[i].p.interpolate({ inputRange: [0, 1], outputRange: [0, Math.cos(seed.angle) * seed.r] }) },
+                        { translateY: confettiAnims[i].p.interpolate({ inputRange: [0, 1], outputRange: [0, Math.sin(seed.angle) * seed.r] }) },
+                        { scale: confettiAnims[i].p.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1.5, 1] }) },
+                        { rotate: rot },
+                      ],
+                    }}
+                  />
+                );
+              })}
+
+              {/* Check circle with outer ring */}
+              <Animated.View style={{
+                width: 100,
+                height: 100,
+                borderRadius: 50,
+                borderWidth: 2.5,
+                borderColor: "#000",
+                position: "absolute",
+                transform: [{ scale: checkRing }],
+                opacity: checkAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.3, 0] }),
+              }} />
               <Animated.View style={{
                 width: 100,
                 height: 100,
@@ -658,13 +861,16 @@ export default function OnboardingScreen() {
               </Animated.View>
 
               <Animated.Text style={{
-                marginTop: 24,
-                fontSize: 28,
+                marginTop: 28,
+                fontSize: 30,
                 fontFamily: "Inter_700Bold",
                 color: "#000",
                 textAlign: "center",
                 opacity: doneTitleAnim,
-                transform: [{ translateY: doneTitleAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+                transform: [
+                  { translateY: doneTitleAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
+                  { scale: doneTitleAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.9, 1.03, 1] }) },
+                ],
               }}>
                 You're all set!
               </Animated.Text>
@@ -672,10 +878,19 @@ export default function OnboardingScreen() {
 
             {/* Content */}
             <View style={styles.content}>
-              <Text style={styles.headline}>Ready to{"\n"}reply smarter</Text>
-              <Text style={[styles.body, { marginTop: 10 }]}>
+              <Animated.Text style={[styles.headline, {
+                opacity: doneSubAnim,
+                transform: [{ translateY: doneSubAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+              }]}>
+                Ready to{"\n"}reply smarter
+              </Animated.Text>
+              <Animated.Text style={[styles.body, {
+                marginTop: 10,
+                opacity: doneSubAnim,
+                transform: [{ translateY: doneSubAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+              }]}>
                 Your priority inbox is loading. ReplyAI will start drafting replies for your most important emails right away.
-              </Text>
+              </Animated.Text>
               <View style={{ marginTop: 24 }}>
                 <PressBtn label="Open my inbox" onPress={finish} icon="inbox" />
               </View>
@@ -756,9 +971,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   errorBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    flexDirection: "column",
     marginTop: 14,
     backgroundColor: "#fff2f2",
     borderRadius: 10,
@@ -767,7 +980,6 @@ const styles = StyleSheet.create({
     borderColor: "#fcc",
   },
   errorText: {
-    flex: 1,
     fontSize: 13,
     color: "#c00",
     fontFamily: "Inter_400Regular",

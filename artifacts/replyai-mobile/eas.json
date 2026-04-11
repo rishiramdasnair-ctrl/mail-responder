@@ -17,8 +17,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c2F2ZWQtc2Vhc25haWwtNzkuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app"
       }
     },
     "production": {
@@ -27,8 +26,7 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c2F2ZWQtc2Vhc25haWwtNzkuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        "EXPO_PUBLIC_API_URL": "https://mail-responder.replit.app"
       }
     }
   }

@@ -14,8 +14,8 @@ import Animated, {
 const LOGO_W = 184;
 const LOGO_H = 160;
 const FLY_DISTANCE = 130;
-const FLY_DURATION = 400;
-const FADE_DURATION = 340;
+const FLY_DURATION = 450;
+const FADE_DURATION = 370;
 
 type BarDef = {
   left: number;
@@ -32,27 +32,27 @@ type BarAnim = {
 };
 
 const BARS_LEFT: BarDef[] = [
-  { left: -4,  top: 24, w: 8, h: 98, staggerMs: 96 },
-  { left: 12,  top: 40, w: 8, h: 98, staggerMs: 84 },
-  { left: 35,  top: 83, w: 4, h: 66, staggerMs: 72 },
-  { left: 44,  top: 34, w: 4, h: 47, staggerMs: 60 },
-  { left: 51,  top: 81, w: 4, h: 74, staggerMs: 48 },
-  { left: 61,  top: 18, w: 4, h: 62, staggerMs: 36 },
-  { left: 68,  top: 78, w: 4, h: 78, staggerMs: 24 },
-  { left: 78,  top:  6, w: 4, h: 70, staggerMs: 12 },
-  { left: 84,  top: 74, w: 4, h: 81, staggerMs:  0 },
+  { left: -4,  top: 24, w: 8, h: 98, staggerMs: 120 },
+  { left: 12,  top: 40, w: 8, h: 98, staggerMs: 105 },
+  { left: 35,  top: 83, w: 4, h: 66, staggerMs:  90 },
+  { left: 44,  top: 34, w: 4, h: 47, staggerMs:  75 },
+  { left: 51,  top: 81, w: 4, h: 74, staggerMs:  60 },
+  { left: 61,  top: 18, w: 4, h: 62, staggerMs:  45 },
+  { left: 68,  top: 78, w: 4, h: 78, staggerMs:  30 },
+  { left: 78,  top:  6, w: 4, h: 70, staggerMs:  15 },
+  { left: 84,  top: 74, w: 4, h: 81, staggerMs:   0 },
 ];
 
 const BARS_RIGHT: BarDef[] = [
-  { left: 92,  top:  1, w: 4, h: 72, staggerMs:  0 },
-  { left: 100, top: 70, w: 4, h: 80, staggerMs: 12 },
-  { left: 110, top:  0, w: 4, h: 69, staggerMs: 24 },
-  { left: 117, top: 67, w: 4, h: 76, staggerMs: 36 },
-  { left: 126, top:  1, w: 4, h: 65, staggerMs: 48 },
-  { left: 133, top: 64, w: 4, h: 57, staggerMs: 60 },
-  { left: 142, top:  8, w: 4, h: 56, staggerMs: 72 },
-  { left: 156, top: 18, w: 8, h: 98, staggerMs: 84 },
-  { left: 172, top: 35, w: 8, h: 98, staggerMs: 96 },
+  { left: 92,  top:  1, w: 4, h: 72, staggerMs:   0 },
+  { left: 100, top: 70, w: 4, h: 80, staggerMs:  15 },
+  { left: 110, top:  0, w: 4, h: 69, staggerMs:  30 },
+  { left: 117, top: 67, w: 4, h: 76, staggerMs:  45 },
+  { left: 126, top:  1, w: 4, h: 65, staggerMs:  60 },
+  { left: 133, top: 64, w: 4, h: 57, staggerMs:  75 },
+  { left: 142, top:  8, w: 4, h: 56, staggerMs:  90 },
+  { left: 156, top: 18, w: 8, h: 98, staggerMs: 105 },
+  { left: 172, top: 35, w: 8, h: 98, staggerMs: 120 },
 ];
 
 function BarView({ def, anim }: { def: BarDef; anim: BarAnim }) {
@@ -95,7 +95,7 @@ function makeBarAnims(count: number): BarAnim[] {
 }
 
 const TY_OFFSETS = [-16, -8, 0, 8, 16, 8, 0, -8, -16];
-const MAX_STAGGER = 96;
+const MAX_STAGGER = 120;
 
 export default function AnimatedSplash({ onComplete }: { onComplete: () => void }) {
   const overlayOpacity = useSharedValue(1);
@@ -120,9 +120,9 @@ export default function AnimatedSplash({ onComplete }: { onComplete: () => void 
       a.opacity.value = withDelay(bar.staggerMs, withTiming(0, { duration: FADE_DURATION, easing: fadeEasing }));
     });
 
-    const totalMs = MAX_STAGGER + FLY_DURATION + 60;
+    const totalMs = MAX_STAGGER + FLY_DURATION + 80;
     const t = setTimeout(() => {
-      overlayOpacity.value = withTiming(0, { duration: 180 }, (finished) => {
+      overlayOpacity.value = withTiming(0, { duration: 200 }, (finished) => {
         if (finished) runOnJS(onComplete)();
       });
     }, totalMs);

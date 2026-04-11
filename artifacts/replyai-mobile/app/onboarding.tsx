@@ -180,6 +180,7 @@ export default function OnboardingScreen() {
   const [stepIndex, setStepIndex] = useState(0);
   const [connectStatus, setConnectStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [connectError, setConnectError] = useState("");
+  const [connectHint, setConnectHint] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState<ToneOption>("professional");
 
   const currentStep = STEPS[stepIndex];
@@ -304,14 +305,21 @@ export default function OnboardingScreen() {
   const connectGoogle = useCallback(async () => {
     setConnectStatus("loading");
     setConnectError("");
+    setConnectHint(null);
     try {
       const headers = await authHeaders();
       const res = await fetch(`${apiBaseUrl}/api/auth/google/mobile-url`, { headers });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string; hint?: string };
+        const hint = body.hint ?? null;
+        setConnectHint(hint);
         if (res.status === 401) {
           setConnectStatus("error");
-          setConnectError("Session expired — please sign out and back in.");
+          setConnectError(
+            hint === "no_token"
+              ? "No session token found. Please sign out and sign back in."
+              : "Your session was rejected by the server. Sign out below and sign back in to continue.",
+          );
           return;
         }
         setConnectStatus("error");
@@ -488,8 +496,20 @@ export default function OnboardingScreen() {
 
               {connectStatus === "error" && (
                 <View style={styles.errorBox}>
-                  <Feather name="alert-circle" size={14} color="#c00" />
-                  <Text style={styles.errorText}>{connectError}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                    <Feather name="alert-circle" size={14} color="#c00" style={{ marginTop: 2 }} />
+                    <Text style={[styles.errorText, { flex: 1 }]}>{connectError}</Text>
+                  </View>
+                  {(connectHint === "token_rejected" || connectHint === "no_token") && (
+                    <TouchableOpacity
+                      onPress={() => signOut()}
+                      style={{ marginTop: 10, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6 }}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="log-out" size={13} color="#c00" />
+                      <Text style={{ color: "#c00", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Sign out & sign back in</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 
@@ -501,9 +521,10 @@ export default function OnboardingScreen() {
                   </View>
                 ) : (
                   <PressBtn
-                    label={connectStatus === "error" ? "Try again" : "Connect Gmail & Calendar"}
+                    label={connectHint === "token_rejected" || connectHint === "no_token" ? "Retry after signing back in" : connectStatus === "error" ? "Try again" : "Connect Gmail & Calendar"}
                     onPress={connectGoogle}
                     loading={connectStatus === "loading"}
+                    disabled={connectHint === "token_rejected" || connectHint === "no_token"}
                     icon="mail"
                   />
                 )}

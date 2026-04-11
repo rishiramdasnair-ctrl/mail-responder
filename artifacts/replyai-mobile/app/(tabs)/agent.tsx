@@ -367,13 +367,15 @@ function HistoryModal({
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    authHeaders().then((headers) =>
-      fetch(`${apiBaseUrl}/api/agent/conversations`, { headers })
-        .then((r) => r.ok ? r.json() as Promise<{ conversations: ConversationSummary[] }> : { conversations: [] })
-        .then((data) => setConversations(data.conversations ?? []))
-        .catch(() => setConversations([]))
-        .finally(() => setLoading(false))
-    );
+    authHeaders()
+      .then((headers) =>
+        fetch(`${apiBaseUrl}/api/agent/conversations`, { headers })
+          .then((r) => r.ok ? r.json() as Promise<{ conversations: ConversationSummary[] }> : { conversations: [] })
+          .then((data) => setConversations(data.conversations ?? []))
+          .catch(() => setConversations([]))
+      )
+      .catch(() => setConversations([]))
+      .finally(() => setLoading(false));
   }, [visible, apiBaseUrl, authHeaders]);
 
   const handleOpen = async (id: number) => {

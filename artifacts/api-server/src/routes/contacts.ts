@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { google } from "googleapis";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
@@ -25,7 +25,7 @@ async function getContactsClient(userId: string) {
 }
 
 router.get("/contacts/lookup", requireAuth, async (req, res): Promise<void> => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const email = req.query.email as string;
@@ -176,7 +176,7 @@ async function searchGmailRecipients(
 }
 
 router.get("/contacts/search", requireAuth, async (req, res): Promise<void> => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const q = (req.query.q as string || "").trim();

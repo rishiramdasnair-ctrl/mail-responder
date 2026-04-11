@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
 import { CreateCheckoutBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
@@ -37,8 +37,7 @@ router.get("/billing/plans", async (req, res) => {
 
 router.get("/billing/subscription", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const user = await getOrCreateUser(userId);
     const plan = getUserPlan(user);
     const repliesLimit = getRepliesLimit(user);
@@ -74,8 +73,7 @@ router.get("/billing/subscription", requireAuth, async (req, res) => {
 
 router.post("/billing/checkout", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const body = CreateCheckoutBody.parse(req.body);
 
     const user = await getOrCreateUser(userId);
@@ -115,8 +113,7 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
 
 router.post("/billing/portal", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const user = await getOrCreateUser(userId);
 
     if (!user.stripeCustomerId) {

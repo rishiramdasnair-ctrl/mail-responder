@@ -1,15 +1,14 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
 
 const router = Router();
 
 router.get("/connectors", requireAuth, async (req, res) => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+  const userId = getReqUserId(req)!;
   try {
     const rows = await db
       .select({
@@ -30,8 +29,7 @@ router.get("/connectors", requireAuth, async (req, res) => {
 });
 
 router.delete("/connectors/:connectorId", requireAuth, async (req, res) => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+  const userId = getReqUserId(req)!;
 
   const rawParam = req.params.connectorId;
   const connectorId = Array.isArray(rawParam) ? rawParam[0] : rawParam;

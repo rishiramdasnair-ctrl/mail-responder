@@ -1,6 +1,6 @@
 import { Router, Request } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
 import { GenerateRepliesBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
@@ -24,7 +24,7 @@ const aiRateLimit = rateLimit({
   max: 12,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request) => getAuth(req).userId ?? "anon",
+  keyGenerator: (req: Request) => getReqUserId(req) ?? "anon",
   validate: { xForwardedForHeader: false },
   handler: (_req, res) => {
     res.status(429).json({
@@ -36,8 +36,7 @@ const aiRateLimit = rateLimit({
 
 router.post("/ai/generate", requireAuth, aiRateLimit, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const user = await getOrCreateUser(userId);
     const plan = getUserPlan(user);
 
@@ -142,8 +141,7 @@ interface ProposedAction {
 
 router.post("/ai/actions", requireAuth, aiRateLimit, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const user = await getOrCreateUser(userId);
     const plan = getUserPlan(user);
 
@@ -278,8 +276,7 @@ Respond ONLY with a valid JSON object in this exact format:
 
 router.post("/ai/thread-summary", requireAuth, aiRateLimit, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const user = await getOrCreateUser(userId);
     const plan = getUserPlan(user);
 
@@ -343,8 +340,7 @@ Triage definitions:
 
 router.post("/ai/digest", requireAuth, aiRateLimit, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const user = await getOrCreateUser(userId);
     const plan = getUserPlan(user);
 

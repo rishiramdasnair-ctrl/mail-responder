@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -34,7 +34,7 @@ function buildFathomAuthUrl(clientId: string, state: string): string {
 router.get("/auth/fathom/mobile-url", requireAuth, (req, res) => {
   const clientId = process.env.FATHOM_CLIENT_ID;
   if (!clientId) { res.status(500).json({ error: "Fathom not configured" }); return; }
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   let state: string;
   try { state = createOAuthState(userId!, false, "mobile"); }
   catch { res.status(500).json({ error: "Fathom not configured" }); return; }
@@ -46,7 +46,7 @@ router.get("/auth/fathom/start", requireAuth, (req, res) => {
   const frontendUrl = `https://${domain}`;
   const clientId = process.env.FATHOM_CLIENT_ID;
   if (!clientId) return res.redirect(`${frontendUrl}/connectors?error=fathom_not_configured`);
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   let state: string;
   try { state = createOAuthState(userId!); }
   catch { return res.redirect(`${frontendUrl}/connectors?error=fathom_not_configured`); }

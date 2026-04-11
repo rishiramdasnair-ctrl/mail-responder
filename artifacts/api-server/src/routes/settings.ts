@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { userSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -10,8 +10,7 @@ const router = Router();
 
 router.get("/settings", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
     const settings = await db
       .select()
@@ -46,8 +45,7 @@ router.get("/settings", requireAuth, async (req, res) => {
 
 router.put("/settings", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const body = UpdateSettingsBody.parse(req.body);
 
     const [updated] = await db

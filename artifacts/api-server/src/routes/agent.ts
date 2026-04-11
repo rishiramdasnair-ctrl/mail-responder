@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { getGmailClientForUser, getCalendarClientForUser, parseEmailAddress, getHeader, decodeBody } from "../lib/gmailClient";
 import { createBrowserSession, getPageSnapshot, extractDdgResults } from "../lib/browserManager";
 import { isUrlSafe, resolveAndCheckUrl } from "../lib/urlSafety";
@@ -1002,8 +1002,7 @@ function wrapAgentError(err: unknown): { status: number; body: Record<string, st
 
 router.post("/agent/run", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const parsed = AgentRunBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request body" });
@@ -1031,8 +1030,7 @@ router.post("/agent/run", requireAuth, async (req, res) => {
 
 router.post("/agent/start", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const parsed = AgentRunBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request body" });
@@ -1069,7 +1067,7 @@ router.post("/agent/start", requireAuth, async (req, res) => {
 });
 
 router.get("/agent/jobs/:jobId", requireAuth, (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req);
   const job = jobStore.get(req.params.jobId);
   if (!job || job.userId !== userId) {
     res.status(404).json({ error: "Job not found" });
@@ -1079,7 +1077,7 @@ router.get("/agent/jobs/:jobId", requireAuth, (req, res) => {
 });
 
 router.delete("/agent/session/:sessionId", requireAuth, (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const { sessionId } = req.params;
   if (sessionId.startsWith(userId + "-")) {
     cleanupSession(sessionId);
@@ -1091,8 +1089,7 @@ router.delete("/agent/session/:sessionId", requireAuth, (req, res) => {
 
 router.post("/agent/send", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const sendParsed = AgentSendBodySchema.safeParse(req.body);
     if (!sendParsed.success) {
       res.status(400).json({ error: sendParsed.error.errors[0]?.message ?? "Invalid request body" });
@@ -1132,7 +1129,7 @@ router.post("/agent/send", requireAuth, async (req, res) => {
 
 router.post("/agent/create-event", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     const { title, start, end, description, location, attendees } = req.body as PendingCalendarEvent;
     if (!title || !start || !end) {
       res.status(400).json({ error: "title, start, and end are required" });
@@ -1148,8 +1145,7 @@ router.post("/agent/create-event", requireAuth, async (req, res) => {
 
 router.get("/agent/suggestions", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
     const gmail = await getGmailClientForUser(userId);
     const listRes = await gmail.users.threads.list({

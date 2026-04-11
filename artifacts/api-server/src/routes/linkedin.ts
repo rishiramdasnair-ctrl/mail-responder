@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -120,8 +120,7 @@ function nameSimilar(a: string, b: string): boolean {
 }
 
 router.get("/linkedin/profile", requireAuth, async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
   const { email, name } = req.query;
 
   const config = await getValidConfig(userId);

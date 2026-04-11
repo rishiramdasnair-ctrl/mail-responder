@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { google } from "googleapis";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { usersTable, connectorsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -48,8 +48,7 @@ router.get("/auth/google/extend", requireAuth, async (req, res) => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
   const frontendUrl = `https://${domain}`;
 
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
   const [existingUser] = await db
     .select({ id: usersTable.id, googleRefreshToken: usersTable.googleRefreshToken })

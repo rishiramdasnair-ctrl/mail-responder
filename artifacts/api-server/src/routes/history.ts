@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { replyHistoryTable } from "@workspace/db/schema";
 import { eq, desc, count, like, and, sql } from "drizzle-orm";
@@ -9,8 +9,7 @@ const router = Router();
 
 router.get("/history", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const limit = parseInt((req.query.limit as string) || "50");
     const offset = parseInt((req.query.offset as string) || "0");
     const q = req.query.q as string | undefined;
@@ -57,8 +56,7 @@ router.get("/history", requireAuth, async (req, res) => {
 
 router.get("/history/stats", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
     const [totalGenerated, totalSent, thisMonth] = await Promise.all([
       db.select({ count: count() }).from(replyHistoryTable).where(eq(replyHistoryTable.userId, userId)),

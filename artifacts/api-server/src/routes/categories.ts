@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { requireAuth } from "../lib/requireAuth";
 import { db } from "@workspace/db";
 import { userEmailCategoriesTable, DEFAULT_CATEGORIES } from "@workspace/db/schema";
@@ -17,7 +17,7 @@ const router = Router();
 
 router.get("/gmail/categories", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const categories = await getAllCategoriesForUser(userId);
@@ -30,7 +30,7 @@ router.get("/gmail/categories", requireAuth, async (req, res) => {
 
 router.put("/gmail/categories", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const updates: Array<{ category: string; enabled: boolean }> = req.body?.categories || [];
@@ -69,7 +69,7 @@ const CLASSIFY_INBOX_LIMIT = 100;
 
 router.post("/gmail/categories/classify-inbox", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const accounts = await getConnectedGmailAccounts(userId);

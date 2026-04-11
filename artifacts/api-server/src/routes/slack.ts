@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -39,8 +39,7 @@ interface SlackChannel {
 }
 
 router.get("/slack/channels", requireAuth, async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
   const token = await getSlackToken(userId);
   if (!token) {
@@ -81,8 +80,7 @@ router.get("/slack/channels", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.post("/slack/summarize", requireAuth, async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
   const token = await getSlackToken(userId);
   if (!token) {
@@ -140,8 +138,7 @@ ${threadContent}`;
 });
 
 router.post("/slack/send", requireAuth, async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
   const { channelId, channelName, summary, threadSubject } = req.body as {
     channelId: string;
     channelName?: string;

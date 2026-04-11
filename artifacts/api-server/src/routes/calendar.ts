@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { requireAuth } from "../lib/requireAuth";
 import { getCalendarClientForUser, getGmailClientForUser, getConnectedGmailAccounts } from "../lib/gmailClient";
 import { openrouter, FAST_MODEL } from "../lib/openrouter";
@@ -229,8 +229,7 @@ async function createTeamsMeeting(token: string, title: string, startIso: string
 
 router.get("/calendar/events", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+        const userId = getReqUserId(req)!;
     const accountEmail = req.query.account as string | undefined;
 
     const now = new Date();
@@ -322,8 +321,7 @@ router.get("/calendar/events", requireAuth, async (req, res) => {
 
 router.post("/calendar/events", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+        const userId = getReqUserId(req)!;
     const { title, start, end, description, attendees, location, conferenceType, conferenceUrl } = req.body as {
       title: string; start: string; end: string; description?: string;
       attendees?: string[]; location?: string;
@@ -421,8 +419,7 @@ router.post("/calendar/events", requireAuth, async (req, res) => {
 
 router.get("/calendar/events/:eventId", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+        const userId = getReqUserId(req)!;
     const eventId = String(req.params.eventId);
     const accountEmail = req.query.account as string | undefined;
     const calendar = await getCalendarClientForUser(userId, accountEmail);
@@ -467,8 +464,7 @@ router.get("/calendar/events/:eventId", requireAuth, async (req, res) => {
 
 router.post("/calendar/events/:eventId/brief", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+        const userId = getReqUserId(req)!;
     const eventId = String(req.params.eventId);
 
     const calendar = await getCalendarClientForUser(userId);

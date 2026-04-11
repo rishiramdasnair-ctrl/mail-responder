@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -27,8 +27,7 @@ router.get("/auth/slack/start", requireAuth, (req, res) => {
     return res.redirect(`${frontendUrl}/connectors?error=slack_not_configured`);
   }
 
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
   let state: string;
   try {

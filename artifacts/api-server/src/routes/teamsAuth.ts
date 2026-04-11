@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -50,8 +50,7 @@ router.get("/auth/teams/mobile-url", requireAuth, (req, res) => {
     return;
   }
 
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
   let state: string;
   try {
@@ -73,8 +72,7 @@ router.get("/auth/teams/start", requireAuth, (req, res) => {
     return res.redirect(`${frontendUrl}/connectors?error=teams_not_configured`);
   }
 
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
   let state: string;
   try {

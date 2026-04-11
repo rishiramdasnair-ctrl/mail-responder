@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { google } from "googleapis";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { usersTable, connectorsTable, gmailAccountsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
@@ -76,8 +76,7 @@ router.get("/auth/google/signin-url", async (_req, res) => {
 // then open the URL in expo-web-browser
 router.get("/auth/google/mobile-url", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const addAccount = req.query.addAccount === "true";
     const oAuth2Client = getOAuthClient();
 
@@ -112,8 +111,7 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
   const frontendUrl = `https://${domain}`;
 
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
     const addAccount = req.query.addAccount === "true";
     const platform = req.query.platform === "mobile" ? "mobile" as const : undefined;
     const oAuth2Client = getOAuthClient();
@@ -304,7 +302,7 @@ router.get("/auth/google/callback", async (req, res) => {
 // List all connected Gmail accounts
 router.get("/gmail/accounts", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
     const accounts = await getConnectedGmailAccounts(userId);
     res.json({ accounts });
@@ -317,7 +315,7 @@ router.get("/gmail/accounts", requireAuth, async (req, res) => {
 // Update signature for a specific Gmail account
 router.put("/gmail/accounts/:email/signature", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
     const email = decodeURIComponent(req.params.email);
     const signature = typeof req.body?.signature === "string" ? req.body.signature : null;
@@ -335,7 +333,7 @@ router.put("/gmail/accounts/:email/signature", requireAuth, async (req, res) => 
 // Disconnect a specific Gmail account
 router.delete("/gmail/accounts/:email", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const email = decodeURIComponent(req.params.email);
@@ -395,8 +393,7 @@ router.delete("/gmail/accounts/:email", requireAuth, async (req, res) => {
 
 router.post("/auth/google/disconnect", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
     // Remove all accounts
     await db.delete(gmailAccountsTable).where(eq(gmailAccountsTable.userId, userId));

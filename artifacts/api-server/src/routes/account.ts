@@ -1,7 +1,6 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
-import { createClerkClient } from "@clerk/backend";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -24,7 +23,7 @@ const deletionRateLimit = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => getAuth(req).userId ?? req.ip ?? "anon",
+  keyGenerator: (req) => getReqUserId(req) ?? req.ip ?? "anon",
   validate: { xForwardedForHeader: false },
   handler: (_req, res) => {
     res.status(429).json({ error: "Too many deletion attempts. Please wait and try again.", code: "RATE_LIMITED" });
@@ -32,8 +31,7 @@ const deletionRateLimit = rateLimit({
 });
 
 router.delete("/account", requireAuth, deletionRateLimit, async (req, res) => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+  const userId = getReqUserId(req)!;
 
   try {
     await db.transaction(async (tx) => {
@@ -48,8 +46,16 @@ router.delete("/account", requireAuth, deletionRateLimit, async (req, res) => {
       await tx.delete(usersTable).where(eq(usersTable.id, userId));
     });
 
-    const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
-    await clerk.users.deleteUser(userId);
+    // Only attempt Clerk user deletion for Clerk-managed users (not Google OAuth users)
+    if (!userId.startsWith("google_")) {
+      try {
+        const { createClerkClient } = await import("@clerk/backend");
+        const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+        await clerk.users.deleteUser(userId);
+      } catch {
+        // Non-fatal: Clerk deletion failure doesn't block DB deletion
+      }
+    }
 
     res.json({ success: true, message: "Account and all associated data have been permanently deleted." });
   } catch (err) {

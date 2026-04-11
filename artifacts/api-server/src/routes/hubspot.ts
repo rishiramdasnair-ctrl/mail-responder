@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -139,8 +139,7 @@ async function getFirstDealForContact(
 }
 
 router.get("/hubspot/contact", requireAuth, async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
   const { email } = req.query;
 
   if (!email || typeof email !== "string") {
@@ -221,8 +220,7 @@ router.get("/hubspot/contact", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.post("/hubspot/contact", requireAuth, async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
   const { email, firstName, lastName, company } = req.body as {
     email: string;
     firstName?: string;

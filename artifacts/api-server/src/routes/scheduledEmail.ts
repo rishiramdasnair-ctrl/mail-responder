@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { scheduledEmailsTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -9,7 +9,7 @@ const router = Router();
 
 router.post("/gmail/schedule", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const {
@@ -67,7 +67,7 @@ router.post("/gmail/schedule", requireAuth, async (req, res) => {
 
 router.get("/gmail/scheduled", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const rows = await db.select().from(scheduledEmailsTable)
@@ -86,7 +86,7 @@ router.get("/gmail/scheduled", requireAuth, async (req, res) => {
 
 router.delete("/gmail/scheduled/:id", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = parseInt(req.params.id, 10);

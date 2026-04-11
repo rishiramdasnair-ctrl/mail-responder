@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { expoPushTokensTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -9,7 +9,7 @@ const router = Router();
 
 router.post("/push-token", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { token } = req.body as { token?: string };
@@ -36,7 +36,7 @@ router.post("/push-token", requireAuth, async (req, res) => {
 
 router.delete("/push-token", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { token } = req.body as { token?: string };

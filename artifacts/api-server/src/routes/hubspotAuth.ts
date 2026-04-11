@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -27,8 +27,7 @@ router.get("/auth/hubspot/mobile-url", requireAuth, (req, res) => {
   if (!clientId) {
     return res.status(400).json({ error: "HubSpot not configured" });
   }
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
   try {
     const state = createOAuthState(userId, false, "mobile");
     const params = new URLSearchParams({
@@ -52,8 +51,7 @@ router.get("/auth/hubspot/start", requireAuth, (req, res) => {
     return res.redirect(`${frontendUrl}/connectors?error=hubspot_not_configured`);
   }
 
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
 
   let state: string;
   try {

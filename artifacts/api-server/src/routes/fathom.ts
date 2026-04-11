@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -56,7 +56,7 @@ async function fathomGet<T>(token: string, path: string, params?: Record<string,
 }
 
 router.get("/fathom/meetings", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getFathomToken(userId!);
   if (!token) return res.status(401).json({ error: "Fathom not connected" });
 
@@ -72,7 +72,7 @@ router.get("/fathom/meetings", requireAuth, async (req, res) => {
 });
 
 router.get("/fathom/meetings/by-attendees", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getFathomToken(userId!);
   if (!token) return res.status(401).json({ error: "Fathom not connected" });
 
@@ -92,7 +92,7 @@ router.get("/fathom/meetings/by-attendees", requireAuth, async (req, res) => {
 });
 
 router.get("/fathom/recordings/:recordingId/transcript", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getFathomToken(userId!);
   if (!token) return res.status(401).json({ error: "Fathom not connected" });
 

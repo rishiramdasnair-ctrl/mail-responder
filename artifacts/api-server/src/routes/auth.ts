@@ -1,15 +1,14 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { requireAuth } from "../lib/requireAuth";
+import { getReqUserId } from "../lib/getReqAuth";
 import { getOrCreateUser, getUserPlan, getRepliesLimit } from "../lib/getOrCreateUser";
 
 const router = Router();
 
 router.get("/auth/me", requireAuth, async (req, res) => {
   try {
-    const auth = getAuth(req);
-    const userId = auth.userId!;
-    const email = auth.sessionClaims?.email as string | undefined;
+    const userId = getReqUserId(req)!;
+    const email = (req as any).userEmail as string | undefined;
 
     const user = await getOrCreateUser(userId, email);
     const plan = getUserPlan(user);

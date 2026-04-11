@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -115,7 +115,7 @@ async function graphPost<T>(token: string, path: string, body: unknown): Promise
 }
 
 router.get("/teams/me", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -128,7 +128,7 @@ router.get("/teams/me", requireAuth, async (req, res) => {
 });
 
 router.get("/teams/chats", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -144,7 +144,7 @@ router.get("/teams/chats", requireAuth, async (req, res) => {
 });
 
 router.get("/teams/chats/:chatId/messages", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -157,7 +157,7 @@ router.get("/teams/chats/:chatId/messages", requireAuth, async (req, res) => {
 });
 
 router.post("/teams/chats/:chatId/messages", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -175,7 +175,7 @@ router.post("/teams/chats/:chatId/messages", requireAuth, async (req, res) => {
 });
 
 router.get("/teams/list", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -188,7 +188,7 @@ router.get("/teams/list", requireAuth, async (req, res) => {
 });
 
 router.get("/teams/:teamId/channels", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -204,7 +204,7 @@ router.get("/teams/:teamId/channels", requireAuth, async (req, res) => {
 });
 
 router.get("/teams/:teamId/channels/:channelId/messages", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -220,7 +220,7 @@ router.get("/teams/:teamId/channels/:channelId/messages", requireAuth, async (re
 });
 
 router.post("/teams/:teamId/channels/:channelId/messages", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -247,7 +247,7 @@ router.post("/teams/:teamId/channels/:channelId/messages", requireAuth, async (r
 });
 
 router.post("/teams/:teamId/channels/:channelId/messages/:messageId/replies", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 
@@ -267,7 +267,7 @@ router.post("/teams/:teamId/channels/:channelId/messages/:messageId/replies", re
 });
 
 router.post("/teams/meetings", requireAuth, async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const token = await getTeamsToken(userId!);
   if (!token) return res.status(401).json({ error: "Teams not connected" });
 

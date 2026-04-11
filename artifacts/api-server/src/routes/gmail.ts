@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { requireAuth } from "../lib/requireAuth";
 import {
   getGmailClientForUser,
@@ -22,7 +22,7 @@ const emailSendRateLimit = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => getAuth(req).userId ?? req.ip ?? "anon",
+  keyGenerator: (req) => getReqUserId(req) ?? req.ip ?? "anon",
   validate: { xForwardedForHeader: false },
   handler: (_req, res) => {
     res.status(429).json({ error: "Too many email send requests. Please wait a moment.", code: "RATE_LIMITED" });
@@ -159,7 +159,7 @@ async function fetchThreadMeta(gmail: any, threadId: string, accountEmail: strin
 // Priority inbox: fetch from ALL connected accounts, merge by priority
 router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const accounts = await getConnectedGmailAccounts(userId);
@@ -252,7 +252,7 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
 // AI-powered priority analysis of inbox emails
 router.get("/gmail/ai-priority", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const accounts = await getConnectedGmailAccounts(userId);
@@ -366,7 +366,7 @@ Return valid JSON only. If no emails genuinely need attention, return {"priority
 
 router.get("/gmail/status", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ connected: false }); return; }
 
     const status = await isGmailConnected(userId);
@@ -387,7 +387,7 @@ router.get("/gmail/status", requireAuth, async (req, res) => {
 
 router.get("/gmail/inbox", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const account = getAccount(req);
@@ -482,7 +482,7 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
 
 router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const account = getAccount(req);
@@ -545,7 +545,7 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
 
 router.get("/gmail/labels", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const account = getAccount(req);
@@ -562,7 +562,7 @@ router.get("/gmail/labels", requireAuth, async (req, res) => {
 
 router.post("/gmail/threads/:threadId/modify", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const account = getAccount(req);
@@ -586,7 +586,7 @@ router.post("/gmail/threads/:threadId/modify", requireAuth, async (req, res) => 
 
 router.post("/gmail/compose", requireAuth, emailSendRateLimit, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
@@ -641,7 +641,7 @@ router.post("/gmail/compose", requireAuth, emailSendRateLimit, async (req, res) 
 
 router.post("/gmail/send", requireAuth, emailSendRateLimit, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const account = (req.body?.account as string) || undefined;
@@ -687,7 +687,7 @@ router.post("/gmail/send", requireAuth, emailSendRateLimit, async (req, res) => 
 
 router.get("/gmail/messages/:messageId/attachments/:attachmentId", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { messageId, attachmentId } = req.params;
@@ -719,7 +719,7 @@ router.get("/gmail/messages/:messageId/attachments/:attachmentId", requireAuth, 
 
 router.post("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { threadId } = req.params;
@@ -753,7 +753,7 @@ router.post("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) => 
 
 router.delete("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { threadId } = req.params;
@@ -776,7 +776,7 @@ router.delete("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) =
 
 router.get("/gmail/snoozed", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const now = new Date();
@@ -794,7 +794,7 @@ router.get("/gmail/snoozed", requireAuth, async (req, res) => {
 // ── Gmail Push: watch registration ────────────────────────────────────────────
 router.post("/gmail/watch", requireAuth, async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const userId = getReqUserId(req)!;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
     const { watchUser } = await import("../lib/gmailWatcher");
     await watchUser(userId);

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -26,8 +26,7 @@ router.get("/auth/github/mobile-url", requireAuth, (req, res) => {
   if (!clientId) {
     return res.status(400).json({ error: "GitHub not configured" });
   }
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
   try {
     const state = createOAuthState(userId, false, "mobile");
     const params = new URLSearchParams({
@@ -48,8 +47,7 @@ router.get("/auth/github/start", requireAuth, (req, res) => {
     return res.redirect(`${getFrontendUrl()}?error=github_not_configured`);
   }
 
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+    const userId = getReqUserId(req)!;
   const platform = (req.query.platform as string) === "mobile" ? "mobile" : undefined;
 
   let state: string;

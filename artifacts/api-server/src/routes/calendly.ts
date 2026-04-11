@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
 import { connectorsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -91,8 +91,7 @@ async function getCalendlyToken(userId: string): Promise<{ token: string; ownerU
 }
 
 router.get("/calendly/event-types", requireAuth, async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const userId = auth.userId!;
+  const userId = getReqUserId(req)!;
 
   const tokenInfo = await getCalendlyToken(userId);
   if (!tokenInfo) {

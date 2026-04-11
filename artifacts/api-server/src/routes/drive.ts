@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/requireAuth";
-import { getAuth } from "@clerk/express";
+import { getReqUserId } from "../lib/getReqAuth";
 import { google } from "googleapis";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
@@ -28,7 +28,7 @@ async function getDriveClient(userId: string) {
 }
 
 router.get("/drive/list", requireAuth, async (req, res): Promise<void> => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const pageSize = Math.min(Number(req.query.pageSize) || 20, 50);
   const pageToken = req.query.pageToken as string | undefined;
 
@@ -48,7 +48,7 @@ router.get("/drive/list", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.get("/drive/search", requireAuth, async (req, res): Promise<void> => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const query = req.query.q as string;
   if (!query) { res.status(400).json({ error: "q is required" }); return; }
 
@@ -68,7 +68,7 @@ router.get("/drive/search", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.get("/drive/file/:fileId", requireAuth, async (req, res): Promise<void> => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   try {
     const { drive } = await getDriveClient(userId!);
     const meta = await drive.files.get({
@@ -92,7 +92,7 @@ router.get("/drive/file/:fileId", requireAuth, async (req, res): Promise<void> =
 });
 
 router.post("/drive/save", requireAuth, async (req, res): Promise<void> => {
-  const { userId } = getAuth(req);
+  const userId = getReqUserId(req)!;
   const { messageId, attachmentId, filename, mimeType } = req.body as {
     messageId: string; attachmentId: string; filename: string; mimeType: string;
   };

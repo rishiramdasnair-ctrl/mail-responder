@@ -121,7 +121,7 @@ export default function CalendarScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [showAccountMenu, setShowAccountMenu] = useState(false);
 
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const panX = useRef(new Animated.Value(0)).current;
 
   const weekSunday = useMemo(() => getWeekSunday(todayBase, weekOffset), [weekOffset]);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekSunday, i)), [weekSunday]);
@@ -167,96 +167,101 @@ export default function CalendarScreen() {
     });
   }, [eventsByDay, selectedDateKey]);
 
-  const animateWeekChange = useCallback((direction: number, newOffset: number) => {
-    slideAnim.setValue(direction * SCREEN_WIDTH);
-    setWeekOffset(newOffset);
-    Animated.spring(slideAnim, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 70,
-      friction: 12,
-    }).start();
-  }, [slideAnim]);
-
-  const goToPrevWeek = useCallback(() => {
-    const newOffset = weekOffset - 1;
-    const newSunday = getWeekSunday(todayBase, newOffset);
-    const newSat = addDays(newSunday, 6);
-    setSelectedDateKey(dateKey(newSat));
-    animateWeekChange(1, newOffset);
-  }, [weekOffset, animateWeekChange]);
-
-  const goToNextWeek = useCallback(() => {
-    const newOffset = weekOffset + 1;
-    const newSunday = getWeekSunday(todayBase, newOffset);
-    setSelectedDateKey(dateKey(newSunday));
-    animateWeekChange(-1, newOffset);
-  }, [weekOffset, animateWeekChange]);
-
-  const goToToday = useCallback(() => {
-    if (weekOffset === 0 && selectedDateKey === todayKey) return;
-    setSelectedDateKey(todayKey);
-    const direction = weekOffset > 0 ? -1 : 1;
-    animateWeekChange(direction, 0);
-    setViewMode("day");
-  }, [weekOffset, selectedDateKey, todayKey, animateWeekChange]);
-
   const weekOffsetRef = useRef(weekOffset);
   weekOffsetRef.current = weekOffset;
-
   const selectedDateKeyRef = useRef(selectedDateKey);
   selectedDateKeyRef.current = selectedDateKey;
 
+  const slideIn = useCallback((fromDirection: "left" | "right") => {
+    panX.setValue(fromDirection === "left" ? -SCREEN_WIDTH * 0.55 : SCREEN_WIDTH * 0.55);
+    Animated.spring(panX, { toValue: 0, useNativeDriver: true, tension: 90, friction: 16 }).start();
+  }, [panX]);
+
+  const goToPrevWeek = useCallback(() => {
+    const newOffset = weekOffsetRef.current - 1;
+    const newSunday = getWeekSunday(todayBase, newOffset);
+    const newSat = addDays(newSunday, 6);
+    setSelectedDateKey(dateKey(newSat));
+    setWeekOffset(newOffset);
+    slideIn("right");
+  }, [slideIn]);
+
+  const goToNextWeek = useCallback(() => {
+    const newOffset = weekOffsetRef.current + 1;
+    const newSunday = getWeekSunday(todayBase, newOffset);
+    setSelectedDateKey(dateKey(newSunday));
+    setWeekOffset(newOffset);
+    slideIn("left");
+  }, [slideIn]);
+
+  const goToToday = useCallback(() => {
+    const curOffset = weekOffsetRef.current;
+    const curKey = selectedDateKeyRef.current;
+    if (curOffset === 0 && curKey === todayKey) return;
+    const dir: "left" | "right" = curOffset > 0 ? "left" : "right";
+    setSelectedDateKey(todayKey);
+    setWeekOffset(0);
+    setViewMode("day");
+    slideIn(dir);
+  }, [todayKey, slideIn]);
+
   const goToNextDay = useCallback(() => {
     const curKey = selectedDateKeyRef.current;
-    const cur = toLocalDate(curKey);
-    const next = addDays(cur, 1);
+    const next = addDays(toLocalDate(curKey), 1);
     const nextKey = dateKey(next);
-    const curWeekSunday = getWeekSunday(todayBase, weekOffsetRef.current);
-    const curWeekSat = addDays(curWeekSunday, 6);
-    const crossesWeek = next > curWeekSat;
-    if (crossesWeek) {
-      const newOff = weekOffsetRef.current + 1;
-      slideAnim.setValue(-SCREEN_WIDTH);
-      setWeekOffset(newOff);
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
-    } else {
-      slideAnim.setValue(-SCREEN_WIDTH * 0.4);
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
-    }
+    const curWeekSat = addDays(getWeekSunday(todayBase, weekOffsetRef.current), 6);
+    if (next > curWeekSat) setWeekOffset(weekOffsetRef.current + 1);
     setSelectedDateKey(nextKey);
   }, []);
 
   const goToPrevDay = useCallback(() => {
     const curKey = selectedDateKeyRef.current;
-    const cur = toLocalDate(curKey);
-    const prev = addDays(cur, -1);
+    const prev = addDays(toLocalDate(curKey), -1);
     const prevKey = dateKey(prev);
     const curWeekSunday = getWeekSunday(todayBase, weekOffsetRef.current);
-    const crossesWeek = prev < curWeekSunday;
-    if (crossesWeek) {
-      const newOff = weekOffsetRef.current - 1;
-      slideAnim.setValue(SCREEN_WIDTH);
-      setWeekOffset(newOff);
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
-    } else {
-      slideAnim.setValue(SCREEN_WIDTH * 0.4);
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 14 }).start();
-    }
+    if (prev < curWeekSunday) setWeekOffset(weekOffsetRef.current - 1);
     setSelectedDateKey(prevKey);
   }, []);
 
+  const commitDaySwipe = useCallback((direction: "next" | "prev") => {
+    const targetX = direction === "next" ? -SCREEN_WIDTH : SCREEN_WIDTH;
+    Animated.timing(panX, {
+      toValue: targetX,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      if (direction === "next") goToNextDay();
+      else goToPrevDay();
+      panX.setValue(0);
+    });
+  }, [panX, goToNextDay, goToPrevDay]);
+
   const swipeHandlers = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_, gs) =>
-      Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 12,
+      Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 8,
+    onPanResponderMove: Animated.event([null, { dx: panX }], { useNativeDriver: false }),
     onPanResponderRelease: (_, gs) => {
-      if (gs.dx < -SWIPE_THRESHOLD) {
-        goToNextDay();
-      } else if (gs.dx > SWIPE_THRESHOLD) {
-        goToPrevDay();
+      if (gs.dx < -SWIPE_THRESHOLD || gs.vx < -0.4) {
+        commitDaySwipe("next");
+      } else if (gs.dx > SWIPE_THRESHOLD || gs.vx > 0.4) {
+        commitDaySwipe("prev");
+      } else {
+        Animated.spring(panX, { toValue: 0, useNativeDriver: true, tension: 120, friction: 14 }).start();
       }
     },
-  }), []);
+    onPanResponderTerminate: () => {
+      Animated.spring(panX, { toValue: 0, useNativeDriver: true, tension: 120, friction: 14 }).start();
+    },
+  }), [commitDaySwipe]);
+
+  const weekStripSwipe = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 20,
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dx < -40 || gs.vx < -0.3) goToNextWeek();
+      else if (gs.dx > 40 || gs.vx > 0.3) goToPrevWeek();
+    },
+  }), [goToNextWeek, goToPrevWeek]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 84 : insets.bottom;
@@ -851,54 +856,64 @@ export default function CalendarScreen() {
     );
   };
 
-  const renderWeekStrip = () => (
-    <View style={s.weekStrip}>
-      {weekDays.map((day, i) => {
-        const dk = dateKey(day);
-        const isToday = dk === todayKey;
-        const isSelected = dk === selectedDateKey && viewMode === "day";
-        const hasEvents = (eventsByDay.get(dk)?.length ?? 0) > 0;
+  const isOnToday = weekOffset === 0 && selectedDateKey === todayKey;
 
-        return (
-          <TouchableOpacity
-            key={dk}
-            style={s.dayCell}
-            onPress={() => { setSelectedDateKey(dk); setViewMode("day"); }}
-            activeOpacity={0.7}
-          >
-            <Text style={[s.dayAbbrev, { color: isSelected ? colors.primary : colors.mutedForeground }]}>
-              {DAY_ABBREVS[i]}
-            </Text>
-            <View style={[
-              s.dayNumWrap,
-              isSelected && { backgroundColor: colors.foreground },
-              !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.foreground },
-            ]}>
-              <Text style={[s.dayNum, { color: isSelected ? colors.background : colors.foreground }]}>
-                {day.getDate()}
+  const renderWeekStrip = () => (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <TouchableOpacity
+        style={s.navBtn}
+        onPress={goToPrevWeek}
+        hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+      >
+        <Feather name="chevron-left" size={16} color={colors.foreground} />
+      </TouchableOpacity>
+      <View style={[s.weekStrip, { flex: 1 }]} {...weekStripSwipe.panHandlers}>
+        {weekDays.map((day, i) => {
+          const dk = dateKey(day);
+          const isToday = dk === todayKey;
+          const isSelected = dk === selectedDateKey && viewMode === "day";
+          const hasEvents = (eventsByDay.get(dk)?.length ?? 0) > 0;
+
+          return (
+            <TouchableOpacity
+              key={dk}
+              style={s.dayCell}
+              onPress={() => { setSelectedDateKey(dk); setViewMode("day"); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.dayAbbrev, { color: isSelected ? colors.foreground : colors.mutedForeground }]}>
+                {DAY_ABBREVS[i]}
               </Text>
-            </View>
-            {isToday && !isSelected && <View style={[s.todayDot, { backgroundColor: colors.primary }]} />}
-            {!isToday && hasEvents && <View style={[s.eventDot, { backgroundColor: colors.border }]} />}
-            {((!isToday && !hasEvents) || (isToday && isSelected)) && <View style={[s.eventDot, { opacity: 0 }]} />}
-          </TouchableOpacity>
-        );
-      })}
+              <View style={[
+                s.dayNumWrap,
+                isSelected && { backgroundColor: colors.foreground },
+                !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.foreground },
+              ]}>
+                <Text style={[s.dayNum, { color: isSelected ? colors.background : colors.foreground }]}>
+                  {day.getDate()}
+                </Text>
+              </View>
+              {isToday && !isSelected && <View style={[s.todayDot, { backgroundColor: colors.foreground }]} />}
+              {!isToday && hasEvents && <View style={[s.eventDot, { backgroundColor: colors.border }]} />}
+              {((!isToday && !hasEvents) || (isToday && isSelected)) && <View style={[s.eventDot, { opacity: 0 }]} />}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <TouchableOpacity
+        style={s.navBtn}
+        onPress={goToNextWeek}
+        hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+      >
+        <Feather name="chevron-right" size={16} color={colors.foreground} />
+      </TouchableOpacity>
     </View>
   );
 
   const header = (
     <View style={s.headerWrap}>
       <View style={s.headerRow}>
-        <View style={s.headerLeft}>
-          <TouchableOpacity style={s.navBtn} onPress={goToPrevWeek} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="chevron-left" size={16} color={colors.foreground} />
-          </TouchableOpacity>
-          <Text style={s.monthLabel}>{monthLabel}</Text>
-          <TouchableOpacity style={s.navBtn} onPress={goToNextWeek} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="chevron-right" size={16} color={colors.foreground} />
-          </TouchableOpacity>
-        </View>
+        <Text style={s.monthLabel}>{monthLabel}</Text>
 
         <View style={s.headerActions}>
           {accounts.length > 1 && (
@@ -943,16 +958,14 @@ export default function CalendarScreen() {
             </View>
           )}
 
-          {(weekOffset !== 0 || selectedDateKey !== todayKey) && (
-            <TouchableOpacity
-              style={[s.todayBtn, s.todayBtnActive]}
-              onPress={goToToday}
-              activeOpacity={0.75}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Text style={[s.todayBtnText, s.todayBtnTextActive]}>Today</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={[s.todayBtn, !isOnToday && s.todayBtnActive]}
+            onPress={goToToday}
+            activeOpacity={0.75}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={[s.todayBtnText, !isOnToday && s.todayBtnTextActive]}>Today</Text>
+          </TouchableOpacity>
 
           <View style={s.viewToggle}>
             <TouchableOpacity
@@ -1030,11 +1043,11 @@ export default function CalendarScreen() {
     <View style={s.container}>
       {header}
       {viewMode === "week" ? (
-        <Animated.View style={[s.eventsArea, { transform: [{ translateX: slideAnim }] }]} {...swipeHandlers.panHandlers}>
+        <Animated.View style={[s.eventsArea, { transform: [{ translateX: panX }] }]} {...swipeHandlers.panHandlers}>
           {renderWeekView()}
         </Animated.View>
       ) : (
-        <Animated.View style={[s.eventsArea, { transform: [{ translateX: slideAnim }] }]} {...swipeHandlers.panHandlers}>
+        <Animated.View style={[s.eventsArea, { transform: [{ translateX: panX }] }]} {...swipeHandlers.panHandlers}>
           <FlatList
             ref={listRef}
             data={selectedDayEvents}

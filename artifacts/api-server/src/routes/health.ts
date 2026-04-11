@@ -84,4 +84,9 @@ router.get("/debug/auth-check", (req, res) => {
   });
 });
 
+router.get("/debug/clerk-pk", (_req, res) => {
+  const pk = process.env.CLERK_PUBLISHABLE_KEY ?? "";
+  res.json({ clerkPublishableKey: pk });
+});
+
 export default router;

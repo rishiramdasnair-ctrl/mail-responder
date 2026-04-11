@@ -503,7 +503,7 @@ export default function OnboardingScreen() {
         {currentStep === "welcome" && (
           <View style={{ flex: 1 }}>
             {/* Floating particles */}
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}>
               {PARTICLES.map((p, i) => (
                 <Animated.View
                   key={i}
@@ -585,7 +585,6 @@ export default function OnboardingScreen() {
               <View style={{ width: "100%", position: "relative" }}>
                 {/* AI scan line */}
                 <Animated.View
-                  pointerEvents="none"
                   style={{
                     position: "absolute",
                     left: 0,
@@ -594,6 +593,7 @@ export default function OnboardingScreen() {
                     backgroundColor: "#000",
                     opacity: 0.12,
                     zIndex: 10,
+                    pointerEvents: "none",
                     transform: [{
                       translateY: scanLineY.interpolate({
                         inputRange: [0, 1],
@@ -720,13 +720,11 @@ export default function OnboardingScreen() {
                         opacity: toneAnims[i],
                         transform: [
                           { translateY: toneAnims[i].interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
-                          { scale: Animated.multiply(
-                              toneAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }),
-                              toneScales[i]
-                            ) },
+                          { scale: toneAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
                         ],
                       }}
                     >
+                      <Animated.View style={{ transform: [{ scale: toneScales[i] }] }}>
                       <TouchableOpacity
                         onPress={() => selectTone(tone.id, i)}
                         activeOpacity={0.85}
@@ -770,6 +768,7 @@ export default function OnboardingScreen() {
                           </Text>
                         </View>
                       </TouchableOpacity>
+                      </Animated.View>
                     </Animated.View>
                   );
                 })}
@@ -798,7 +797,6 @@ export default function OnboardingScreen() {
               {RINGS.map((_, ri) => (
                 <Animated.View
                   key={ri}
-                  pointerEvents="none"
                   style={{
                     position: "absolute",
                     width: 100,
@@ -806,6 +804,7 @@ export default function OnboardingScreen() {
                     borderRadius: 50,
                     borderWidth: 1.5,
                     borderColor: "#000",
+                    pointerEvents: "none",
                     opacity: ringAnims[ri].op,
                     transform: [{ scale: ringAnims[ri].scale }],
                   }}

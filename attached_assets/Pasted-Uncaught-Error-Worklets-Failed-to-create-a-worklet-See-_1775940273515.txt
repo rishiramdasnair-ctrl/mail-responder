@@ -1,0 +1,106 @@
+Uncaught Error
+[Worklets] Failed to create a worklet. See https://docs.swmansion.com/react-native-reanimated/docs/guides/troubleshooting#failed-to-create-a-worklet for more details.
+Source
+ 
+ 93 |
+    
+?
+ 
+new
+ 
+URL
+(window
+.
+location
+.
+href)
+ 
+ 94 |
+    
+:
+ undefined
+;
+>
+ 95 |
+function
+ 
+ContextNavigator
+({ context
+,
+ location
+:
+ initialLocation 
+=
+ initialUrl
+,
+ wrapper
+:
+ 
+WrapperComponent
+ 
+=
+ react_1
+.
+Fragment
+,
+ linking 
+=
+ {}
+,
+ }) {
+ 
+    |
+                            
+^
+ 
+ 96 |
+    
+// location and linking.getInitialURL are both used to initialize the router state
+ 
+ 97 |
+    
+//  - location is used on web and during static rendering
+ 
+ 98 |
+    
+//  - linking.getInitialURL is used on native
+Call Stack
+WorkletsErrorConstructor
+node_modules/.pnpm/react-native-worklets@0.5.1_@babel+core@7.29.0_react-native@0.81.5_@babel+core@7.29.0_@_e33ee53926cb739c160046f5657a922f/node_modules/react-native-worklets/lib/module/WorkletsError.js:10:25
+initializeRNRuntime
+node_modules/.pnpm/react-native-worklets@0.5.1_@babel+core@7.29.0_react-native@0.81.5_@babel+core@7.29.0_@_e33ee53926cb739c160046f5657a922f/node_modules/react-native-worklets/lib/module/initializers.js:112:13
+init
+node_modules/.pnpm/react-native-worklets@0.5.1_@babel+core@7.29.0_react-native@0.81.5_@babel+core@7.29.0_@_e33ee53926cb739c160046f5657a922f/node_modules/react-native-worklets/lib/module/initializers.js:90:5
+<global>
+node_modules/.pnpm/react-native-worklets@0.5.1_@babel+core@7.29.0_react-native@0.81.5_@babel+core@7.29.0_@_e33ee53926cb739c160046f5657a922f/node_modules/react-native-worklets/lib/module/index.js:6:5
+loadModuleImplementation
+node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.29._daef1aa59357a8cccc6b98050d411315/node_modules/@expo/cli/build/metro-require/require.js:248:36
+guardedLoadModule
+node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.29._daef1aa59357a8cccc6b98050d411315/node_modules/@expo/cli/build/metro-require/require.js:163:16
+metroRequire
+node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.29._daef1aa59357a8cccc6b98050d411315/node_modules/@expo/cli/build/metro-require/require.js:74:75
+<global>
+node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_@babel+core@7.29.0_react-nati_515d6df303eb2cb6b0aef8cdac663c06/node_modules/react-native-reanimated/lib/module/initializers.js:3
+loadModuleImplementation
+node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.29._daef1aa59357a8cccc6b98050d411315/node_modules/@expo/cli/build/metro-require/require.js:248:36
+guardedLoadModule
+node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.29._daef1aa59357a8cccc6b98050d411315/node_modules/@expo/cli/build/metro-require/require.js:163:16
+Collapse all 10 frames
+Component Stack
+ContextNavigator
+node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/build/ExpoRoot.js:95:29
+ExpoRoot
+node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/build/ExpoRoot.js:68:30
+_HelmetProvider#constructor
+node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__abd38177f532ddff11e5834956475527/node_modules/expo-router/vendor/react-helmet-async/lib/index.js:483:5
+App
+<anonymous>:-1:0
+LogBoxStateSubscription#constructor
+node_modules/.pnpm/@expo+metro-runtime@6.1.2_expo@54.0.33_react-dom@19.1.0_react@19.1.0__react-native@0.81_98026a05792048d9871e86202e07ccd2/node_modules/@expo/metro-runtime/src/error-overlay/Data/LogBoxData.tsx:365:7
+ErrorOverlay
+<anonymous>:-1:0
+withDevTools(ErrorOverlay)
+<anonymous>:-1:0
+AppContainer
+shim:react-native-web/dist/exports/AppRegistry/AppContainer.js
+Collapse all 8 frames

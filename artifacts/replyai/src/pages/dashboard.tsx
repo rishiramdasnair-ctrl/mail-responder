@@ -50,6 +50,8 @@ import {
   Plus,
   Check,
   LogOut,
+  Zap,
+  RotateCcw,
 } from "lucide-react";
 import { format, isToday, isTomorrow, isThisWeek, parseISO, startOfDay, isSameDay } from "date-fns";
 
@@ -1015,12 +1017,97 @@ function groupEventsByDay(events: CalendarEvent[]) {
   return groups;
 }
 
+function isEventPast(evt: CalendarEvent): boolean {
+  try {
+    const endStr = evt.end;
+    if (!endStr) return false;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(endStr)) {
+      const [y, m, d] = endStr.split("-").map(Number);
+      const endDate = new Date(y, m - 1, d);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return endDate <= today;
+    }
+    return new Date(endStr) <= new Date();
+  } catch {
+    return false;
+  }
+}
+
+interface BriefState {
+  eventId: string;
+  status: "loading" | "success" | "error";
+  brief: string | null;
+  error: string | null;
+}
+
+function BriefMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-0.5 text-[13px] leading-relaxed">
+      {lines.map((line, i) => {
+        if (line.startsWith("## ")) {
+          return (
+            <p key={i} className="font-semibold text-foreground text-xs uppercase tracking-wide pt-3 pb-1 first:pt-0">
+              {line.replace("## ", "")}
+            </p>
+          );
+        }
+        if (line.startsWith("# ")) {
+          return (
+            <p key={i} className="font-bold text-foreground text-sm pt-2 pb-1 first:pt-0">
+              {line.replace("# ", "")}
+            </p>
+          );
+        }
+        if (line.startsWith("- ") || line.startsWith("* ")) {
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="text-muted-foreground shrink-0 mt-0.5">•</span>
+              <span className="text-foreground">{line.replace(/^[-*]\s/, "").replace(/\*\*(.*?)\*\*/g, "$1")}</span>
+            </div>
+          );
+        }
+        if (line.trim() === "") {
+          return <div key={i} className="h-1" />;
+        }
+        return (
+          <p key={i} className="text-foreground">
+            {line.replace(/\*\*(.*?)\*\*/g, "$1")}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 function CalendarPanel({ onClose }: { onClose: () => void }) {
   const { data, isLoading, error } = useCalendarEvents();
+  const [briefState, setBriefState] = useState<BriefState | null>(null);
 
   const events = data?.events || [];
   const grouped = groupEventsByDay(events);
   const dayKeys = Object.keys(grouped).sort();
+
+  const generateBrief = async (evt: CalendarEvent) => {
+    setBriefState({ eventId: evt.id, status: "loading", brief: null, error: null });
+    try {
+      const res = await fetch(`/api/calendar/events/${evt.id}/brief`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error || "Failed to generate brief");
+      }
+      const d = await res.json() as { brief: string };
+      setBriefState({ eventId: evt.id, status: "success", brief: d.brief, error: null });
+    } catch (err) {
+      setBriefState({ eventId: evt.id, status: "error", brief: null, error: err instanceof Error ? err.message : "Failed to generate brief" });
+    }
+  };
 
   return (
     <div className="flex flex-col h-full border-l bg-background">
@@ -1076,39 +1163,103 @@ function CalendarPanel({ onClose }: { onClose: () => void }) {
                     {label}
                   </div>
                   <div className="space-y-1.5">
-                    {dayEvents.map(evt => (
-                      <a
-                        key={evt.id}
-                        href={evt.htmlLink || "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block rounded-lg border bg-secondary/30 hover:bg-secondary/60 transition-colors p-2.5 group"
-                      >
-                        <div className="flex items-start gap-2">
-                          <div className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${isCurrentDay ? "bg-primary" : "bg-muted-foreground/40"}`} />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium truncate text-foreground leading-tight">{evt.title}</p>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
-                              <span className="text-[11px] text-muted-foreground">{formatEventTime(evt.start, evt.isAllDay)}</span>
-                              {evt.attendees.length > 1 && (
-                                <>
-                                  <span className="text-muted-foreground/40">·</span>
-                                  <Users className="w-3 h-3 text-muted-foreground shrink-0" />
-                                  <span className="text-[11px] text-muted-foreground">{evt.attendees.length}</span>
-                                </>
+                    {dayEvents.map(evt => {
+                      const isPast = isEventPast(evt);
+                      const isActiveBrief = briefState?.eventId === evt.id;
+                      return (
+                        <div key={evt.id} className="rounded-lg border bg-secondary/30 overflow-hidden">
+                          <a
+                            href={evt.htmlLink || "#"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block hover:bg-secondary/60 transition-colors p-2.5 group"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${isCurrentDay ? "bg-primary" : "bg-muted-foreground/40"}`} />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium truncate text-foreground leading-tight">{evt.title}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                                  <span className="text-[11px] text-muted-foreground">{formatEventTime(evt.start, evt.isAllDay)}</span>
+                                  {evt.attendees.length > 1 && (
+                                    <>
+                                      <span className="text-muted-foreground/40">·</span>
+                                      <Users className="w-3 h-3 text-muted-foreground shrink-0" />
+                                      <span className="text-[11px] text-muted-foreground">{evt.attendees.length}</span>
+                                    </>
+                                  )}
+                                </div>
+                                {evt.location && (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                                    <span className="text-[11px] text-muted-foreground truncate">{evt.location}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </a>
+                          {!isPast && (
+                            <div className="px-2.5 pb-2 pt-0">
+                              <button
+                                onClick={() => generateBrief(evt)}
+                                disabled={isActiveBrief && briefState?.status === "loading"}
+                                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                              >
+                                {isActiveBrief && briefState?.status === "loading" ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Zap className="w-3 h-3" />
+                                )}
+                                Prep Brief
+                              </button>
+                            </div>
+                          )}
+                          {isActiveBrief && (
+                            <div className="border-t mx-2.5 mb-2.5 pt-2.5">
+                              {briefState?.status === "loading" && (
+                                <div className="space-y-2">
+                                  <Skeleton className="h-3 w-3/4" />
+                                  <Skeleton className="h-3 w-full" />
+                                  <Skeleton className="h-3 w-5/6" />
+                                  <Skeleton className="h-3 w-full" />
+                                  <Skeleton className="h-3 w-2/3" />
+                                </div>
+                              )}
+                              {briefState?.status === "error" && (
+                                <div className="space-y-2">
+                                  <p className="text-[11px] text-destructive">{briefState.error}</p>
+                                  <button
+                                    onClick={() => generateBrief(evt)}
+                                    className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    Try again
+                                  </button>
+                                </div>
+                              )}
+                              {briefState?.status === "success" && briefState.brief && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <Zap className="w-3 h-3 text-primary" />
+                                      <span className="text-[11px] font-semibold text-foreground">Pre-Meeting Brief</span>
+                                    </div>
+                                    <button
+                                      onClick={() => generateBrief(evt)}
+                                      className="p-0.5 rounded hover:bg-muted transition-colors"
+                                      title="Regenerate"
+                                    >
+                                      <RotateCcw className="w-3 h-3 text-muted-foreground" />
+                                    </button>
+                                  </div>
+                                  <BriefMarkdown text={briefState.brief} />
+                                </div>
                               )}
                             </div>
-                            {evt.location && (
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
-                                <span className="text-[11px] text-muted-foreground truncate">{evt.location}</span>
-                              </div>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      </a>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );

@@ -176,12 +176,26 @@ export default function EventDetailScreen() {
       }
       const data = await res.json() as { brief: string };
       setBrief(data.brief);
-    } catch (e: any) {
-      setBriefError(e.message || "Failed to generate brief");
+    } catch (err) {
+      setBriefError(err instanceof Error ? err.message : "Failed to generate brief");
     } finally {
       setGeneratingBrief(false);
     }
   };
+
+  const isEventUpcoming = useMemo(() => {
+    if (!event) return false;
+    const endStr = event.end;
+    if (!endStr) return true;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(endStr)) {
+      const [y, m, d] = endStr.split("-").map(Number);
+      const endDate = new Date(y, m - 1, d);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return endDate > today;
+    }
+    return new Date(endStr) > new Date();
+  }, [event]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 24 : insets.bottom;
@@ -366,7 +380,27 @@ export default function EventDetailScreen() {
           </View>
         )}
 
-        {brief ? (
+        {isEventUpcoming && (generatingBrief ? (
+          <View style={s.briefCard}>
+            <View style={s.briefHeader}>
+              <ActivityIndicator color={colors.mutedForeground} size="small" />
+              <Text style={[s.briefTitle, { color: colors.mutedForeground }]}>Generating brief…</Text>
+            </View>
+            {[0.85, 1, 0.7, 1, 0.6, 0.9, 0.75].map((w, i) => (
+              <View
+                key={i}
+                style={{
+                  height: 12,
+                  borderRadius: 6,
+                  backgroundColor: colors.muted,
+                  marginBottom: 8,
+                  width: `${w * 100}%`,
+                  opacity: 0.6,
+                }}
+              />
+            ))}
+          </View>
+        ) : brief ? (
           <View style={s.briefCard}>
             <View style={s.briefHeader}>
               <Feather name="zap" size={15} color={colors.foreground} />
@@ -380,28 +414,17 @@ export default function EventDetailScreen() {
         ) : briefError ? (
           <>
             <Text style={s.errorText}>{briefError}</Text>
-            <TouchableOpacity style={s.briefBtn} onPress={generateBrief} disabled={generatingBrief}>
-              {generatingBrief
-                ? <ActivityIndicator color={colors.foreground} size="small" />
-                : <><Feather name="zap" size={16} color={colors.foreground} /><Text style={s.briefBtnText}>Try again</Text></>
-              }
+            <TouchableOpacity style={s.briefBtn} onPress={generateBrief}>
+              <Feather name="zap" size={16} color={colors.foreground} />
+              <Text style={s.briefBtnText}>Try again</Text>
             </TouchableOpacity>
           </>
         ) : (
-          <TouchableOpacity style={s.briefBtn} onPress={generateBrief} disabled={generatingBrief}>
-            {generatingBrief ? (
-              <>
-                <ActivityIndicator color={colors.foreground} size="small" />
-                <Text style={s.briefBtnText}>Generating brief…</Text>
-              </>
-            ) : (
-              <>
-                <Feather name="zap" size={16} color={colors.foreground} />
-                <Text style={s.briefBtnText}>Generate Pre-Meeting Brief</Text>
-              </>
-            )}
+          <TouchableOpacity style={s.briefBtn} onPress={generateBrief}>
+            <Feather name="zap" size={16} color={colors.foreground} />
+            <Text style={s.briefBtnText}>Get Brief</Text>
           </TouchableOpacity>
-        )}
+        ))}
       </ScrollView>
     </View>
   );

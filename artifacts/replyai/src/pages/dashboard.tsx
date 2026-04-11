@@ -211,6 +211,174 @@ function useIsMobile() {
   return isMobile;
 }
 
+interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime: string;
+  webViewLink: string | null;
+  iconLink: string | null;
+}
+
+function getMimeTypeIcon(mimeType: string): string {
+  if (mimeType.includes("spreadsheet") || mimeType.includes("excel")) return "📊";
+  if (mimeType.includes("presentation") || mimeType.includes("powerpoint")) return "📊";
+  if (mimeType.includes("document") || mimeType.includes("word")) return "📄";
+  if (mimeType.includes("pdf")) return "📕";
+  if (mimeType.includes("image")) return "🖼️";
+  if (mimeType.includes("video")) return "🎬";
+  if (mimeType.includes("audio")) return "🎵";
+  if (mimeType.includes("folder")) return "📁";
+  return "📄";
+}
+
+function DrivePickerModal({
+  open,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (file: DriveFile) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const loadRecent = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/drive/list?pageSize=20", { credentials: "include" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error || "Failed to load Drive files");
+      }
+      const data = await res.json() as { files: DriveFile[] };
+      setFiles(data.files ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load Drive files");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setError(null);
+      loadRecent();
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open, loadRecent]);
+
+  const handleSearch = (q: string) => {
+    setQuery(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!q.trim()) {
+      loadRecent();
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/drive/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(d.error || "Search failed");
+        }
+        const data = await res.json() as { files: DriveFile[] };
+        setFiles(data.files ?? []);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Search failed");
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-background rounded-xl shadow-2xl border w-full max-w-md mx-4 flex flex-col overflow-hidden"
+        style={{ maxHeight: "75dvh" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
+          <HardDrive className="w-4 h-4 text-muted-foreground shrink-0" />
+          <span className="font-semibold text-sm flex-1">Attach from Drive</span>
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-4 py-2 border-b shrink-0">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => handleSearch(e.target.value)}
+              placeholder="Search your Drive…"
+              className="w-full pl-8 pr-3 py-2 text-sm bg-muted/50 rounded-md border-0 outline-none focus:ring-1 focus:ring-ring"
+            />
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2" />}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {error ? (
+            <div className="flex flex-col items-center justify-center py-10 px-4 gap-2 text-center">
+              <AlertTriangle className="w-8 h-8 text-destructive/60" />
+              <p className="text-sm text-muted-foreground">{error}</p>
+              <button
+                onClick={loadRecent}
+                className="text-xs text-primary hover:underline mt-1"
+              >
+                Try again
+              </button>
+            </div>
+          ) : files.length === 0 && !loading ? (
+            <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+              <HardDrive className="w-8 h-8 text-muted-foreground/40 mb-2" />
+              <p className="text-sm text-muted-foreground">{query ? "No files found" : "No recent files"}</p>
+            </div>
+          ) : (
+            <div className="py-1">
+              {!query && (
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider px-4 pt-2 pb-1 font-medium">Recent files</p>
+              )}
+              {files.map(file => (
+                <button
+                  key={file.id}
+                  type="button"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent transition-colors text-left"
+                  onClick={() => { onSelect(file); onClose(); }}
+                >
+                  <span className="text-lg shrink-0">{getMimeTypeIcon(file.mimeType)}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate text-foreground">{file.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {file.modifiedTime ? format(parseISO(file.modifiedTime), "MMM d, yyyy") : ""}
+                    </p>
+                  </div>
+                  {file.webViewLink && (
+                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -221,9 +389,30 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   const [showBcc, setShowBcc] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [driveAttachments, setDriveAttachments] = useState<DriveFile[]>([]);
 
   const reset = () => {
     setTo(""); setCc(""); setBcc(""); setSubject(""); setBody(""); setShowCc(false); setShowBcc(false);
+    setDriveAttachments([]);
+  };
+
+  const handleDriveSelect = (file: DriveFile) => {
+    if (driveAttachments.some(f => f.id === file.id)) return;
+    setDriveAttachments(prev => [...prev, file]);
+    const link = file.webViewLink ?? `https://drive.google.com/file/d/${file.id}/view`;
+    setBody(prev => {
+      const separator = prev && !prev.endsWith("\n") ? "\n" : "";
+      return `${prev}${separator}\n📎 ${file.name}: ${link}`;
+    });
+  };
+
+  const removeDriveAttachment = (fileId: string) => {
+    const file = driveAttachments.find(f => f.id === fileId);
+    if (!file) return;
+    setDriveAttachments(prev => prev.filter(f => f.id !== fileId));
+    const link = file.webViewLink ?? `https://drive.google.com/file/d/${file.id}/view`;
+    setBody(prev => prev.replace(`\n📎 ${file.name}: ${link}`, "").replace(`📎 ${file.name}: ${link}`, ""));
   };
 
   const send = useMutation({
@@ -259,6 +448,11 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
 
   const composeBody = (
     <div className="flex flex-col flex-1 min-h-0">
+      <DrivePickerModal
+        open={drivePickerOpen}
+        onClose={() => setDrivePickerOpen(false)}
+        onSelect={handleDriveSelect}
+      />
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3.5 border-b shrink-0">
         {isMobile && (
@@ -356,17 +550,52 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
         autoFocus
       />
 
+      {/* Drive attachment pills */}
+      {driveAttachments.length > 0 && (
+        <div className="px-5 pb-2 flex flex-wrap gap-2 shrink-0">
+          {driveAttachments.map(file => (
+            <div
+              key={file.id}
+              className="flex items-center gap-1.5 bg-muted rounded-full px-3 py-1 text-xs font-medium text-foreground max-w-[220px]"
+            >
+              <HardDrive className="w-3 h-3 text-primary shrink-0" />
+              <span className="truncate">{file.name}</span>
+              <button
+                type="button"
+                onClick={() => removeDriveAttachment(file.id)}
+                className="ml-0.5 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-muted/20 shrink-0">
-        <Button
-          onClick={() => send.mutate()}
-          disabled={send.isPending || !to || !subject}
-          size="sm"
-          className="gap-2"
-        >
-          {send.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          Send
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => send.mutate()}
+            disabled={send.isPending || !to || !subject}
+            size="sm"
+            className="gap-2"
+          >
+            {send.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            Send
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground gap-1.5"
+            onClick={() => setDrivePickerOpen(true)}
+            title="Attach from Google Drive"
+          >
+            <HardDrive className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Drive</span>
+          </Button>
+        </div>
         <Button
           variant="ghost"
           size="sm"

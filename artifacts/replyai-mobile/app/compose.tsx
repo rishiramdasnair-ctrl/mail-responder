@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   FlatList,
   BackHandler,
+  Modal,
 } from "react-native";
 import { SchedulePicker } from "@/components/SchedulePicker";
 import { useRouter, useFocusEffect, useNavigation, useLocalSearchParams } from "expo-router";
@@ -34,6 +35,291 @@ function parseSignatureText(raw: string | null | undefined): string {
     }
   } catch {}
   return raw.trim();
+}
+
+interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime: string;
+  webViewLink: string | null;
+  iconLink: string | null;
+}
+
+function getMimeTypeEmoji(mimeType: string): string {
+  if (mimeType.includes("spreadsheet") || mimeType.includes("excel")) return "📊";
+  if (mimeType.includes("presentation") || mimeType.includes("powerpoint")) return "📊";
+  if (mimeType.includes("document") || mimeType.includes("word")) return "📄";
+  if (mimeType.includes("pdf")) return "📕";
+  if (mimeType.includes("image")) return "🖼️";
+  if (mimeType.includes("video")) return "🎬";
+  if (mimeType.includes("audio")) return "🎵";
+  if (mimeType.includes("folder")) return "📁";
+  return "📄";
+}
+
+function DrivePickerBottomSheet({
+  visible,
+  onClose,
+  onSelect,
+  apiBaseUrl,
+  authHeaders,
+  colors,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (file: DriveFile) => void;
+  apiBaseUrl: string;
+  authHeaders: () => Promise<Record<string, string>>;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [query, setQuery] = useState("");
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const insets = useSafeAreaInsets();
+
+  const loadRecent = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${apiBaseUrl}/api/drive/list?pageSize=20`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error || "Failed to load Drive files");
+      }
+      const data = await res.json() as { files: DriveFile[] };
+      setFiles(data.files ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load Drive files");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiBaseUrl, authHeaders]);
+
+  useEffect(() => {
+    if (visible) {
+      setQuery("");
+      setError(null);
+      loadRecent();
+    }
+  }, [visible, loadRecent]);
+
+  const handleSearch = (q: string) => {
+    setQuery(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!q.trim()) {
+      loadRecent();
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const headers = await authHeaders();
+        const params = new URLSearchParams({ q });
+        const res = await fetch(`${apiBaseUrl}/api/drive/search?${params}`, { headers });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(d.error || "Search failed");
+        }
+        const data = await res.json() as { files: DriveFile[] };
+        setFiles(data.files ?? []);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Search failed");
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  };
+
+  const sheetStyles = StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.4)",
+      justifyContent: "flex-end",
+    },
+    sheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      maxHeight: "75%",
+      paddingBottom: insets.bottom,
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      alignSelf: "center",
+      marginTop: 8,
+      marginBottom: 4,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: "Inter_600SemiBold",
+      color: colors.foreground,
+    },
+    searchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: 16,
+      marginVertical: 10,
+      backgroundColor: colors.muted,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      gap: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 14,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+      paddingVertical: 9,
+    },
+    sectionLabel: {
+      fontSize: 11,
+      fontFamily: "Inter_500Medium",
+      color: colors.mutedForeground,
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      paddingHorizontal: 16,
+      paddingBottom: 6,
+      paddingTop: 2,
+    },
+    fileItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      gap: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    fileEmoji: {
+      fontSize: 20,
+      width: 28,
+      textAlign: "center",
+    },
+    fileName: {
+      fontSize: 14,
+      fontFamily: "Inter_400Regular",
+      color: colors.foreground,
+      flex: 1,
+    },
+    fileDate: {
+      fontSize: 11,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+      marginTop: 2,
+    },
+    emptyText: {
+      textAlign: "center",
+      fontSize: 14,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+      paddingVertical: 32,
+    },
+    errorText: {
+      textAlign: "center",
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      color: colors.mutedForeground,
+      paddingHorizontal: 24,
+      paddingTop: 24,
+    },
+    retryBtn: {
+      alignSelf: "center",
+      marginTop: 8,
+      paddingVertical: 6,
+      paddingHorizontal: 16,
+    },
+    retryText: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+      color: colors.foreground,
+    },
+  });
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={sheetStyles.overlay} activeOpacity={1} onPress={onClose}>
+        <View style={sheetStyles.sheet} onStartShouldSetResponder={() => true}>
+          <View style={sheetStyles.handle} />
+          <View style={sheetStyles.header}>
+            <Text style={sheetStyles.headerTitle}>Attach from Drive</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="x" size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          <View style={sheetStyles.searchRow}>
+            <Feather name="search" size={14} color={colors.mutedForeground} />
+            <TextInput
+              style={sheetStyles.searchInput}
+              value={query}
+              onChangeText={handleSearch}
+              placeholder="Search your Drive…"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+              selectionColor={colors.foreground}
+              returnKeyType="search"
+            />
+            {loading && <ActivityIndicator size="small" color={colors.mutedForeground} />}
+          </View>
+          {error ? (
+            <View>
+              <Text style={sheetStyles.errorText}>{error}</Text>
+              <TouchableOpacity style={sheetStyles.retryBtn} onPress={loadRecent}>
+                <Text style={sheetStyles.retryText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={files}
+              keyExtractor={item => item.id}
+              keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={!query && files.length > 0 ? (
+                <Text style={sheetStyles.sectionLabel}>Recent files</Text>
+              ) : null}
+              ListEmptyComponent={!loading ? (
+                <Text style={sheetStyles.emptyText}>{query ? "No files found" : "No recent files"}</Text>
+              ) : null}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={sheetStyles.fileItem}
+                  onPress={() => { onSelect(item); onClose(); }}
+                  activeOpacity={0.6}
+                >
+                  <Text style={sheetStyles.fileEmoji}>{getMimeTypeEmoji(item.mimeType)}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={sheetStyles.fileName} numberOfLines={1}>{item.name}</Text>
+                    {item.modifiedTime ? (
+                      <Text style={sheetStyles.fileDate}>
+                        {new Date(item.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Feather name="external-link" size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
 }
 
 interface ContactResult {
@@ -132,6 +418,8 @@ export default function ComposeScreen() {
   const [scheduling, setScheduling] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
+  const [showDrivePicker, setShowDrivePicker] = useState(false);
+  const [driveAttachments, setDriveAttachments] = useState<DriveFile[]>([]);
 
   const toDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ccDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -150,7 +438,28 @@ export default function ComposeScreen() {
     ccRecipients.length > 0 ||
     ccInput.trim().length > 0 ||
     subject.trim().length > 0 ||
-    body.trim().length > 0;
+    body.trim().length > 0 ||
+    driveAttachments.length > 0;
+
+  const handleDriveSelect = useCallback((file: DriveFile) => {
+    setDriveAttachments(prev => {
+      if (prev.some(f => f.id === file.id)) return prev;
+      return [...prev, file];
+    });
+    const link = file.webViewLink ?? `https://drive.google.com/file/d/${file.id}/view`;
+    setBody(prev => {
+      const separator = prev && !prev.endsWith("\n") ? "\n" : "";
+      return `${prev}${separator}\n📎 ${file.name}: ${link}`;
+    });
+  }, []);
+
+  const removeDriveAttachment = useCallback((fileId: string) => {
+    const file = driveAttachments.find(f => f.id === fileId);
+    if (!file) return;
+    setDriveAttachments(prev => prev.filter(f => f.id !== fileId));
+    const link = file.webViewLink ?? `https://drive.google.com/file/d/${file.id}/view`;
+    setBody(prev => prev.replace(`\n📎 ${file.name}: ${link}`, "").replace(`📎 ${file.name}: ${link}`, ""));
+  }, [driveAttachments]);
 
   const confirmDiscard = useCallback(
     (onConfirm: () => void) => {
@@ -588,12 +897,27 @@ export default function ComposeScreen() {
         onConfirm={(date) => { setShowSchedulePicker(false); handleScheduleConfirm(date); }}
         onCancel={() => setShowSchedulePicker(false)}
       />
+      <DrivePickerBottomSheet
+        visible={showDrivePicker}
+        onClose={() => setShowDrivePicker(false)}
+        onSelect={handleDriveSelect}
+        apiBaseUrl={apiBaseUrl}
+        authHeaders={authHeaders}
+        colors={colors}
+      />
       <View style={styles.header}>
         <TouchableOpacity style={styles.headerBtn} onPress={handleCancel}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Message</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity
+            style={styles.scheduleBtn}
+            onPress={() => setShowDrivePicker(true)}
+            disabled={sending || scheduling}
+          >
+            <Feather name="hard-drive" size={18} color={colors.mutedForeground} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.scheduleBtn}
             onPress={() => setShowSchedulePicker(true)}
@@ -812,6 +1136,41 @@ export default function ComposeScreen() {
             autoCorrect
             selectionColor={colors.foreground}
           />
+
+          {driveAttachments.length > 0 && (
+            <View style={{ paddingHorizontal: 16, paddingBottom: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {driveAttachments.map(file => (
+                <View
+                  key={file.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: colors.muted,
+                    borderRadius: 20,
+                    paddingLeft: 10,
+                    paddingRight: 6,
+                    paddingVertical: 5,
+                    gap: 6,
+                    maxWidth: 220,
+                  }}
+                >
+                  <Feather name="hard-drive" size={12} color={colors.mutedForeground} />
+                  <Text
+                    style={{ fontSize: 12, fontFamily: "Inter_500Medium", color: colors.foreground, flex: 1 }}
+                    numberOfLines={1}
+                  >
+                    {file.name}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => removeDriveAttachment(file.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Feather name="x" size={12} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

@@ -14,6 +14,7 @@ import { makeRedirectUri } from "expo-auth-session";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
+import Logo from "@/components/Logo";
 
 import { Link } from "expo-router";
 import { useColors } from "@/hooks/useColors";
@@ -167,7 +168,7 @@ export default function SignInScreen() {
     <View style={styles.container}>
       <View style={styles.logoSection}>
         <View style={styles.logoMark}>
-          <Feather name="send" size={32} color={colors.primaryForeground} />
+          <Logo size={44} color={colors.primaryForeground} />
         </View>
         <Text style={styles.appName}>ReplyAI</Text>
         <Text style={styles.tagline}>Your AI email assistant for Gmail</Text>

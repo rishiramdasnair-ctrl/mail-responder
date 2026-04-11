@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import { Feather } from "@expo/vector-icons";
+import Logo from "@/components/Logo";
 import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -386,7 +387,7 @@ export default function OnboardingScreen() {
             {/* Hero: logo + orbiting pills */}
             <Animated.View style={[styles.heroArea, { transform: [{ scale: heroScale }], opacity: heroOpacity }]}>
               <View style={styles.logoMark}>
-                <Feather name="send" size={34} color="#fff" />
+                <Logo size={54} color="#fff" />
               </View>
               {/* Feature pills floating around */}
               <Animated.View style={[styles.pill, styles.pillTL, { opacity: pillsAnim, transform: [{ translateY: pillsAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>

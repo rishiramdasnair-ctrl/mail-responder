@@ -30,6 +30,10 @@ const WEB_STUBS = {
   "react-native-reanimated": path.join(projectRoot, "stubs/reanimated.js"),
   "react-native-keyboard-controller": path.join(projectRoot, "stubs/keyboard-controller.js"),
   "react-native-worklets": path.join(projectRoot, "stubs/reanimated.js"),
+  "expo-secure-store": path.join(projectRoot, "stubs/secure-store.js"),
+  "expo-haptics": path.join(projectRoot, "stubs/haptics.js"),
+  "expo-symbols": path.join(projectRoot, "stubs/symbols.js"),
+  "expo-file-system": path.join(projectRoot, "stubs/file-system.js"),
 };
 
 const originalResolveRequest = config.resolver.resolveRequest;

@@ -1,0 +1,16 @@
+"use strict";
+const noop = async () => null;
+exports.documentDirectory = "/";
+exports.cacheDirectory = "/cache/";
+exports.bundleDirectory = "/bundle/";
+exports.getInfoAsync = async () => ({ exists: false, isDirectory: false, size: 0, modificationTime: 0, uri: "" });
+exports.readAsStringAsync = async () => "";
+exports.writeAsStringAsync = noop;
+exports.deleteAsync = noop;
+exports.moveAsync = noop;
+exports.copyAsync = noop;
+exports.makeDirectoryAsync = noop;
+exports.readDirectoryAsync = async () => [];
+exports.downloadAsync = async () => ({ uri: "", status: 200, headers: {}, md5: "" });
+exports.createDownloadResumable = () => ({ downloadAsync: noop, pauseAsync: noop, resumeAsync: noop });
+exports.EncodingType = { UTF8: "utf8", Base64: "base64" };

@@ -160,7 +160,7 @@ export interface UsageStats {
   totalRepliesGenerated: number;
   totalRepliesSent: number;
   repliesThisMonth: number;
-  favoriteToне?: string;
+  favoriteTone?: string;
   avgRepliesPerDay?: number;
   plan?: string;
   trialDaysLeft?: number;

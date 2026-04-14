@@ -1,30 +1,36 @@
 import { useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 
-export const API_BASE = (() => {
-  const url = process.env.EXPO_PUBLIC_API_URL;
-  if (url) return url;
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (domain) return `https://${domain}`;
-  if (__DEV__) return "";
-  throw new Error("EXPO_PUBLIC_API_URL is required in production");
-})();
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
+const API_DOMAIN = process.env.EXPO_PUBLIC_DOMAIN;
 
-async function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+function getApiBaseUrl(): string {
+  if (API_BASE) {
+    return API_BASE;
+  }
+  if (API_DOMAIN) {
+    return `https://${API_DOMAIN}`;
+  }
+  if (__DEV__) {
+    console.warn("[API] No EXPO_PUBLIC_API_URL set, using localhost");
+    return "http://localhost:3000";
+  }
+  throw new Error(
+    "EXPO_PUBLIC_API_URL or EXPO_PUBLIC_DOMAIN must be set in production",
+  );
 }
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export function useApiClient() {
   const { getToken, signOut } = useAuth();
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    let token = await getToken();
+    const token = await getToken();
     if (!token) {
-      await sleep(600);
-      token = await getToken();
-    }
-    if (!token) {
-      throw new Error("Session unavailable. Please sign out and sign in again.");
+      throw new Error(
+        "Session unavailable. Please sign out and sign in again.",
+      );
     }
     return {
       "Content-Type": "application/json",
@@ -35,9 +41,13 @@ export function useApiClient() {
   const apiFetch = useCallback(
     async (url: string, options: RequestInit = {}): Promise<Response> => {
       const headers = await authHeaders();
-      const res = await fetch(url, {
+      const fullUrl = url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+      const res = await fetch(fullUrl, {
         ...options,
-        headers: { ...headers, ...(options.headers as Record<string, string> ?? {}) },
+        headers: {
+          ...headers,
+          ...((options.headers as Record<string, string>) ?? {}),
+        },
       });
       if (res.status === 401) {
         await signOut();
@@ -51,7 +61,7 @@ export function useApiClient() {
   const getTokenStable = useCallback(async () => getToken(), [getToken]);
 
   return {
-    apiBaseUrl: API_BASE,
+    apiBaseUrl: API_BASE_URL,
     authHeaders,
     apiFetch,
     getToken: getTokenStable,

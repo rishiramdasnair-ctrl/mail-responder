@@ -1,8 +1,13 @@
 import { db } from "@workspace/db";
-import { userEmailCategoriesTable, emailTonesTable, DEFAULT_CATEGORIES } from "@workspace/db/schema";
+import {
+  userEmailCategoriesTable,
+  emailTonesTable,
+  DEFAULT_CATEGORIES,
+} from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { gmail_v1 } from "googleapis";
 import { getGmailClientForUser } from "./gmailClient";
+import { logger } from "./logger";
 
 const LABEL_PREFIX = "ReplyAI";
 
@@ -12,7 +17,11 @@ type GmailClient = gmail_v1.Gmail;
 // Gmail label IDs are per-account, so account identity must be part of the key.
 const labelIdCache = new Map<string, string>();
 
-function labelCacheKey(userId: string, accountEmail: string, labelName: string): string {
+function labelCacheKey(
+  userId: string,
+  accountEmail: string,
+  labelName: string,
+): string {
   return `${userId}:${accountEmail}:${labelName}`;
 }
 
@@ -20,7 +29,7 @@ export async function getOrCreateGmailLabel(
   gmail: GmailClient,
   userId: string,
   accountEmail: string,
-  category: string
+  category: string,
 ): Promise<string> {
   const labelName = `${LABEL_PREFIX}/${category}`;
   const key = labelCacheKey(userId, accountEmail, labelName);
@@ -48,7 +57,9 @@ export async function getOrCreateGmailLabel(
   });
   const newId = createRes.data.id;
   if (!newId) {
-    throw new Error(`[classifier] Gmail did not return an ID when creating label "${labelName}"`);
+    throw new Error(
+      `[classifier] Gmail did not return an ID when creating label "${labelName}"`,
+    );
   }
   labelIdCache.set(key, newId);
   return newId;
@@ -71,7 +82,7 @@ export async function resolveLabelNameToId(
   gmail: GmailClient,
   userId: string,
   accountEmail: string,
-  labelName: string
+  labelName: string,
 ): Promise<string | null> {
   const key = labelCacheKey(userId, accountEmail, labelName);
   if (labelIdCache.has(key)) {
@@ -105,7 +116,7 @@ export async function getEnabledCategories(userId: string): Promise<string[]> {
 }
 
 export async function getAllCategoriesForUser(
-  userId: string
+  userId: string,
 ): Promise<Array<{ category: string; enabled: boolean }>> {
   const rows = await db
     .select()
@@ -117,7 +128,10 @@ export async function getAllCategoriesForUser(
   }
 
   const map = new Map(rows.map((r) => [r.category, r.enabled]));
-  return DEFAULT_CATEGORIES.map((c) => ({ category: c, enabled: map.has(c) ? map.get(c)! : true }));
+  return DEFAULT_CATEGORIES.map((c) => ({
+    category: c,
+    enabled: map.has(c) ? map.get(c)! : true,
+  }));
 }
 
 interface OpenRouterChoice {
@@ -128,13 +142,24 @@ interface OpenRouterResponse {
   error?: { message?: string };
 }
 
-export type EmailTone = "Urgent" | "Demanding" | "Friendly" | "Informational" | "Neutral";
+export type EmailTone =
+  | "Urgent"
+  | "Demanding"
+  | "Friendly"
+  | "Informational"
+  | "Neutral";
 
-const EMAIL_TONES: EmailTone[] = ["Urgent", "Demanding", "Friendly", "Informational", "Neutral"];
+const EMAIL_TONES: EmailTone[] = [
+  "Urgent",
+  "Demanding",
+  "Friendly",
+  "Informational",
+  "Neutral",
+];
 
 export async function classifyEmailTone(
   subject: string,
-  snippet: string
+  snippet: string,
 ): Promise<EmailTone> {
   const fallback: EmailTone = "Neutral";
   const prompt = `Classify the tone of this email into exactly one of: ${EMAIL_TONES.join(", ")}.
@@ -174,7 +199,9 @@ Return only the tone label, nothing else.`;
     if (data.error?.message) return fallback;
 
     const raw = (data.choices?.[0]?.message?.content ?? "").trim();
-    const matched = EMAIL_TONES.find((t) => t.toLowerCase() === raw.toLowerCase());
+    const matched = EMAIL_TONES.find(
+      (t) => t.toLowerCase() === raw.toLowerCase(),
+    );
     return matched ?? fallback;
   } catch {
     return fallback;
@@ -184,7 +211,7 @@ Return only the tone label, nothing else.`;
 export async function classifyEmail(
   subject: string,
   snippet: string,
-  categories: string[]
+  categories: string[],
 ): Promise<string> {
   const fallback = categories.includes("Other") ? "Other" : categories[0];
   const categoryList = categories.join(", ");
@@ -215,13 +242,17 @@ Rules:
   });
 
   if (!res.ok) {
-    console.warn(`[classifier] OpenRouter responded with HTTP ${res.status}; using fallback category "${fallback}"`);
+    console.warn(
+      `[classifier] OpenRouter responded with HTTP ${res.status}; using fallback category "${fallback}"`,
+    );
     return fallback;
   }
 
   const data: OpenRouterResponse = await res.json();
   if (data.error?.message) {
-    console.warn(`[classifier] OpenRouter error: ${data.error.message}; using fallback category "${fallback}"`);
+    console.warn(
+      `[classifier] OpenRouter error: ${data.error.message}; using fallback category "${fallback}"`,
+    );
     return fallback;
   }
 
@@ -241,7 +272,7 @@ export async function persistEmailTone(
   userId: string,
   threadId: string,
   subject: string,
-  snippet: string
+  snippet: string,
 ): Promise<void> {
   try {
     const tone = await classifyEmailTone(subject, snippet);
@@ -252,8 +283,11 @@ export async function persistEmailTone(
         target: [emailTonesTable.userId, emailTonesTable.threadId],
         set: { tone, classifiedAt: new Date() },
       });
-  } catch {
-    // silent — tone is non-critical
+  } catch (err) {
+    logger.error(
+      { err, userId, threadId },
+      "[emailClassifier] failed to persist tone",
+    );
   }
 }
 
@@ -263,20 +297,23 @@ export async function persistEmailTone(
  */
 export async function getPersistedTones(
   userId: string,
-  threadIds: string[]
+  threadIds: string[],
 ): Promise<Record<string, string>> {
   if (threadIds.length === 0) return {};
   try {
     const rows = await db
-      .select({ threadId: emailTonesTable.threadId, tone: emailTonesTable.tone })
+      .select({
+        threadId: emailTonesTable.threadId,
+        tone: emailTonesTable.tone,
+      })
       .from(emailTonesTable)
       .where(
         and(
           eq(emailTonesTable.userId, userId),
-          inArray(emailTonesTable.threadId, threadIds)
-        )
+          inArray(emailTonesTable.threadId, threadIds),
+        ),
       );
-    return Object.fromEntries(rows.map(r => [r.threadId, r.tone]));
+    return Object.fromEntries(rows.map((r) => [r.threadId, r.tone]));
   } catch {
     return {};
   }
@@ -287,7 +324,7 @@ export async function classifyAndLabelMessage(
   accountEmail: string | undefined,
   threadId: string,
   subject: string,
-  snippet: string
+  snippet: string,
 ): Promise<string | null> {
   const enabled = await getEnabledCategories(userId);
   if (enabled.length === 0) return null;
@@ -300,7 +337,12 @@ export async function classifyAndLabelMessage(
 
   const gmail = await getGmailClientForUser(userId, accountEmail);
   const normalizedAccount = accountEmail ?? "";
-  const labelId = await getOrCreateGmailLabel(gmail, userId, normalizedAccount, category);
+  const labelId = await getOrCreateGmailLabel(
+    gmail,
+    userId,
+    normalizedAccount,
+    category,
+  );
 
   // Remove any existing ReplyAI/* labels before applying the new one so a thread
   // can only belong to a single category at a time.
@@ -311,17 +353,23 @@ export async function classifyAndLabelMessage(
       id: threadId,
       format: "minimal",
     });
-    const existingLabelIds: string[] = threadData.data.messages?.[0]?.labelIds ?? [];
+    const existingLabelIds: string[] =
+      threadData.data.messages?.[0]?.labelIds ?? [];
     const labelListRes = await gmail.users.labels.list({ userId: "me" });
     const allLabels = labelListRes.data.labels ?? [];
     const otherReplyAiIds = new Set(
       allLabels
-        .filter((l) => l.name?.startsWith(`${LABEL_PREFIX}/`) && l.id !== labelId)
-        .map((l) => l.id as string)
+        .filter(
+          (l) => l.name?.startsWith(`${LABEL_PREFIX}/`) && l.id !== labelId,
+        )
+        .map((l) => l.id as string),
     );
     removeLabelIds = existingLabelIds.filter((id) => otherReplyAiIds.has(id));
   } catch (err) {
-    console.warn(`[classifier] Could not fetch existing labels for thread ${threadId} (will skip removal):`, err);
+    console.warn(
+      `[classifier] Could not fetch existing labels for thread ${threadId} (will skip removal):`,
+      err,
+    );
   }
 
   await gmail.users.threads.modify({

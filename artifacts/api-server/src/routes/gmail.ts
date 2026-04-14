@@ -10,7 +10,11 @@ import {
   extractAttachments,
   getConnectedGmailAccounts,
 } from "../lib/gmailClient";
-import { resolveLabelNameToId, getPersistedTones, persistEmailTone } from "../lib/emailClassifier";
+import {
+  resolveLabelNameToId,
+  getPersistedTones,
+  persistEmailTone,
+} from "../lib/emailClassifier";
 import { SendReplyBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { emailSnoozesTable, gmailAccountsTable } from "@workspace/db/schema";
@@ -25,7 +29,12 @@ const emailSendRateLimit = rateLimit({
   keyGenerator: (req) => getReqUserId(req) ?? req.ip ?? "anon",
   validate: { xForwardedForHeader: false },
   handler: (_req, res) => {
-    res.status(429).json({ error: "Too many email send requests. Please wait a moment.", code: "RATE_LIMITED" });
+    res
+      .status(429)
+      .json({
+        error: "Too many email send requests. Please wait a moment.",
+        code: "RATE_LIMITED",
+      });
   },
 });
 
@@ -41,11 +50,14 @@ interface SignatureData {
   links?: Array<{ label: string; url: string }>;
 }
 
-function parseSignatureData(raw: string | null | undefined): SignatureData | null {
+function parseSignatureData(
+  raw: string | null | undefined,
+): SignatureData | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null) return parsed as SignatureData;
+    if (typeof parsed === "object" && parsed !== null)
+      return parsed as SignatureData;
   } catch {}
   // Legacy plain text
   return { text: raw.trim() };
@@ -63,25 +75,41 @@ function buildPlainSignature(sig: SignatureData): string {
 }
 
 function buildHtmlSignature(sig: SignatureData): string {
-  const parts: string[] = [`<table cellpadding="0" cellspacing="0" border="0" style="font-family:sans-serif;font-size:13px;color:#333;">`];
+  const parts: string[] = [
+    `<table cellpadding="0" cellspacing="0" border="0" style="font-family:sans-serif;font-size:13px;color:#333;">`,
+  ];
   if (sig.imageUrl) {
-    parts.push(`<tr><td style="padding-bottom:8px;"><img src="${sig.imageUrl}" style="max-height:60px;max-width:200px;display:block;" /></td></tr>`);
+    parts.push(
+      `<tr><td style="padding-bottom:8px;"><img src="${sig.imageUrl}" style="max-height:60px;max-width:200px;display:block;" /></td></tr>`,
+    );
   }
   if (sig.text?.trim()) {
-    const escaped = sig.text.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+    const escaped = sig.text
+      .trim()
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
     parts.push(`<tr><td style="padding-bottom:4px;">${escaped}</td></tr>`);
   }
   if (sig.links?.length) {
-    const linkHtml = sig.links.map(l =>
-      `<a href="${l.url}" style="color:#1a6aff;text-decoration:none;">${l.label || l.url}</a>`
-    ).join(" &nbsp;·&nbsp; ");
+    const linkHtml = sig.links
+      .map(
+        (l) =>
+          `<a href="${l.url}" style="color:#1a6aff;text-decoration:none;">${l.label || l.url}</a>`,
+      )
+      .join(" &nbsp;·&nbsp; ");
     parts.push(`<tr><td style="padding-top:4px;">${linkHtml}</td></tr>`);
   }
   parts.push(`</table>`);
   return parts.join("");
 }
 
-function buildMultipartEmail(headers: string[], plainBody: string, htmlBody: string): string {
+function buildMultipartEmail(
+  headers: string[],
+  plainBody: string,
+  htmlBody: string,
+): string {
   const boundary = `boundary_${Date.now().toString(36)}`;
   const lines = [
     ...headers,
@@ -105,10 +133,19 @@ function buildMultipartEmail(headers: string[], plainBody: string, htmlBody: str
   return lines.join("\r\n");
 }
 
-async function getAccountSignatureData(userId: string, email: string): Promise<SignatureData | null> {
-  const [row] = await db.select({ signature: gmailAccountsTable.signature })
+async function getAccountSignatureData(
+  userId: string,
+  email: string,
+): Promise<SignatureData | null> {
+  const [row] = await db
+    .select({ signature: gmailAccountsTable.signature })
     .from(gmailAccountsTable)
-    .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)))
+    .where(
+      and(
+        eq(gmailAccountsTable.userId, userId),
+        eq(gmailAccountsTable.email, email),
+      ),
+    )
     .limit(1);
   return parseSignatureData(row?.signature);
 }
@@ -116,11 +153,17 @@ async function getAccountSignatureData(userId: string, email: string): Promise<S
 const router = Router();
 
 function getAccount(req: any): string | undefined {
-  return (req.query.account as string) || (req.body?.account as string) || undefined;
+  return (
+    (req.query.account as string) || (req.body?.account as string) || undefined
+  );
 }
 
 // Fetch one thread's metadata (for inbox list)
-async function fetchThreadMeta(gmail: any, threadId: string, accountEmail: string) {
+async function fetchThreadMeta(
+  gmail: any,
+  threadId: string,
+  accountEmail: string,
+) {
   const thread = await gmail.users.threads.get({
     userId: "me",
     id: threadId,
@@ -160,17 +203,24 @@ async function fetchThreadMeta(gmail: any, threadId: string, accountEmail: strin
 router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const accounts = await getConnectedGmailAccounts(userId);
     const q = req.query.q as string | undefined;
     const pageTokensRaw = req.query.pageToken as string | undefined;
-    const pageTokens: Record<string, string> = pageTokensRaw ? JSON.parse(pageTokensRaw) : {};
+    const pageTokens: Record<string, string> = pageTokensRaw
+      ? JSON.parse(pageTokensRaw)
+      : {};
     // Allow category label override (e.g. "ReplyAI/Work") - defaults to INBOX
     const labelFilter = (req.query.label as string) || "INBOX";
 
     if (accounts.length === 0) {
-      res.status(400).json({ error: "Gmail not connected", notConnected: true });
+      res
+        .status(400)
+        .json({ error: "Gmail not connected", notConnected: true });
       return;
     }
 
@@ -184,10 +234,19 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
         // IDs are per-account, so accountEmail must be part of the lookup key.
         let resolvedLabel = labelFilter;
         if (isCategoryLabel(labelFilter)) {
-          const labelId = await resolveLabelNameToId(gmail, userId, account.email, labelFilter);
+          const labelId = await resolveLabelNameToId(
+            gmail,
+            userId,
+            account.email,
+            labelFilter,
+          );
           if (!labelId) {
             // Label doesn't exist for this account — no emails classified yet, return empty
-            return { emails: [], nextPageToken: undefined, email: account.email };
+            return {
+              emails: [],
+              nextPageToken: undefined,
+              email: account.email,
+            };
           }
           resolvedLabel = labelId;
         }
@@ -197,20 +256,25 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
           labelIds: [resolvedLabel],
           maxResults: perAccount,
           ...(q ? { q } : {}),
-          ...(pageTokens[account.email] ? { pageToken: pageTokens[account.email] } : {}),
+          ...(pageTokens[account.email]
+            ? { pageToken: pageTokens[account.email] }
+            : {}),
         });
         const threads = listRes.data.threads || [];
         const emails = await Promise.allSettled(
-          threads.map((t: any) => fetchThreadMeta(gmail, t.id!, account.email))
+          threads.map((t: any) => fetchThreadMeta(gmail, t.id!, account.email)),
         );
         return {
           emails: emails
-            .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value !== null)
-            .map(r => r.value),
+            .filter(
+              (r): r is PromiseFulfilledResult<any> =>
+                r.status === "fulfilled" && r.value !== null,
+            )
+            .map((r) => r.value),
           nextPageToken: listRes.data.nextPageToken,
           email: account.email,
         };
-      })
+      }),
     );
 
     const allEmails: any[] = [];
@@ -239,13 +303,24 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
     const toneMap = await getPersistedTones(userId, threadIds);
 
     // For threads with no persisted tone, kick off background classification (fire-and-forget)
-    const unclassified = allEmails.filter((e: any) => e.threadId && !toneMap[e.threadId]);
+    const unclassified = allEmails.filter(
+      (e: any) => e.threadId && !toneMap[e.threadId],
+    );
     if (unclassified.length > 0) {
       Promise.all(
-        unclassified.slice(0, 30).map((e: any) =>
-          persistEmailTone(userId, e.threadId, e.subject ?? "", e.snippet ?? "")
-        )
-      ).catch(() => {});
+        unclassified
+          .slice(0, 30)
+          .map((e: any) =>
+            persistEmailTone(
+              userId,
+              e.threadId,
+              e.subject ?? "",
+              e.snippet ?? "",
+            ),
+          ),
+      ).catch((err) => {
+        req.log.error({ err }, "[inbox] background tone classification failed");
+      });
     }
 
     const threadsWithTones = allEmails.map((e: any) => ({
@@ -255,12 +330,17 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
 
     res.json({
       threads: threadsWithTones,
-      nextPageToken: Object.keys(nextPageTokenMap).length > 0 ? JSON.stringify(nextPageTokenMap) : undefined,
+      nextPageToken:
+        Object.keys(nextPageTokenMap).length > 0
+          ? JSON.stringify(nextPageTokenMap)
+          : undefined,
     });
   } catch (err: any) {
     const msg = err?.message || "";
     if (msg.includes("not connected") || msg.includes("Gmail not connected")) {
-      res.status(400).json({ error: "Gmail not connected", notConnected: true });
+      res
+        .status(400)
+        .json({ error: "Gmail not connected", notConnected: true });
       return;
     }
     req.log.error({ err }, "Error fetching priority inbox");
@@ -272,7 +352,10 @@ router.get("/gmail/priority-inbox", requireAuth, async (req, res) => {
 router.get("/gmail/ai-priority", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const accounts = await getConnectedGmailAccounts(userId);
     if (accounts.length === 0) {
@@ -292,14 +375,21 @@ router.get("/gmail/ai-priority", requireAuth, async (req, res) => {
         });
         const threads = listRes.data.threads || [];
         const emailResults = await Promise.allSettled(
-          threads.slice(0, 20).map((t: any) => fetchThreadMeta(gmail, t.id!, account.email))
+          threads
+            .slice(0, 20)
+            .map((t: any) => fetchThreadMeta(gmail, t.id!, account.email)),
         );
         allEmails.push(
           ...emailResults
-            .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value !== null)
-            .map(r => r.value)
+            .filter(
+              (r): r is PromiseFulfilledResult<any> =>
+                r.status === "fulfilled" && r.value !== null,
+            )
+            .map((r) => r.value),
         );
-      } catch { /* skip account on error */ }
+      } catch {
+        /* skip account on error */
+      }
     }
 
     if (allEmails.length === 0) {
@@ -308,9 +398,13 @@ router.get("/gmail/ai-priority", requireAuth, async (req, res) => {
     }
 
     // Build AI prompt with email metadata
-    const emailList = allEmails.slice(0, 25).map((e, i) =>
-      `[${i}] From: ${e.fromName || e.fromEmail} <${e.fromEmail}> | Subject: ${e.subject || "(no subject)"} | ${e.isUnread ? "UNREAD" : "read"} | Date: ${e.date} | Preview: ${(e.snippet || "").slice(0, 200)}`
-    ).join("\n");
+    const emailList = allEmails
+      .slice(0, 25)
+      .map(
+        (e, i) =>
+          `[${i}] From: ${e.fromName || e.fromEmail} <${e.fromEmail}> | Subject: ${e.subject || "(no subject)"} | ${e.isUnread ? "UNREAD" : "read"} | Date: ${e.date} | Preview: ${(e.snippet || "").slice(0, 200)}`,
+      )
+      .join("\n");
 
     const prompt = `You are an expert email assistant. Analyze these inbox emails and identify the 3-5 most important ones that need attention.
 
@@ -341,7 +435,7 @@ Return valid JSON only. If no emails genuinely need attention, return {"priority
     const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://replyai.app",
         "X-Title": "ReplyAI",
@@ -355,10 +449,17 @@ Return valid JSON only. If no emails genuinely need attention, return {"priority
       }),
     });
 
-    const aiData = await aiRes.json() as any;
+    const aiData = (await aiRes.json()) as any;
     const content = aiData.choices?.[0]?.message?.content || "{}";
 
-    let parsed: { priority?: Array<{ index: number; priorityScore: number; summary: string; action: string }> } = {};
+    let parsed: {
+      priority?: Array<{
+        index: number;
+        priorityScore: number;
+        summary: string;
+        action: string;
+      }>;
+    } = {};
     try {
       parsed = JSON.parse(content);
     } catch {
@@ -366,10 +467,15 @@ Return valid JSON only. If no emails genuinely need attention, return {"priority
     }
 
     const priorityItems = (parsed.priority || [])
-      .filter(p => typeof p.index === "number" && p.index >= 0 && p.index < allEmails.length)
+      .filter(
+        (p) =>
+          typeof p.index === "number" &&
+          p.index >= 0 &&
+          p.index < allEmails.length,
+      )
       .sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0))
       .slice(0, 5)
-      .map(p => ({
+      .map((p) => ({
         ...allEmails[p.index],
         priorityScore: p.priorityScore,
         summary: p.summary,
@@ -386,10 +492,16 @@ Return valid JSON only. If no emails genuinely need attention, return {"priority
 router.get("/gmail/status", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ connected: false }); return; }
+    if (!userId) {
+      res.status(401).json({ connected: false });
+      return;
+    }
 
     const status = await isGmailConnected(userId);
-    if (!status.connected) { res.json({ connected: false }); return; }
+    if (!status.connected) {
+      res.json({ connected: false });
+      return;
+    }
 
     const account = getAccount(req);
     const gmail = await getGmailClientForUser(userId, account);
@@ -407,7 +519,10 @@ router.get("/gmail/status", requireAuth, async (req, res) => {
 router.get("/gmail/inbox", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const account = getAccount(req);
     const gmail = await getGmailClientForUser(userId, account);
@@ -420,10 +535,19 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
     // IDs are per-account, so accountEmail is required for correct cache lookup.
     let label = labelInput;
     if (isCategoryLabel(labelInput)) {
-      const labelId = await resolveLabelNameToId(gmail, userId, account || "", labelInput);
+      const labelId = await resolveLabelNameToId(
+        gmail,
+        userId,
+        account || "",
+        labelInput,
+      );
       if (!labelId) {
         // Label doesn't exist yet — no emails classified into this category
-        res.json({ threads: [], nextPageToken: undefined, resultSizeEstimate: 0 });
+        res.json({
+          threads: [],
+          nextPageToken: undefined,
+          resultSizeEstimate: 0,
+        });
         return;
       }
       label = labelId;
@@ -448,7 +572,8 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
           metadataHeaders: ["From", "To", "Subject", "Date"],
         });
         const firstMsg = thread.data.messages?.[0];
-        const lastMsg = thread.data.messages?.[thread.data.messages!.length - 1];
+        const lastMsg =
+          thread.data.messages?.[thread.data.messages!.length - 1];
         if (!firstMsg || !lastMsg) return null;
 
         const headers = lastMsg.payload?.headers || [];
@@ -491,7 +616,9 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
   } catch (err: any) {
     const msg = err?.message || "";
     if (msg.includes("not connected") || msg.includes("Gmail not connected")) {
-      res.status(400).json({ error: "Gmail not connected", notConnected: true });
+      res
+        .status(400)
+        .json({ error: "Gmail not connected", notConnected: true });
       return;
     }
     req.log.error({ err }, "Error fetching inbox");
@@ -502,7 +629,10 @@ router.get("/gmail/inbox", requireAuth, async (req, res) => {
 router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const account = getAccount(req);
     const gmail = await getGmailClientForUser(userId, account);
@@ -524,12 +654,17 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
       const isUnread = (msg.labelIds || []).includes("UNREAD");
       const attachments = extractAttachments(msg.payload);
 
-      const listUnsubscribe = getHeader(headers, "List-Unsubscribe") ||
-        getHeader(headers, "list-unsubscribe") || "";
-      const unsubscribeLink = listUnsubscribe.match(/<(https?:[^>]+)>/)?.[1]
-        || listUnsubscribe.match(/(https?:\S+)/)?.[1]
-        || (listUnsubscribe.includes("mailto:") ? listUnsubscribe.match(/<?(mailto:[^>,\s]+)>?/)?.[1] || "" : "")
-        || "";
+      const listUnsubscribe =
+        getHeader(headers, "List-Unsubscribe") ||
+        getHeader(headers, "list-unsubscribe") ||
+        "";
+      const unsubscribeLink =
+        listUnsubscribe.match(/<(https?:[^>]+)>/)?.[1] ||
+        listUnsubscribe.match(/(https?:\S+)/)?.[1] ||
+        (listUnsubscribe.includes("mailto:")
+          ? listUnsubscribe.match(/<?(mailto:[^>,\s]+)>?/)?.[1] || ""
+          : "") ||
+        "";
 
       return {
         id: msg.id,
@@ -555,7 +690,14 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
     const isUnread = messages.some((m) => m.isUnread);
     const unsubscribeLink = messages[0]?.unsubscribeLink || "";
 
-    res.json({ id: threadId, subject, messages, snippet: thread.data.snippet, isUnread, unsubscribeLink });
+    res.json({
+      id: threadId,
+      subject,
+      messages,
+      snippet: thread.data.snippet,
+      isUnread,
+      unsubscribeLink,
+    });
   } catch (err) {
     req.log.error({ err }, "Error fetching thread");
     res.status(500).json({ error: "Failed to fetch thread" });
@@ -565,245 +707,373 @@ router.get("/gmail/threads/:threadId", requireAuth, async (req, res) => {
 router.get("/gmail/labels", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const account = getAccount(req);
     const gmail = await getGmailClientForUser(userId, account);
     const labelsRes = await gmail.users.labels.list({ userId: "me" });
     const labels = labelsRes.data.labels || [];
 
-    res.json({ labels: labels.map((l) => ({ id: l.id, name: l.name, type: l.type, messagesUnread: 0 })) });
+    res.json({
+      labels: labels.map((l) => ({
+        id: l.id,
+        name: l.name,
+        type: l.type,
+        messagesUnread: 0,
+      })),
+    });
   } catch (err) {
     req.log.error({ err }, "Error fetching labels");
     res.status(500).json({ error: "Failed to fetch labels" });
   }
 });
 
-router.post("/gmail/threads/:threadId/modify", requireAuth, async (req, res) => {
-  try {
-    const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+router.post(
+  "/gmail/threads/:threadId/modify",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = getReqUserId(req)!;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
 
-    const account = getAccount(req);
-    const gmail = await getGmailClientForUser(userId, account);
-    const { threadId } = req.params;
-    const addLabelIds: string[] = Array.isArray(req.body?.addLabelIds) ? req.body.addLabelIds : [];
-    const removeLabelIds: string[] = Array.isArray(req.body?.removeLabelIds) ? req.body.removeLabelIds : [];
+      const account = getAccount(req);
+      const gmail = await getGmailClientForUser(userId, account);
+      const { threadId } = req.params;
+      const addLabelIds: string[] = Array.isArray(req.body?.addLabelIds)
+        ? req.body.addLabelIds
+        : [];
+      const removeLabelIds: string[] = Array.isArray(req.body?.removeLabelIds)
+        ? req.body.removeLabelIds
+        : [];
 
-    await gmail.users.threads.modify({
-      userId: "me",
-      id: threadId,
-      requestBody: { addLabelIds, removeLabelIds },
-    });
-
-    res.json({ success: true });
-  } catch (err) {
-    req.log.error({ err }, "Error modifying thread");
-    res.status(500).json({ error: "Failed to modify thread" });
-  }
-});
-
-router.post("/gmail/compose", requireAuth, emailSendRateLimit, async (req, res) => {
-  try {
-    const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
-    const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
-    const body = typeof req.body?.body === "string" ? req.body.body : "";
-    const cc = typeof req.body?.cc === "string" ? req.body.cc.trim() : "";
-    const bcc = typeof req.body?.bcc === "string" ? req.body.bcc.trim() : "";
-    const threadId = typeof req.body?.threadId === "string" ? req.body.threadId : undefined;
-    const account = getAccount(req);
-
-    if (!to || !subject) {
-      res.status(400).json({ error: "to and subject are required" });
-      return;
-    }
-
-    const gmail = await getGmailClientForUser(userId, account);
-    const profile = await gmail.users.getProfile({ userId: "me" });
-    const fromEmail = account || profile.data.emailAddress || "";
-    const sigData = await getAccountSignatureData(userId, fromEmail);
-
-    const baseHeaders = [
-      `From: ${fromEmail}`,
-      `To: ${to}`,
-      ...(cc ? [`Cc: ${cc}`] : []),
-      ...(bcc ? [`Bcc: ${bcc}`] : []),
-      `Subject: ${subject}`,
-    ];
-
-    let raw: string;
-    if (sigData && (sigData.imageUrl || sigData.links?.length)) {
-      const plainSig = buildPlainSignature(sigData);
-      const plainBody = plainSig ? `${body}\n\n-- \n${plainSig}` : body;
-      const htmlBody = `<div style="font-family:sans-serif;font-size:14px;white-space:pre-wrap;">${body.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div><br><hr style="border:none;border-top:1px solid #eee;margin:12px 0;">${buildHtmlSignature(sigData)}`;
-      raw = Buffer.from(buildMultipartEmail(baseHeaders, plainBody, `<html><body>${htmlBody}</body></html>`)).toString("base64url");
-    } else {
-      const plainSig = sigData ? buildPlainSignature(sigData) : "";
-      const fullBody = plainSig ? `${body}\n\n-- \n${plainSig}` : body;
-      raw = Buffer.from([...baseHeaders, `Content-Type: text/plain; charset=utf-8`, "", fullBody].join("\r\n")).toString("base64url");
-    }
-
-    const result = await gmail.users.messages.send({
-      userId: "me",
-      requestBody: { raw, ...(threadId ? { threadId } : {}) },
-    });
-
-    res.json({ messageId: result.data.id, success: true });
-  } catch (err) {
-    req.log.error({ err }, "Error composing email");
-    res.status(500).json({ error: "Failed to send email" });
-  }
-});
-
-router.post("/gmail/send", requireAuth, emailSendRateLimit, async (req, res) => {
-  try {
-    const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const account = (req.body?.account as string) || undefined;
-    const body = SendReplyBody.parse(req.body);
-    const gmail = await getGmailClientForUser(userId, account);
-
-    const profile = await gmail.users.getProfile({ userId: "me" });
-    const fromEmail = account || profile.data.emailAddress || "";
-    const sigData = await getAccountSignatureData(userId, fromEmail);
-
-    const replySubject = body.subject.startsWith("Re:") ? body.subject : `Re: ${body.subject}`;
-    const baseHeaders = [
-      `From: ${fromEmail}`,
-      `To: ${body.to}`,
-      `Subject: ${replySubject}`,
-    ];
-    if (body.inReplyTo) baseHeaders.push(`In-Reply-To: ${body.inReplyTo}`);
-    if (body.references) baseHeaders.push(`References: ${body.references}`);
-
-    let raw: string;
-    if (sigData && (sigData.imageUrl || sigData.links?.length)) {
-      const plainSig = buildPlainSignature(sigData);
-      const plainBody = plainSig ? `${body.body}\n\n-- \n${plainSig}` : body.body;
-      const htmlBody = `<div style="font-family:sans-serif;font-size:14px;white-space:pre-wrap;">${body.body.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div><br><hr style="border:none;border-top:1px solid #eee;margin:12px 0;">${buildHtmlSignature(sigData)}`;
-      raw = Buffer.from(buildMultipartEmail(baseHeaders, plainBody, `<html><body>${htmlBody}</body></html>`)).toString("base64url");
-    } else {
-      const plainSig = sigData ? buildPlainSignature(sigData) : "";
-      const fullBody = plainSig ? `${body.body}\n\n-- \n${plainSig}` : body.body;
-      raw = Buffer.from([...baseHeaders, `Content-Type: text/plain; charset=utf-8`, "", fullBody].join("\r\n")).toString("base64url");
-    }
-
-    const result = await gmail.users.messages.send({
-      userId: "me",
-      requestBody: { raw, threadId: body.threadId },
-    });
-
-    res.json({ messageId: result.data.id, threadId: body.threadId || result.data.threadId, success: true });
-  } catch (err) {
-    req.log.error({ err }, "Error sending reply");
-    res.status(500).json({ error: "Failed to send reply" });
-  }
-});
-
-router.get("/gmail/messages/:messageId/attachments/:attachmentId", requireAuth, async (req, res) => {
-  try {
-    const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { messageId, attachmentId } = req.params;
-    const filename = (req.query.filename as string) || "attachment";
-    const mimeType = (req.query.mimeType as string) || "application/octet-stream";
-    const account = getAccount(req);
-
-    const gmail = await getGmailClientForUser(userId, account);
-    const response = await gmail.users.messages.attachments.get({
-      userId: "me",
-      messageId,
-      id: attachmentId,
-    });
-
-    const data = response.data.data;
-    if (!data) { res.status(404).json({ error: "Attachment not found" }); return; }
-
-    const buffer = Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    res.setHeader("Content-Type", mimeType);
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
-    res.setHeader("Content-Length", buffer.length);
-    res.send(buffer);
-  } catch (err) {
-    req.log.error({ err }, "Error downloading attachment");
-    res.status(500).json({ error: "Failed to download attachment" });
-  }
-});
-
-router.post("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) => {
-  try {
-    const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { threadId } = req.params;
-    const snoozeUntilRaw = req.body?.snoozeUntil;
-    const account = getAccount(req) ?? "";
-
-    if (!snoozeUntilRaw) {
-      res.status(400).json({ error: "snoozeUntil is required" });
-      return;
-    }
-
-    const snoozeUntil = new Date(snoozeUntilRaw);
-    if (isNaN(snoozeUntil.getTime())) {
-      res.status(400).json({ error: "Invalid snoozeUntil date" });
-      return;
-    }
-
-    await db.insert(emailSnoozesTable)
-      .values({ userId, threadId, accountEmail: account, snoozeUntil })
-      .onConflictDoUpdate({
-        target: [emailSnoozesTable.userId, emailSnoozesTable.threadId, emailSnoozesTable.accountEmail],
-        set: { snoozeUntil },
+      await gmail.users.threads.modify({
+        userId: "me",
+        id: threadId,
+        requestBody: { addLabelIds, removeLabelIds },
       });
 
-    res.json({ success: true, snoozeUntil: snoozeUntil.toISOString() });
-  } catch (err) {
-    req.log.error({ err }, "Error snoozing thread");
-    res.status(500).json({ error: "Failed to snooze thread" });
-  }
-});
+      res.json({ success: true });
+    } catch (err) {
+      req.log.error({ err }, "Error modifying thread");
+      res.status(500).json({ error: "Failed to modify thread" });
+    }
+  },
+);
 
-router.delete("/gmail/threads/:threadId/snooze", requireAuth, async (req, res) => {
-  try {
-    const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+router.post(
+  "/gmail/compose",
+  requireAuth,
+  emailSendRateLimit,
+  async (req, res) => {
+    try {
+      const userId = getReqUserId(req)!;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
 
-    const { threadId } = req.params;
-    const account = getAccount(req) ?? "";
+      const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
+      const subject =
+        typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
+      const body = typeof req.body?.body === "string" ? req.body.body : "";
+      const cc = typeof req.body?.cc === "string" ? req.body.cc.trim() : "";
+      const bcc = typeof req.body?.bcc === "string" ? req.body.bcc.trim() : "";
+      const threadId =
+        typeof req.body?.threadId === "string" ? req.body.threadId : undefined;
+      const account = getAccount(req);
 
-    await db.delete(emailSnoozesTable).where(
-      and(
-        eq(emailSnoozesTable.userId, userId),
-        eq(emailSnoozesTable.threadId, threadId),
-        eq(emailSnoozesTable.accountEmail, account)
-      )
-    );
+      if (!to || !subject) {
+        res.status(400).json({ error: "to and subject are required" });
+        return;
+      }
 
-    res.json({ success: true });
-  } catch (err) {
-    req.log.error({ err }, "Error un-snoozing thread");
-    res.status(500).json({ error: "Failed to un-snooze thread" });
-  }
-});
+      const gmail = await getGmailClientForUser(userId, account);
+      const profile = await gmail.users.getProfile({ userId: "me" });
+      const fromEmail = account || profile.data.emailAddress || "";
+      const sigData = await getAccountSignatureData(userId, fromEmail);
+
+      const baseHeaders = [
+        `From: ${fromEmail}`,
+        `To: ${to}`,
+        ...(cc ? [`Cc: ${cc}`] : []),
+        ...(bcc ? [`Bcc: ${bcc}`] : []),
+        `Subject: ${subject}`,
+      ];
+
+      let raw: string;
+      if (sigData && (sigData.imageUrl || sigData.links?.length)) {
+        const plainSig = buildPlainSignature(sigData);
+        const plainBody = plainSig ? `${body}\n\n-- \n${plainSig}` : body;
+        const htmlBody = `<div style="font-family:sans-serif;font-size:14px;white-space:pre-wrap;">${body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div><br><hr style="border:none;border-top:1px solid #eee;margin:12px 0;">${buildHtmlSignature(sigData)}`;
+        raw = Buffer.from(
+          buildMultipartEmail(
+            baseHeaders,
+            plainBody,
+            `<html><body>${htmlBody}</body></html>`,
+          ),
+        ).toString("base64url");
+      } else {
+        const plainSig = sigData ? buildPlainSignature(sigData) : "";
+        const fullBody = plainSig ? `${body}\n\n-- \n${plainSig}` : body;
+        raw = Buffer.from(
+          [
+            ...baseHeaders,
+            `Content-Type: text/plain; charset=utf-8`,
+            "",
+            fullBody,
+          ].join("\r\n"),
+        ).toString("base64url");
+      }
+
+      const result = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw, ...(threadId ? { threadId } : {}) },
+      });
+
+      res.json({ messageId: result.data.id, success: true });
+    } catch (err) {
+      req.log.error({ err }, "Error composing email");
+      res.status(500).json({ error: "Failed to send email" });
+    }
+  },
+);
+
+router.post(
+  "/gmail/send",
+  requireAuth,
+  emailSendRateLimit,
+  async (req, res) => {
+    try {
+      const userId = getReqUserId(req)!;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const account = (req.body?.account as string) || undefined;
+      const body = SendReplyBody.parse(req.body);
+      const gmail = await getGmailClientForUser(userId, account);
+
+      const profile = await gmail.users.getProfile({ userId: "me" });
+      const fromEmail = account || profile.data.emailAddress || "";
+      const sigData = await getAccountSignatureData(userId, fromEmail);
+
+      const replySubject = body.subject.startsWith("Re:")
+        ? body.subject
+        : `Re: ${body.subject}`;
+      const baseHeaders = [
+        `From: ${fromEmail}`,
+        `To: ${body.to}`,
+        `Subject: ${replySubject}`,
+      ];
+      if (body.inReplyTo) baseHeaders.push(`In-Reply-To: ${body.inReplyTo}`);
+      if (body.references) baseHeaders.push(`References: ${body.references}`);
+
+      let raw: string;
+      if (sigData && (sigData.imageUrl || sigData.links?.length)) {
+        const plainSig = buildPlainSignature(sigData);
+        const plainBody = plainSig
+          ? `${body.body}\n\n-- \n${plainSig}`
+          : body.body;
+        const htmlBody = `<div style="font-family:sans-serif;font-size:14px;white-space:pre-wrap;">${body.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div><br><hr style="border:none;border-top:1px solid #eee;margin:12px 0;">${buildHtmlSignature(sigData)}`;
+        raw = Buffer.from(
+          buildMultipartEmail(
+            baseHeaders,
+            plainBody,
+            `<html><body>${htmlBody}</body></html>`,
+          ),
+        ).toString("base64url");
+      } else {
+        const plainSig = sigData ? buildPlainSignature(sigData) : "";
+        const fullBody = plainSig
+          ? `${body.body}\n\n-- \n${plainSig}`
+          : body.body;
+        raw = Buffer.from(
+          [
+            ...baseHeaders,
+            `Content-Type: text/plain; charset=utf-8`,
+            "",
+            fullBody,
+          ].join("\r\n"),
+        ).toString("base64url");
+      }
+
+      const result = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw, threadId: body.threadId },
+      });
+
+      res.json({
+        messageId: result.data.id,
+        threadId: body.threadId || result.data.threadId,
+        success: true,
+      });
+    } catch (err) {
+      req.log.error({ err }, "Error sending reply");
+      res.status(500).json({ error: "Failed to send reply" });
+    }
+  },
+);
+
+router.get(
+  "/gmail/messages/:messageId/attachments/:attachmentId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = getReqUserId(req)!;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { messageId, attachmentId } = req.params;
+      const filename = (req.query.filename as string) || "attachment";
+      const mimeType =
+        (req.query.mimeType as string) || "application/octet-stream";
+      const account = getAccount(req);
+
+      const gmail = await getGmailClientForUser(userId, account);
+      const response = await gmail.users.messages.attachments.get({
+        userId: "me",
+        messageId,
+        id: attachmentId,
+      });
+
+      const data = response.data.data;
+      if (!data) {
+        res.status(404).json({ error: "Attachment not found" });
+        return;
+      }
+
+      const buffer = Buffer.from(
+        data.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64",
+      );
+      const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${safeName}"`,
+      );
+      res.setHeader("Content-Length", buffer.length);
+      res.send(buffer);
+    } catch (err) {
+      req.log.error({ err }, "Error downloading attachment");
+      res.status(500).json({ error: "Failed to download attachment" });
+    }
+  },
+);
+
+router.post(
+  "/gmail/threads/:threadId/snooze",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = getReqUserId(req)!;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { threadId } = req.params;
+      const snoozeUntilRaw = req.body?.snoozeUntil;
+      const account = getAccount(req) ?? "";
+
+      if (!snoozeUntilRaw) {
+        res.status(400).json({ error: "snoozeUntil is required" });
+        return;
+      }
+
+      const snoozeUntil = new Date(snoozeUntilRaw);
+      if (isNaN(snoozeUntil.getTime())) {
+        res.status(400).json({ error: "Invalid snoozeUntil date" });
+        return;
+      }
+
+      await db
+        .insert(emailSnoozesTable)
+        .values({ userId, threadId, accountEmail: account, snoozeUntil })
+        .onConflictDoUpdate({
+          target: [
+            emailSnoozesTable.userId,
+            emailSnoozesTable.threadId,
+            emailSnoozesTable.accountEmail,
+          ],
+          set: { snoozeUntil },
+        });
+
+      res.json({ success: true, snoozeUntil: snoozeUntil.toISOString() });
+    } catch (err) {
+      req.log.error({ err }, "Error snoozing thread");
+      res.status(500).json({ error: "Failed to snooze thread" });
+    }
+  },
+);
+
+router.delete(
+  "/gmail/threads/:threadId/snooze",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = getReqUserId(req)!;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { threadId } = req.params;
+      const account = getAccount(req) ?? "";
+
+      await db
+        .delete(emailSnoozesTable)
+        .where(
+          and(
+            eq(emailSnoozesTable.userId, userId),
+            eq(emailSnoozesTable.threadId, threadId),
+            eq(emailSnoozesTable.accountEmail, account),
+          ),
+        );
+
+      res.json({ success: true });
+    } catch (err) {
+      req.log.error({ err }, "Error un-snoozing thread");
+      res.status(500).json({ error: "Failed to un-snooze thread" });
+    }
+  },
+);
 
 router.get("/gmail/snoozed", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const now = new Date();
-    const snoozed = await db.select()
+    const snoozed = await db
+      .select()
       .from(emailSnoozesTable)
-      .where(and(eq(emailSnoozesTable.userId, userId), gt(emailSnoozesTable.snoozeUntil, now)));
+      .where(
+        and(
+          eq(emailSnoozesTable.userId, userId),
+          gt(emailSnoozesTable.snoozeUntil, now),
+        ),
+      );
 
-    res.json({ snoozed: snoozed.map((s) => ({ threadId: s.threadId, snoozeUntil: s.snoozeUntil.toISOString(), accountEmail: s.accountEmail })) });
+    res.json({
+      snoozed: snoozed.map((s) => ({
+        threadId: s.threadId,
+        snoozeUntil: s.snoozeUntil.toISOString(),
+        accountEmail: s.accountEmail,
+      })),
+    });
   } catch (err) {
     req.log.error({ err }, "Error fetching snoozed threads");
     res.status(500).json({ error: "Failed to fetch snoozed threads" });
@@ -814,7 +1084,10 @@ router.get("/gmail/snoozed", requireAuth, async (req, res) => {
 router.post("/gmail/watch", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     const { watchUser } = await import("../lib/gmailWatcher");
     await watchUser(userId);
     res.json({ success: true });
@@ -840,13 +1113,23 @@ router.post("/gmail/webhook", async (req, res) => {
     }
 
     const decoded = Buffer.from(message.data, "base64").toString("utf-8");
-    const parsed = JSON.parse(decoded) as { emailAddress?: string; historyId?: number };
+    const parsed = JSON.parse(decoded) as {
+      emailAddress?: string;
+      historyId?: number;
+    };
 
     if (parsed.emailAddress && parsed.historyId) {
       const { handlePushNotification } = await import("../lib/gmailWatcher");
       // Don't await — respond immediately, process async
-      handlePushNotification({ emailAddress: parsed.emailAddress, historyId: parsed.historyId })
-        .catch((err: unknown) => req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[gmail-push] handlePushNotification error"));
+      handlePushNotification({
+        emailAddress: parsed.emailAddress,
+        historyId: parsed.historyId,
+      }).catch((err: unknown) =>
+        req.log.error(
+          { err: err instanceof Error ? err.message : "Unknown error" },
+          "[gmail-push] handlePushNotification error",
+        ),
+      );
     }
 
     res.status(200).send("ok");

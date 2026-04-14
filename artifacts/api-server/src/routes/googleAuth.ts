@@ -3,51 +3,35 @@ import { google } from "googleapis";
 import { requireAuth } from "../lib/requireAuth";
 import { getReqUserId } from "../lib/getReqAuth";
 import { db } from "@workspace/db";
-import { usersTable, connectorsTable, gmailAccountsTable } from "@workspace/db/schema";
+import {
+  usersTable,
+  connectorsTable,
+  gmailAccountsTable,
+} from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getOrCreateUser } from "../lib/getOrCreateUser";
-import { createOAuthState, createSigninOAuthState, verifyOAuthState } from "../lib/oauthState";
-import { createSessionToken } from "../lib/sessionToken";
+import {
+  createOAuthState,
+  createSigninOAuthState,
+  verifyOAuthState,
+} from "../lib/oauthState";
+import { createSigninCode } from "../lib/sessionToken";
 import { getConnectedGmailAccounts } from "../lib/gmailClient";
 import { maybeEncrypt } from "../lib/tokenCrypto";
 import { logger } from "../lib/logger";
+import {
+  getOAuthClient,
+  generateOAuthUrl,
+  exchangeCodeForTokens,
+  GMAIL_SCOPES,
+} from "../lib/googleOAuth";
 
 const router = Router();
 
-function getRedirectUri() {
-  if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
-  const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
-  return `https://${domain}/api/auth/google/callback`;
-}
-
-function getOAuthClient() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = getRedirectUri();
-  if (!clientId || !clientSecret) {
-    throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set");
-  }
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-}
-
-const GMAIL_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.labels",
-  "https://www.googleapis.com/auth/gmail.modify",
-  "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/calendar.events",
-  "https://www.googleapis.com/auth/contacts.readonly",
-  "https://www.googleapis.com/auth/contacts.other.readonly",
-];
-
 const GSUITE_EXTENSION_CONNECTORS = ["google-drive", "google-contacts"];
 
-// Public: returns Google OAuth URL for initial sign-in (no auth required)
 router.get("/auth/google/signin-url", async (_req, res) => {
   try {
-    const oAuth2Client = getOAuthClient();
     let state: string;
     try {
       state = createSigninOAuthState();
@@ -55,12 +39,7 @@ router.get("/auth/google/signin-url", async (_req, res) => {
       res.status(500).json({ error: "OAuth not configured" });
       return;
     }
-    const url = oAuth2Client.generateAuthUrl({
-      access_type: "offline",
-      scope: GMAIL_SCOPES,
-      prompt: "consent",
-      state,
-    });
+    const url = generateOAuthUrl(state);
     res.json({ url });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "";
@@ -72,13 +51,10 @@ router.get("/auth/google/signin-url", async (_req, res) => {
   }
 });
 
-// Mobile-specific: returns the OAuth URL as JSON so mobile can fetch with auth headers
-// then open the URL in expo-web-browser
 router.get("/auth/google/mobile-url", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
     const addAccount = req.query.addAccount === "true";
-    const oAuth2Client = getOAuthClient();
 
     let state: string;
     try {
@@ -88,13 +64,7 @@ router.get("/auth/google/mobile-url", requireAuth, async (req, res) => {
       return;
     }
 
-    const url = oAuth2Client.generateAuthUrl({
-      access_type: "offline",
-      scope: GMAIL_SCOPES,
-      prompt: "consent",
-      state,
-    });
-
+    const url = generateOAuthUrl(state);
     res.json({ url });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "";
@@ -113,8 +83,8 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req)!;
     const addAccount = req.query.addAccount === "true";
-    const platform = req.query.platform === "mobile" ? "mobile" as const : undefined;
-    const oAuth2Client = getOAuthClient();
+    const platform =
+      req.query.platform === "mobile" ? ("mobile" as const) : undefined;
 
     let state: string;
     try {
@@ -128,14 +98,8 @@ router.get("/auth/google/start", requireAuth, async (req, res) => {
       return;
     }
 
-    const url = oAuth2Client.generateAuthUrl({
-      access_type: "offline",
-      scope: GMAIL_SCOPES,
-      prompt: "consent",
-      state,
-    });
-
-    req.log.info({ redirectUri: getRedirectUri(), addAccount, platform }, "[google-start] oauth init");
+    const url = generateOAuthUrl(state);
+    req.log.info({ addAccount, platform }, "[google-start] oauth init");
     res.redirect(url);
   } catch (err: unknown) {
     const domain2 = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost";
@@ -160,7 +124,10 @@ router.get("/auth/google/callback", async (req, res) => {
     const { code, state, error } = req.query;
 
     if (error) {
-      req.log.warn({ oauthError: String(error) }, "[google-callback] Google returned error");
+      req.log.warn(
+        { oauthError: String(error) },
+        "[google-callback] Google returned error",
+      );
       res.redirect(`${frontendUrl}/settings?gmail_error=access_denied`);
       return;
     }
@@ -185,7 +152,8 @@ router.get("/auth/google/callback", async (req, res) => {
       const result = await getOAuthClient().getToken(code as string);
       tokens = result.tokens;
     } catch (tokenErr: unknown) {
-      const msg = tokenErr instanceof Error ? tokenErr.message : "Unknown error";
+      const msg =
+        tokenErr instanceof Error ? tokenErr.message : "Unknown error";
       req.log.error({ err: msg }, "[google-callback] token exchange FAILED");
       if (isMobileSignin) {
         res.redirect(`replyai://signin-error?error=callback_failed`);
@@ -221,10 +189,16 @@ router.get("/auth/google/callback", async (req, res) => {
     const userId = isMobileSignin ? `google_${googleSub}` : stateUserId;
 
     // Upsert the user FIRST (before gmail_accounts, which has a FK to users)
-    const updated = await db.update(usersTable)
+    const updated = await db
+      .update(usersTable)
       .set({
         googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
-        ...(tokens.refresh_token ? { googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token } : {}),
+        ...(tokens.refresh_token
+          ? {
+              googleRefreshToken:
+                maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token,
+            }
+          : {}),
         googleTokenExpiresAt: expiresAt,
         googleEmail,
         updatedAt: new Date(),
@@ -233,34 +207,53 @@ router.get("/auth/google/callback", async (req, res) => {
       .returning({ id: usersTable.id });
 
     if (updated.length === 0) {
-      await db.insert(usersTable).values({
-        id: userId,
-        email: googleEmail,
-        googleEmail,
-        googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
-        googleRefreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? null,
-        googleTokenExpiresAt: expiresAt,
-      }).onConflictDoNothing();
+      await db
+        .insert(usersTable)
+        .values({
+          id: userId,
+          email: googleEmail,
+          googleEmail,
+          googleAccessToken: maybeEncrypt(tokens.access_token) ?? null,
+          googleRefreshToken:
+            maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? null,
+          googleTokenExpiresAt: expiresAt,
+        })
+        .onConflictDoNothing();
     }
 
     // Determine if this should be the primary account
-    const existingAccounts = await db.select({ id: gmailAccountsTable.id })
+    const existingAccounts = await db
+      .select({ id: gmailAccountsTable.id })
       .from(gmailAccountsTable)
       .where(eq(gmailAccountsTable.userId, userId));
     const isFirstAccount = existingAccounts.length === 0;
 
     // If adding a new account that already exists as the primary, keep it primary
-    const existingRow = await db.select().from(gmailAccountsTable)
-      .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, googleEmail)))
+    const existingRow = await db
+      .select()
+      .from(gmailAccountsTable)
+      .where(
+        and(
+          eq(gmailAccountsTable.userId, userId),
+          eq(gmailAccountsTable.email, googleEmail),
+        ),
+      )
       .limit(1);
-    const shouldBePrimary = isFirstAccount || (existingRow.length > 0 && existingRow[0].isPrimary);
+    const shouldBePrimary =
+      isFirstAccount || (existingRow.length > 0 && existingRow[0].isPrimary);
 
     // Upsert into gmail_accounts (update tokens if email already connected)
     if (existingRow.length > 0) {
-      await db.update(gmailAccountsTable)
+      await db
+        .update(gmailAccountsTable)
         .set({
           accessToken: maybeEncrypt(tokens.access_token) ?? null,
-          ...(tokens.refresh_token ? { refreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token } : {}),
+          ...(tokens.refresh_token
+            ? {
+                refreshToken:
+                  maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token,
+              }
+            : {}),
           tokenExpiresAt: expiresAt,
           updatedAt: new Date(),
         })
@@ -270,25 +263,34 @@ router.get("/auth/google/callback", async (req, res) => {
         userId,
         email: googleEmail,
         accessToken: maybeEncrypt(tokens.access_token) ?? null,
-        refreshToken: maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? "",
+        refreshToken:
+          maybeEncrypt(tokens.refresh_token) ?? tokens.refresh_token ?? "",
         tokenExpiresAt: expiresAt,
         isPrimary: shouldBePrimary,
       });
     }
 
     if (isMobileSignin) {
-      // Issue our own session token — no Clerk dependency
-      const sessionToken = createSessionToken(userId, googleEmail);
-      res.redirect(`replyai://signin-success?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(googleEmail)}&userId=${encodeURIComponent(userId)}`);
+      const signinCode = createSigninCode(userId, googleEmail);
+      res.redirect(
+        `replyai://signin-success?code=${encodeURIComponent(signinCode)}`,
+      );
     } else if (isMobile) {
       const event = addAccount ? "account_added" : "connected";
-      res.redirect(`replyai://oauth-success?event=${event}&email=${encodeURIComponent(googleEmail)}`);
+      res.redirect(
+        `replyai://oauth-success?event=${event}&email=${encodeURIComponent(googleEmail)}`,
+      );
     } else {
-      const redirectParam = addAccount ? "gmail_account_added=true" : "gmail_connected=true";
+      const redirectParam = addAccount
+        ? "gmail_account_added=true"
+        : "gmail_connected=true";
       res.redirect(`${frontendUrl}/dashboard?${redirectParam}`);
     }
   } catch (err) {
-    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[google-callback] unexpected error");
+    req.log.error(
+      { err: err instanceof Error ? err.message : "Unknown error" },
+      "[google-callback] unexpected error",
+    );
     if (isMobileSignin) {
       res.redirect(`replyai://signin-error?error=server_error`);
     } else if (isMobile) {
@@ -303,44 +305,80 @@ router.get("/auth/google/callback", async (req, res) => {
 router.get("/gmail/accounts", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req);
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     const accounts = await getConnectedGmailAccounts(userId);
     res.json({ accounts });
   } catch (err) {
-    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[gmail-accounts] error");
+    req.log.error(
+      { err: err instanceof Error ? err.message : "Unknown error" },
+      "[gmail-accounts] error",
+    );
     res.status(500).json({ error: "Failed to fetch accounts" });
   }
 });
 
 // Update signature for a specific Gmail account
-router.put("/gmail/accounts/:email/signature", requireAuth, async (req, res) => {
-  try {
-    const userId = getReqUserId(req);
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const email = decodeURIComponent(req.params.email);
-    const signature = typeof req.body?.signature === "string" ? req.body.signature : null;
-    const signatureImageUrl = typeof req.body?.signatureImageUrl === "string" ? req.body.signatureImageUrl : null;
-    await db.update(gmailAccountsTable)
-      .set({ signature, signatureImageUrl, updatedAt: new Date() })
-      .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)));
-    res.json({ ok: true });
-  } catch (err) {
-    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[signature] error");
-    res.status(500).json({ error: "Failed to update signature" });
-  }
-});
+router.put(
+  "/gmail/accounts/:email/signature",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = getReqUserId(req);
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const email = decodeURIComponent(req.params.email);
+      const signature =
+        typeof req.body?.signature === "string" ? req.body.signature : null;
+      const signatureImageUrl =
+        typeof req.body?.signatureImageUrl === "string"
+          ? req.body.signatureImageUrl
+          : null;
+      await db
+        .update(gmailAccountsTable)
+        .set({ signature, signatureImageUrl, updatedAt: new Date() })
+        .where(
+          and(
+            eq(gmailAccountsTable.userId, userId),
+            eq(gmailAccountsTable.email, email),
+          ),
+        );
+      res.json({ ok: true });
+    } catch (err) {
+      req.log.error(
+        { err: err instanceof Error ? err.message : "Unknown error" },
+        "[signature] error",
+      );
+      res.status(500).json({ error: "Failed to update signature" });
+    }
+  },
+);
 
 // Disconnect a specific Gmail account
 router.delete("/gmail/accounts/:email", requireAuth, async (req, res) => {
   try {
     const userId = getReqUserId(req);
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const email = decodeURIComponent(req.params.email);
 
     // Find the account
-    const [account] = await db.select().from(gmailAccountsTable)
-      .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)))
+    const [account] = await db
+      .select()
+      .from(gmailAccountsTable)
+      .where(
+        and(
+          eq(gmailAccountsTable.userId, userId),
+          eq(gmailAccountsTable.email, email),
+        ),
+      )
       .limit(1);
 
     if (!account) {
@@ -348,25 +386,36 @@ router.delete("/gmail/accounts/:email", requireAuth, async (req, res) => {
       return;
     }
 
-    await db.delete(gmailAccountsTable)
-      .where(and(eq(gmailAccountsTable.userId, userId), eq(gmailAccountsTable.email, email)));
+    await db
+      .delete(gmailAccountsTable)
+      .where(
+        and(
+          eq(gmailAccountsTable.userId, userId),
+          eq(gmailAccountsTable.email, email),
+        ),
+      );
 
     // If we removed the primary, promote another
     if (account.isPrimary) {
-      const remaining = await db.select().from(gmailAccountsTable)
+      const remaining = await db
+        .select()
+        .from(gmailAccountsTable)
         .where(eq(gmailAccountsTable.userId, userId))
         .limit(1);
       if (remaining.length > 0) {
-        await db.update(gmailAccountsTable)
+        await db
+          .update(gmailAccountsTable)
           .set({ isPrimary: true, updatedAt: new Date() })
           .where(eq(gmailAccountsTable.id, remaining[0].id));
         // Update users table to reflect new primary
-        await db.update(usersTable)
+        await db
+          .update(usersTable)
           .set({ googleEmail: remaining[0].email, updatedAt: new Date() })
           .where(eq(usersTable.id, userId));
       } else {
         // No more accounts — clear users table tokens
-        await db.update(usersTable)
+        await db
+          .update(usersTable)
           .set({
             googleAccessToken: null,
             googleRefreshToken: null,
@@ -375,18 +424,23 @@ router.delete("/gmail/accounts/:email", requireAuth, async (req, res) => {
             updatedAt: new Date(),
           })
           .where(eq(usersTable.id, userId));
-        await db.delete(connectorsTable).where(
-          and(
-            eq(connectorsTable.userId, userId),
-            inArray(connectorsTable.connectorId, GSUITE_EXTENSION_CONNECTORS),
-          ),
-        );
+        await db
+          .delete(connectorsTable)
+          .where(
+            and(
+              eq(connectorsTable.userId, userId),
+              inArray(connectorsTable.connectorId, GSUITE_EXTENSION_CONNECTORS),
+            ),
+          );
       }
     }
 
     res.json({ success: true });
   } catch (err) {
-    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[gmail-account-disconnect] error");
+    req.log.error(
+      { err: err instanceof Error ? err.message : "Unknown error" },
+      "[gmail-account-disconnect] error",
+    );
     res.status(500).json({ error: "Failed to disconnect account" });
   }
 });
@@ -396,8 +450,11 @@ router.post("/auth/google/disconnect", requireAuth, async (req, res) => {
     const userId = getReqUserId(req)!;
 
     // Remove all accounts
-    await db.delete(gmailAccountsTable).where(eq(gmailAccountsTable.userId, userId));
-    await db.update(usersTable)
+    await db
+      .delete(gmailAccountsTable)
+      .where(eq(gmailAccountsTable.userId, userId));
+    await db
+      .update(usersTable)
       .set({
         googleAccessToken: null,
         googleRefreshToken: null,
@@ -407,16 +464,21 @@ router.post("/auth/google/disconnect", requireAuth, async (req, res) => {
       })
       .where(eq(usersTable.id, userId));
 
-    await db.delete(connectorsTable).where(
-      and(
-        eq(connectorsTable.userId, userId),
-        inArray(connectorsTable.connectorId, GSUITE_EXTENSION_CONNECTORS),
-      ),
-    );
+    await db
+      .delete(connectorsTable)
+      .where(
+        and(
+          eq(connectorsTable.userId, userId),
+          inArray(connectorsTable.connectorId, GSUITE_EXTENSION_CONNECTORS),
+        ),
+      );
 
     res.json({ success: true });
   } catch (err) {
-    req.log.error({ err: err instanceof Error ? err.message : "Unknown error" }, "[google-disconnect] error");
+    req.log.error(
+      { err: err instanceof Error ? err.message : "Unknown error" },
+      "[google-disconnect] error",
+    );
     res.status(500).json({ error: "Failed to disconnect Gmail" });
   }
 });

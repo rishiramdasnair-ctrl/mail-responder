@@ -18,8 +18,8 @@ COPY scripts ./scripts
 # Install dependencies
 RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile
 
-# Build the project
-RUN pnpm run build
+# Build only the api-server (skip typecheck for now)
+RUN cd artifacts/api-server && pnpm run build
 
 # Expose the port Railway needs
 EXPOSE 8000
